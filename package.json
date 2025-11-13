@@ -1,0 +1,32 @@
+{
+  "name": "vault-backend",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "services/*"
+  ],
+  "devDependencies": {
+    "eslint": "^8.50.0",
+    "typescript": "^5.2.2"
+  },
+  "scripts": {
+    "install:all": "pnpm install",
+    "clean": "pnpm store prune && rm -rf node_modules **/node_modules",
+    "build:all": "pnpm -r run build",
+    "dev:all": "pnpm -r --parallel run dev",
+    "start:all": "pnpm -r --parallel run start",
+    "start:vault": "pnpm --filter vault-service run dev",
+    "start:gateway": "pnpm --filter gateway-service run dev",
+    "start:auth": "pnpm --filter auth-service run dev",
+    "start:notification": "pnpm --filter notification-service run dev",
+    "start:file": "pnpm --filter file-service run dev",
+    "build:vault": "pnpm --filter vault-service run build",
+    "build:gateway": "pnpm --filter gateway-service run build",
+    "build:auth": "pnpm --filter auth-service run build",
+    "build:notification": "pnpm --filter notification-service run build",
+    "build:file": "pnpm --filter file-service run build"
+  },
+  "dependencies": {
+    
+  }
+}

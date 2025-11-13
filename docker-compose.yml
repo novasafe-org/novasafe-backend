@@ -1,0 +1,20 @@
+version: "3"
+
+services:
+  vault:
+    image: pkt43/vault:latest
+    container_name: vault
+    ports:
+      - "3123:3000"
+    env_file:
+      - .env
+    restart: always
+
+  # app2backend:
+  #   image: pkt43/app2backend:latest
+  #   container_name: app2backend
+  #   ports:
+  #     - "3002:3000"
+  #   env_file:
+  #     - ./service/app2backend/.env
+  #   restart: always
