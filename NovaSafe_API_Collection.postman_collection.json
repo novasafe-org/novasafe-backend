@@ -1,0 +1,1350 @@
+{
+	"info": {
+		"_postman_id": "novasafe-api-collection-2024",
+		"name": "NovaSafe API Collection",
+		"description": "Complete API collection for NovaSafe - Secure Digital Vault Application\n\n**Base URL:** `http://localhost:3123` (Development)\n**API Version:** 1.0\n**Authentication:** JWT Bearer Token (except login endpoints)\n\n## Setup Instructions:\n1. Import this collection into Postman\n2. Create an environment with the following variables:\n   - `base_url`: http://localhost:3123\n   - `auth_token`: (will be set automatically after login)\n   - `user_id`: (will be set automatically after login)\n   - `item_id`: (for testing item operations)\n   - `folder_id`: (for testing folder operations)\n   - `share_id`: (for testing share operations)\n3. Run the \"Google Sign-In\" request first to get your auth token\n4. The token will be automatically saved to the environment variable",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication & Authorization",
+			"item": [
+				{
+					"name": "Google Sign-In",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    if (response.token) {",
+									"        pm.environment.set('auth_token', response.token);",
+									"        pm.environment.set('user_id', response.user.id);",
+									"        console.log('Auth token saved to environment');",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"credential\": \"YOUR_GOOGLE_ID_TOKEN_HERE\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/auth/google",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"auth",
+								"google"
+							]
+						},
+						"description": "Authenticate user with Google OAuth 2.0 and receive JWT token.\n\n**Note:** Replace `YOUR_GOOGLE_ID_TOKEN_HERE` with the actual Google ID token from your frontend OAuth flow."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Current User",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/auth/me",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"auth",
+								"me"
+							]
+						},
+						"description": "Retrieve authenticated user's information."
+					},
+					"response": []
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/auth/logout",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"auth",
+								"logout"
+							]
+						},
+						"description": "Logout current user and invalidate session."
+					},
+					"response": []
+				}
+			],
+			"description": "Authentication and authorization endpoints"
+		},
+		{
+			"name": "Two-Factor Authentication (2FA)",
+			"item": [
+				{
+					"name": "Setup 2FA",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/auth/2fa/setup",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"auth",
+								"2fa",
+								"setup"
+							]
+						},
+						"description": "Generate TOTP secret and QR code for 2FA setup."
+					},
+					"response": []
+				},
+				{
+					"name": "Enable 2FA",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"123456\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/auth/2fa/enable",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"auth",
+								"2fa",
+								"enable"
+							]
+						},
+						"description": "Enable 2FA after verifying TOTP token."
+					},
+					"response": []
+				},
+				{
+					"name": "Verify 2FA",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"123456\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/auth/2fa/verify",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"auth",
+								"2fa",
+								"verify"
+							]
+						},
+						"description": "Verify TOTP token during login (if 2FA is enabled).\n\n**Alternative:** Use backup code:\n```json\n{\n  \"backupCode\": \"ABC123\"\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Disable 2FA",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"123456\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/auth/2fa/disable",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"auth",
+								"2fa",
+								"disable"
+							]
+						},
+						"description": "Disable 2FA (requires TOTP token or password)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get 2FA Status",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/auth/2fa/status",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"auth",
+								"2fa",
+								"status"
+							]
+						},
+						"description": "Get current 2FA status for user."
+					},
+					"response": []
+				},
+				{
+					"name": "Regenerate Backup Codes",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/auth/2fa/backup-codes",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"auth",
+								"2fa",
+								"backup-codes"
+							]
+						},
+						"description": "Generate new backup codes (invalidates old ones)."
+					},
+					"response": []
+				}
+			],
+			"description": "Two-factor authentication endpoints"
+		},
+		{
+			"name": "Session Management",
+			"item": [
+				{
+					"name": "Get All Sessions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/auth/sessions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"auth",
+								"sessions"
+							]
+						},
+						"description": "Get all active sessions for current user."
+					},
+					"response": []
+				},
+				{
+					"name": "Revoke Session",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/auth/sessions/:sessionId",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"auth",
+								"sessions",
+								":sessionId"
+							],
+							"variable": [
+								{
+									"key": "sessionId",
+									"value": "507f1f77bcf86cd799439011"
+								}
+							]
+						},
+						"description": "Revoke a specific session by ID."
+					},
+					"response": []
+				},
+				{
+					"name": "Revoke All Other Sessions",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/auth/sessions/revoke-all",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"auth",
+								"sessions",
+								"revoke-all"
+							]
+						},
+						"description": "Revoke all sessions except the current one."
+					},
+					"response": []
+				}
+			],
+			"description": "Session management endpoints"
+		},
+		{
+			"name": "Vault Items",
+			"item": [
+				{
+					"name": "Get All Items",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/getAll?category=password&search=gmail&tags=email,google",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"getAll"
+							],
+							"query": [
+								{
+									"key": "category",
+									"value": "password",
+									"description": "Filter by category (optional)"
+								},
+								{
+									"key": "search",
+									"value": "gmail",
+									"description": "Search in title, username, notes (optional)"
+								},
+								{
+									"key": "tags",
+									"value": "email,google",
+									"description": "Filter by tags, comma-separated (optional)"
+								}
+							]
+						},
+						"description": "Get all vault items for authenticated user.\n\n**Query Parameters (all optional):**\n- `category`: Filter by category\n- `search`: Search in title, username, notes\n- `tags`: Filter by tags (comma-separated)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Single Item",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/:id/getItem",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								":id",
+								"getItem"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{item_id}}"
+								}
+							]
+						},
+						"description": "Get a single vault item by ID (including shared items)."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Item",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    if (response.id) {",
+									"        pm.environment.set('item_id', response.id);",
+									"        console.log('Item ID saved to environment:', response.id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Gmail Account\",\n  \"category\": \"password\",\n  \"encrypted_data\": \"base64_encoded_aes256_gcm_ciphertext_here\",\n  \"iv\": \"base64_encoded_12_byte_iv_here\",\n  \"field_count\": 3,\n  \"attachment_count\": 0,\n  \"folderId\": null,\n  \"tags\": [\"email\", \"google\"],\n  \"isFavorite\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/addItem",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"addItem"
+							]
+						},
+						"description": "Create a new vault item.\n\n**Important:** All sensitive data must be encrypted client-side before sending.\n\n**Required Fields:**\n- `title`: Item title\n- `category`: Item category (e.g., \"password\", \"credit_card\")\n- `encrypted_data`: Base64 encoded AES-256-GCM ciphertext containing all sensitive fields\n- `iv`: Base64 encoded 12-byte initialization vector\n- `field_count`: Number of encrypted fields\n- `attachment_count`: Number of attachments (default: 0)\n\n**Optional Fields:**\n- `folderId`: Folder ID this item belongs to\n- `tags`: Array of tags\n- `isFavorite`: Whether item is favorited"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Item",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Updated Gmail Account\",\n  \"encrypted_data\": \"new_base64_encoded_ciphertext\",\n  \"iv\": \"new_base64_encoded_iv\",\n  \"field_count\": 4,\n  \"tags\": [\"email\", \"google\", \"updated\"]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/:id/updateItem",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								":id",
+								"updateItem"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{item_id}}"
+								}
+							]
+						},
+						"description": "Update an existing vault item (only owner can update).\n\n**Note:** If `encrypted_data` is updated, `iv` must also be provided."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Item",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/:id/deleteItem",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								":id",
+								"deleteItem"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{item_id}}"
+								}
+							]
+						},
+						"description": "Delete a vault item (only owner can delete)."
+					},
+					"response": []
+				},
+				{
+					"name": "Track Item Access",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/:id/trackAccess",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								":id",
+								"trackAccess"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{item_id}}"
+								}
+							]
+						},
+						"description": "Track item access for analytics and \"most used\" sorting."
+					},
+					"response": []
+				}
+			],
+			"description": "Vault items endpoints (zero-knowledge encrypted)"
+		},
+		{
+			"name": "Folders (Safes)",
+			"item": [
+				{
+					"name": "Create Folder",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    if (response.id) {",
+									"        pm.environment.set('folder_id', response.id);",
+									"        console.log('Folder ID saved to environment:', response.id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Bank Accounts\",\n  \"description\": \"All bank account credentials\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/folders/create",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"folders",
+								"create"
+							]
+						},
+						"description": "Create a new folder (safe)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Folders",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/folders/list",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"folders",
+								"list"
+							]
+						},
+						"description": "Get all folders for authenticated user."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Frequent Folders",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/folders/frequent",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"folders",
+								"frequent"
+							]
+						},
+						"description": "Get top 4 most accessed folders."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Folder by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/folders/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"folders",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{folder_id}}"
+								}
+							]
+						},
+						"description": "Get a single folder and all its items (increments accessCount).\n\n**Note:** For shared folders, items are fetched from the original owner's context."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Folder",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Bank Accounts\",\n  \"description\": \"Updated description\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/folders/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"folders",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{folder_id}}"
+								}
+							]
+						},
+						"description": "Update folder name/description."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Folder",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/folders/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"folders",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{folder_id}}"
+								}
+							]
+						},
+						"description": "Delete folder (unlinks all associated items)."
+					},
+					"response": []
+				}
+			],
+			"description": "Folders (Safes) endpoints"
+		},
+		{
+			"name": "Sharing",
+			"item": [
+				{
+					"name": "Create Share",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    if (response.share && response.share.id) {",
+									"        pm.environment.set('share_id', response.share.id);",
+									"        console.log('Share ID saved to environment:', response.share.id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"recipientEmail\": \"recipient@example.com\",\n  \"shareType\": \"item\",\n  \"resourceId\": \"{{item_id}}\",\n  \"permission\": \"view\",\n  \"wrappedKey\": \"base64_encoded_rsa_encrypted_key\",\n  \"wrappedKeyIV\": \"base64_encoded_12_byte_iv\",\n  \"message\": \"Optional message to recipient\",\n  \"integrityHash\": \"base64_encoded_sha256_hash\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/share/create",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"share",
+								"create"
+							]
+						},
+						"description": "Share an item or folder with another user.\n\n**Required Fields:**\n- `recipientEmail`: Email address of the user to share with\n- `shareType`: Type of share: `\"item\"` or `\"folder\"`\n- `resourceId`: MongoDB ObjectId of the item or folder to share\n- `permission`: Permission level: `\"view\"` (read-only) or `\"edit\"` (read-write)\n- `wrappedKey`: Base64 encoded RSA-OAEP encrypted item encryption key\n- `wrappedKeyIV`: Base64 encoded 12-byte IV (for compatibility)\n\n**Optional Fields:**\n- `message`: Optional message/note from sharer to recipient\n- `integrityHash`: Base64 encoded SHA-256 hash of resource for tampering detection\n\n**Note:** `wrappedKey` is the AES key of the resource, encrypted with recipient's public key (RSA-OAEP)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Received Shares",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/share/list?type=received",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"share",
+								"list"
+							],
+							"query": [
+								{
+									"key": "type",
+									"value": "received"
+								}
+							]
+						},
+						"description": "Get all items/folders shared with the current user."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Sent Shares",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/share/list?type=sent",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"share",
+								"list"
+							],
+							"query": [
+								{
+									"key": "type",
+									"value": "sent"
+								}
+							]
+						},
+						"description": "Get all items/folders shared by the current user."
+					},
+					"response": []
+				},
+				{
+					"name": "Revoke Share",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"shareId\": \"{{share_id}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/share/revoke",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"share",
+								"revoke"
+							]
+						},
+						"description": "Revoke a share (make it inactive). Only the sharer can revoke."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Share Permission",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"shareId\": \"{{share_id}}\",\n  \"permission\": \"edit\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/share/update",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"share",
+								"update"
+							]
+						},
+						"description": "Update permission of an existing share. Only the sharer can update permissions.\n\n**Permission values:** `\"view\"` or `\"edit\"`"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Public Key",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/share/keys/public?email=user@example.com",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"share",
+								"keys",
+								"public"
+							],
+							"query": [
+								{
+									"key": "email",
+									"value": "user@example.com",
+									"description": "User's email address (optional)"
+								},
+								{
+									"key": "userId",
+									"value": "",
+									"description": "User's ID (optional, use if email not provided)"
+								}
+							]
+						},
+						"description": "Get a user's public key for sharing.\n\n**Query Parameters (one required):**\n- `email`: User's email address\n- `userId`: User's ID\n\n**Note:** If neither is provided, returns the current user's public key."
+					},
+					"response": []
+				},
+				{
+					"name": "Save Public Key",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"publicKey\": \"{\\\"kty\\\":\\\"RSA\\\",\\\"n\\\":\\\"base64_encoded_modulus\\\",\\\"e\\\":\\\"AQAB\\\",\\\"alg\\\":\\\"RSA-OAEP\\\",\\\"ext\\\":true}\",\n  \"keyAlgorithm\": \"RSA-OAEP\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/share/keys/public",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"share",
+								"keys",
+								"public"
+							]
+						},
+						"description": "Save or update user's public key.\n\n**Note:** Public keys are automatically generated during account creation.\n\n**Public Key Format:** JWK (JSON Web Key) as a JSON string."
+					},
+					"response": []
+				}
+			],
+			"description": "Sharing endpoints (end-to-end encrypted)"
+		},
+		{
+			"name": "Settings",
+			"item": [
+				{
+					"name": "Get Settings",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/api/settings",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"api",
+								"settings"
+							]
+						},
+						"description": "Get user settings (returns defaults if not found)."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Settings",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"security\": {\n    \"autoLock\": 15,\n    \"biometricUnlock\": true,\n    \"autoBackup\": true\n  },\n  \"preferences\": {\n    \"theme\": \"dark\",\n    \"language\": \"en\",\n    \"timeFormat\": \"24h\",\n    \"notifications\": true\n  },\n  \"connectivity\": {\n    \"syncEnabled\": true,\n    \"syncFrequency\": \"realtime\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/api/settings",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"api",
+								"settings"
+							]
+						},
+						"description": "Create new user settings with defaults."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Settings",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"preferences\": {\n    \"theme\": \"light\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/api/settings",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"api",
+								"settings"
+							]
+						},
+						"description": "Update user settings (partial update)."
+					},
+					"response": []
+				},
+				{
+					"name": "Reset Settings",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/api/settings/reset",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"api",
+								"settings",
+								"reset"
+							]
+						},
+						"description": "Reset settings to defaults."
+					},
+					"response": []
+				},
+				{
+					"name": "Backup Vault",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/api/settings/backup",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"api",
+								"settings",
+								"backup"
+							]
+						},
+						"description": "Export vault data as backup."
+					},
+					"response": []
+				},
+				{
+					"name": "Restore Vault",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"backup\": {\n    \"items\": [],\n    \"folders\": []\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/api/settings/restore",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"api",
+								"settings",
+								"restore"
+							]
+						},
+						"description": "Restore vault from backup."
+					},
+					"response": []
+				}
+			],
+			"description": "Settings endpoints"
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3123",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
+

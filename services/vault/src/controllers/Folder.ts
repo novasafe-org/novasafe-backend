@@ -265,20 +265,76 @@ export const getFolderById = async (req: Request, res: Response) => {
 
     // Get all items in this folder
     // For shared folders, get items owned by the sharer, not the recipient
+    // Handle both ObjectId and string formats for folderId and userId (backward compatibility)
     const itemsQuery: any = {
-      folderId: id,
+      $or: [
+        { folderId: new ObjectId(id) },  // Match ObjectId format (new items)
+        { folderId: id }                 // Match string format (legacy items)
+      ],
       deleted: { $ne: true }
     };
 
     if (isShared) {
       // For shared folders, get items from the original owner
-      itemsQuery.userId = folder.userId;
+      // Handle both ObjectId and string formats for userId
+      itemsQuery.$and = [
+        {
+          $or: [
+            { userId: new ObjectId(folder.userId) },  // Match ObjectId format
+            { userId: folder.userId?.toString() || folder.userId }  // Match string format
+          ]
+        }
+      ];
     } else {
       // For own folders, get own items
-      itemsQuery.userId = req.user.id;
+      // Handle both ObjectId and string formats for userId
+      itemsQuery.$and = [
+        {
+          $or: [
+            { userId: new ObjectId(req.user.id) },  // Match ObjectId format (new items)
+            { userId: req.user.id }                 // Match string format (legacy items)
+          ]
+        }
+      ];
     }
 
     const items = await db.findMany(collection.vaultItems, itemsQuery);
+
+    // Format items with id instead of _id, and handle both encrypted and legacy formats
+    const formattedItems = items.map((item: any) => {
+      const formattedItem: any = {
+        id: item._id?.toString() || item.id,
+        userId: item.userId?.toString() || (isShared ? folder.userId?.toString() : req.user.id),
+        category: item.category,
+        title: item.title,
+        folderId: item.folderId?.toString(),
+        tags: item.tags,
+        isFavorite: item.isFavorite,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        deleted: item.deleted,
+        accessCount: item.accessCount || 0,
+        lastAccessedAt: item.lastAccessedAt,
+      };
+
+      // If item is in encrypted format (new), include encrypted fields
+      if (item.encrypted_data && item.iv) {
+        formattedItem.encrypted_data = item.encrypted_data;
+        formattedItem.iv = item.iv;
+        formattedItem.field_count = item.field_count || 0;
+        formattedItem.attachment_count = item.attachment_count || 0;
+      } else if (item.fields || item.username || item.password) {
+        // Legacy plain-text format (for backward compatibility)
+        formattedItem.fields = item.fields;
+        formattedItem.username = item.username;
+        formattedItem.password = item.password;
+        formattedItem.url = item.url;
+        formattedItem.notes = item.notes;
+        formattedItem._legacyFormat = true;
+      }
+
+      return formattedItem;
+    });
 
     logger.info(`Folder ${id} accessed by user ${req.user.email}`);
 
@@ -288,12 +344,12 @@ export const getFolderById = async (req: Request, res: Response) => {
         id: folder._id.toString(),
         name: folder.name,
         description: folder.description,
-        itemCount: items.length,
+        itemCount: formattedItems.length,
         createdAt: folder.createdAt,
         updatedAt: folder.updatedAt,
-        accessCount: (folder.accessCount || 0) + 1 // Return incremented count
+        accessCount: (folder.accessCount || 0) + (isShared ? 0 : 1) // Only increment for owner
       },
-      items: items
+      items: formattedItems
     });
   } catch (error: any) {
     logger.error(error, 'Error fetching folder');
