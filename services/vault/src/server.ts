@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import loggerMiddleware from './middlewares/logger/loggerMiddleware';
-import helloRoute from './routes/helloRoute';
+import healthRoute from './routes/healthRoute';
 import vaultRoute from './routes/vaultRoute';
 import authRoute from './routes/authRoute';
 import totpRoute from './routes/totpRoute';
@@ -11,6 +11,7 @@ import settingsRoute from './routes/settingsRoute';
 import shareRoute from './routes/shareRoute';
 import Database from '../database/connection'; // Import Database class
 import logger from './logger';
+import { DBCONFIG } from 'config/config';
 
 dotenv.config();
 
@@ -33,7 +34,7 @@ app.use((req: Request, res: Response, next) => {
 app.use(loggerMiddleware);
 
 // Define routes
-app.use('/test', helloRoute);
+app.use('/health', healthRoute);
 app.use('/v/auth', authRoute);
 app.use('/v/auth/2fa', totpRoute);
 app.use('/v/auth/sessions', sessionRoute);
@@ -45,12 +46,7 @@ app.use('/v/share', shareRoute);
 // Establish database connection at server startup
 const initializeDatabase = async () => {
   try {
-    logger.info('#'.repeat(50));
-    logger.info('Establishing database connection...');
-    const db = new Database('vault');
-    await db.connect();
-    logger.info('Database connection established successfully.');
-    logger.info('#'.repeat(50));
+    new Database(DBCONFIG.vault.databaseName);
   } catch (error) {
     logger.error(`Error establishing database connection: ${error}`);
     process.exit(1); // Exit the process if the database connection fails

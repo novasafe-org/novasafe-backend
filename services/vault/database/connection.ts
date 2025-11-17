@@ -31,10 +31,9 @@ class Database {
       throw new Error(`Unsupported database type '${config.type}' for service '${this.serviceName}'. Only MongoDB is supported.`);
     }
 
-    logger.info('Connecting to MongoDB...');
+    logger.debug('Connecting to MongoDB...');
 
     const clientOptions = {
-      
       // maxPoolSize: 10,
       // serverSelectionTimeoutMS: 30000,
       // socketTimeoutMS: 60000,
@@ -53,9 +52,9 @@ class Database {
       pools[this.serviceName] = client.db(config.databaseName);
       this.dbConnection = pools[this.serviceName];
 
-      logger.info(`✅ MongoDB connected successfully for service '${this.serviceName}'`);
+      logger.info(`Database connected ✅`);
     } catch (error: any) {
-      logger.error(`❌ MongoDB connection failed: ${error.message}`);
+      logger.error(`MongoDB connection failed ❌`);
       throw error; // Re-throw the actual error (e.g. SSL/TLS, timeout, etc.)
     }
   }

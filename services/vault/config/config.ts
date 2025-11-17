@@ -1,12 +1,15 @@
 import dotenv from 'dotenv';
+import { DBConfigGeneric } from './types';
 
 dotenv.config();
 
-export const DBCONFIG: Record<string, any> = {
+export const DBCONFIG: Record<string, DBConfigGeneric<Record<string, string>>> = {
   vault: {
     type: 'mongodb',
-    uri: `mongodb+srv://vaultatlasdbuser:TGExCm3gURQg7mvg@vault-cluster.chu49ca.mongodb.net/vault?retryWrites=true&w=majority`,
     databaseName: process.env.VAULT_DB_NAME || 'vault',
+    host: process.env.VAULT_DB_HOST,
+    port: process.env.VAULT_DB_PORT || 27017,
+    uri: `mongodb+srv://${process.env.VAULT_DB_USERNAME}:${process.env.VAULT_DB_PASSWORD}@${process.env.VAULT_DB_HOST}/${process.env.VAULT_DB_NAME}?retryWrites=true&w=majority`,
     collections: {
       // Existing collections
       users: 'users',
