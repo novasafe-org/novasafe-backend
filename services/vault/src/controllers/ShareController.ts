@@ -105,6 +105,62 @@ export const createShareController = async (req: Request, res: Response): Promis
       return;
     }
 
+    // Validate wrapped key format (comprehensive validation)
+    if (typeof wrappedKey !== 'string' || wrappedKey.trim().length === 0) {
+      res.status(400).json({
+        message: 'Validation error',
+        error: 'wrappedKey must be a non-empty base64 string',
+      });
+      return;
+    }
+
+    if (typeof wrappedKeyIV !== 'string' || wrappedKeyIV.trim().length === 0) {
+      res.status(400).json({
+        message: 'Validation error',
+        error: 'wrappedKeyIV must be a non-empty base64 string',
+      });
+      return;
+    }
+
+    // Validate base64 format and length
+    try {
+      // Check if wrappedKey is valid base64
+      const wrappedKeyDecoded = Buffer.from(wrappedKey, 'base64');
+      if (wrappedKeyDecoded.length === 0) {
+        res.status(400).json({
+          message: 'Validation error',
+          error: 'wrappedKey is not valid base64 encoded data',
+        });
+        return;
+      }
+
+      // RSA-OAEP with 2048-bit key should produce ~256 bytes (344 base64 chars)
+      // Allow some variance but check reasonable bounds
+      if (wrappedKeyDecoded.length < 200 || wrappedKeyDecoded.length > 300) {
+        logger.warn(`Wrapped key length is unusual: ${wrappedKeyDecoded.length} bytes (expected ~256 for RSA-OAEP 2048-bit)`);
+      }
+
+      // Validate wrappedKeyIV is valid base64 (should be 12 bytes = 16 base64 chars)
+      const wrappedKeyIVDecoded = Buffer.from(wrappedKeyIV, 'base64');
+      if (wrappedKeyIVDecoded.length === 0) {
+        res.status(400).json({
+          message: 'Validation error',
+          error: 'wrappedKeyIV is not valid base64 encoded data',
+        });
+        return;
+      }
+
+      logger.info(`Share validation: wrappedKey length=${wrappedKeyDecoded.length} bytes, wrappedKeyIV length=${wrappedKeyIVDecoded.length} bytes`);
+    } catch (error: any) {
+      logger.error(`Invalid base64 format in wrapped key: ${error.message}`);
+      res.status(400).json({
+        message: 'Validation error',
+        error: 'wrappedKey or wrappedKeyIV contains invalid base64 data',
+        details: error.message,
+      });
+      return;
+    }
+
     // Validate resourceId is a valid ObjectId
     if (!ObjectId.isValid(resourceId)) {
       res.status(400).json({
@@ -115,11 +171,31 @@ export const createShareController = async (req: Request, res: Response): Promis
     }
 
     // Verify resource exists and belongs to sharer
+    // Handle both ObjectId and string formats for userId/resourceId (backward compatibility)
     const resourceCollection = shareType === 'item' ? collection.vaultItems : collection.folders;
-    const resource = await db.findOne(resourceCollection, {
-      _id: new ObjectId(resourceId),
-      userId: req.user.id,
-    });
+
+    const userIdFilters: any[] = [{ userId: req.user.id }];
+    if (ObjectId.isValid(req.user.id)) {
+      userIdFilters.push({ userId: new ObjectId(req.user.id) });
+    }
+
+    const resourceIdFilters: any[] = [{ id: resourceId }];
+    if (ObjectId.isValid(resourceId)) {
+      resourceIdFilters.push({ _id: new ObjectId(resourceId) });
+    }
+
+    const resourceQuery: any = {
+      $and: [
+        { $or: resourceIdFilters },
+        { $or: userIdFilters },
+      ],
+    };
+
+    if (shareType === 'item') {
+      resourceQuery.$and.push({ deleted: { $ne: true } });
+    }
+
+    const resource = await db.findOne(resourceCollection, resourceQuery);
 
     if (!resource) {
       res.status(404).json({
@@ -133,6 +209,10 @@ export const createShareController = async (req: Request, res: Response): Promis
     // Ensure resourceId is a valid ObjectId string
     const validResourceId = resourceId.toString().trim();
     
+    // Store the recipient's key ID to track which key was used for wrapping
+    // This helps detect if keys were rotated after sharing
+    const recipientKeyId = recipientKeys._id?.toString() || null;
+    
     const share = await createShare(
       req.user.id,
       recipient._id.toString(),
@@ -142,10 +222,12 @@ export const createShareController = async (req: Request, res: Response): Promis
       wrappedKey,
       wrappedKeyIV,
       message,
-      integrityHash
+      integrityHash,
+      recipientKeyId
     );
 
-    logger.info(`Share created: ${share._id} by user ${req.user.email} for ${recipientEmail}`);
+    logger.info(`Share created: ${share._id} by user ${req.user.email} for ${recipientEmail} using recipient key ${recipientKeyId}`);
+    logger.debug(`Share details: resourceId=${validResourceId}, shareType=${shareType}, wrappedKey length=${wrappedKey.length}, wrappedKeyIV length=${wrappedKeyIV.length}`);
 
     res.status(201).json({
       message: 'Share created successfully',
@@ -185,22 +267,36 @@ export const getReceivedSharesController = async (req: Request, res: Response): 
     const shares = await getSharesForRecipient(req.user.id);
 
     // Format response
-    const formattedShares = shares.map((share: any) => ({
-      id: share._id?.toString(),
-      shareType: share.shareType,
-      resourceId: share.resourceId?.toString(),
-      resourceName: share.resourceName || null,
-      permission: share.permission,
-      wrappedKey: share.wrappedKey,
-      wrappedKeyIV: share.wrappedKeyIV,
-      message: share.message,
-      integrityHash: share.integrityHash,
-      sharerEmail: share.sharerEmail,
-      sharerName: share.sharerName,
-      sharerPicture: share.sharerPicture,
-      createdAt: share.createdAt,
-      updatedAt: share.updatedAt,
-    }));
+    const formattedShares = shares.map((share: any) => {
+      const formatted: any = {
+        id: share._id?.toString(),
+        shareType: share.shareType,
+        resourceId: share.resourceId?.toString(),
+        resourceName: share.resourceName || null,
+        permission: share.permission,
+        wrappedKey: share.wrappedKey,
+        wrappedKeyIV: share.wrappedKeyIV,
+        message: share.message,
+        integrityHash: share.integrityHash,
+        sharerEmail: share.sharerEmail,
+        sharerName: share.sharerName,
+        sharerPicture: share.sharerPicture,
+        createdAt: share.createdAt,
+        updatedAt: share.updatedAt,
+        keyMismatch: share.keyMismatch || false, // Flag if recipient's key was rotated
+        recipientKeyId: share.recipientKeyId || null, // Key ID used when share was created
+      };
+
+      // Include validation flags if available
+      if (share.wrappedKeyValid !== undefined) {
+        formatted.wrappedKeyValid = share.wrappedKeyValid;
+      }
+      if (share.wrappedKeyError) {
+        formatted.wrappedKeyError = share.wrappedKeyError;
+      }
+
+      return formatted;
+    });
 
     res.status(200).json({
       message: 'Shares retrieved successfully',
@@ -435,9 +531,36 @@ export const getPublicKeyController = async (req: Request, res: Response): Promi
       return;
     }
 
+    // Parse and normalize the public key JWK to ensure compatibility
+    // Remove or normalize the 'alg' field to prevent import errors
+    let normalizedPublicKey = userKeys.publicKey;
+    try {
+      // If publicKey is a JSON string, parse it
+      const publicKeyJwk = typeof userKeys.publicKey === 'string' 
+        ? JSON.parse(userKeys.publicKey) 
+        : userKeys.publicKey;
+
+      // Remove 'alg' field if present (let the client specify the algorithm)
+      // Or set it to 'RSA-OAEP' to match what React Native expects
+      if (publicKeyJwk && typeof publicKeyJwk === 'object') {
+        // Remove conflicting alg field - client will specify during import
+        delete publicKeyJwk.alg;
+        // Ensure 'use' field is set correctly if needed
+        if (!publicKeyJwk.use) {
+          publicKeyJwk.use = 'enc';
+        }
+        // Re-stringify the normalized JWK
+        normalizedPublicKey = JSON.stringify(publicKeyJwk);
+      }
+    } catch (error: any) {
+      // If parsing fails, log warning but return original key
+      logger.warn(`Failed to normalize public key for user ${targetUserId}: ${error.message}`);
+      // Continue with original key
+    }
+
     res.status(200).json({
       message: 'Public key retrieved successfully',
-      publicKey: userKeys.publicKey,
+      publicKey: normalizedPublicKey,
       keyAlgorithm: userKeys.keyAlgorithm || 'RSA-OAEP',
       userId: userKeys.userId?.toString(),
     });

@@ -26,7 +26,8 @@ export const createShare = async (
   wrappedKey: string,
   wrappedKeyIV: string,
   message?: string,
-  integrityHash?: string
+  integrityHash?: string,
+  recipientKeyId?: string | null
 ): Promise<IShare> => {
   try {
     // Validate ObjectIds
@@ -53,7 +54,7 @@ export const createShare = async (
 
     if (existingShare) {
       // Update existing share
-      const updatedShare = {
+      const updatedShare: any = {
         permission,
         wrappedKey,
         wrappedKeyIV,
@@ -63,6 +64,11 @@ export const createShare = async (
         active: true,
         revokedAt: null,
       };
+
+      // Update recipient key ID if provided
+      if (recipientKeyId) {
+        updatedShare.recipientKeyId = new ObjectId(recipientKeyId);
+      }
 
       await db.updateOne(
         collection.shares,
@@ -92,7 +98,29 @@ export const createShare = async (
       updatedAt: new Date().toISOString(),
     };
 
+    // Store recipient key ID if provided
+    if (recipientKeyId) {
+      newShare.recipientKeyId = new ObjectId(recipientKeyId);
+    }
+
     const result = await db.insertOne(collection.shares, newShare);
+
+    // Verify the share was stored correctly by reading it back
+    const storedShare = await db.findOne(collection.shares, {
+      _id: result.insertedId,
+    });
+
+    if (!storedShare) {
+      throw new Error('Failed to verify share was stored correctly');
+    }
+
+    // Verify wrapped key was stored correctly
+    if (storedShare.wrappedKey !== wrappedKey) {
+      logger.error(`Wrapped key mismatch after storage! Original length: ${wrappedKey.length}, Stored length: ${storedShare.wrappedKey?.length || 0}`);
+      throw new Error('Wrapped key was corrupted during storage');
+    }
+
+    logger.info(`Share stored and verified: ${result.insertedId}, wrappedKey length: ${wrappedKey.length}`);
 
     return {
       ...newShare,
@@ -116,6 +144,10 @@ export const getSharesForRecipient = async (recipientId: string): Promise<IShare
     });
 
     // Populate sharer information and resource names
+    // Also check if recipient's key has changed (key rotation detection)
+    const recipientCurrentKeys = await getUserPublicKey(recipientId);
+    const recipientCurrentKeyId = recipientCurrentKeys?._id?.toString() || null;
+
     const sharesWithSharer = await Promise.all(
       shares.map(async (share: any) => {
         const sharer = await db.findOne(collection.vaultUsers, {
@@ -139,12 +171,44 @@ export const getSharesForRecipient = async (recipientId: string): Promise<IShare
           resourceName = item?.title || null;
         }
         
+        // Check if recipient's key has changed since share was created
+        const shareKeyId = share.recipientKeyId?.toString() || null;
+        const keyMismatch = shareKeyId && recipientCurrentKeyId && shareKeyId !== recipientCurrentKeyId;
+        
+        // Validate wrapped key format before returning
+        let wrappedKeyValid = true;
+        let wrappedKeyError = null;
+        if (share.wrappedKey) {
+          try {
+            const decoded = Buffer.from(share.wrappedKey, 'base64');
+            if (decoded.length === 0) {
+              wrappedKeyValid = false;
+              wrappedKeyError = 'Invalid base64 format - decoded length is 0';
+            } else if (decoded.length < 200 || decoded.length > 300) {
+              // RSA-OAEP with 2048-bit key should be ~256 bytes
+              logger.warn(`Share ${share._id?.toString()} wrappedKey has unusual length: ${decoded.length} bytes (expected ~256)`);
+            }
+          } catch (error: any) {
+            wrappedKeyValid = false;
+            wrappedKeyError = `Base64 decode error: ${error.message}`;
+            logger.error(`Share ${share._id?.toString()} has invalid wrappedKey format: ${wrappedKeyError}`);
+          }
+        } else {
+          wrappedKeyValid = false;
+          wrappedKeyError = 'wrappedKey is missing';
+          logger.error(`Share ${share._id?.toString()} is missing wrappedKey`);
+        }
+        
         return {
           ...share,
           sharerEmail: sharer?.email || null,
           sharerName: sharer?.name || null,
           sharerPicture: sharer?.picture || null,
           resourceName,
+          keyMismatch, // Flag indicating if key was rotated after share was created
+          recipientKeyId: shareKeyId, // The key ID used when share was created
+          wrappedKeyValid, // Flag indicating if wrapped key format is valid
+          wrappedKeyError, // Error message if wrapped key is invalid
         };
       })
     );

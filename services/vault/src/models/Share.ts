@@ -93,5 +93,12 @@ export interface IShare {
    * Base64 encoded SHA-256 hash
    */
   integrityHash?: string;
+
+  /**
+   * ID of the recipient's public key used to wrap the encryption key
+   * Used to detect key rotation and warn if decryption might fail
+   * References the UserKeys collection _id
+   */
+  recipientKeyId?: ObjectId | string;
 }
 

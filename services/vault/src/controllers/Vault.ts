@@ -611,7 +611,7 @@ export const trackItemAccess = async (req: Request, res: Response) => {
     // First, ensure accessCount exists for old items (backward compatibility)
     // Then increment access count and update last accessed date
     
-    // Check if item exists and get current accessCount
+    // Check if item exists and belongs to user (owner)
     // Query with ObjectId conversion to match how items are stored
     const existingItem = await db.findOne(collection.vaultItems, { 
       $or: [
@@ -624,11 +624,45 @@ export const trackItemAccess = async (req: Request, res: Response) => {
             { userId: new ObjectId(req.user.id) },  // Match ObjectId format (new items)
             { userId: req.user.id }  // Match string format (legacy items)
           ]
-        }
+        },
+        { deleted: { $ne: true } }
       ]
     });
     
+    // If item doesn't belong to user, check if it's shared with user
+    let isShared = false;
     if (!existingItem) {
+      const share = await db.findOne(collection.shares, {
+        resourceId: new ObjectId(id),
+        recipientId: new ObjectId(req.user.id),
+        shareType: 'item',
+        active: true,
+      });
+
+      if (share) {
+        // Item is shared with user - verify item exists
+        const sharedItem = await db.findOne(collection.vaultItems, {
+          $or: [
+            { _id: new ObjectId(id) },
+            { id: id }
+          ],
+          deleted: { $ne: true }
+        });
+
+        if (sharedItem) {
+          isShared = true;
+          // For shared items, we don't track access (that's for owner's analytics)
+          // But we return success to avoid frontend errors
+          logger.info(`Access tracking skipped for shared item ${id} by user ${req.user.email}`);
+          res.status(200).json({ 
+            message: 'Access tracking skipped for shared items',
+            note: 'Access tracking is only recorded for item owners'
+          });
+          return;
+        }
+      }
+
+      // Item not found or not accessible
       res.status(404).json({ 
         message: 'Item not found or you don\'t have permission to access it'
       });
