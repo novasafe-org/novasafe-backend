@@ -11,7 +11,7 @@ import settingsRoute from './routes/settingsRoute';
 import shareRoute from './routes/shareRoute';
 import Database from '../database/connection'; // Import Database class
 import logger from './logger';
-import { DBCONFIG } from 'config/config';
+import { DBCONFIG } from '../config/config';
 
 dotenv.config();
 
