@@ -83,6 +83,22 @@ export interface IVaultItem {
    */
   attachment_count: number;
 
+  /**
+   * Array of file attachment metadata
+   * Files are stored on disk, metadata stored in MongoDB
+   */
+  attachments?: Array<{
+    originalName: string;
+    storedName: string;
+    mimeType: string;
+    fileSize: number;
+    compressedSize?: number;
+    filePath: string;
+    compressed: boolean;
+    createdAt: Date;
+    compressionAlgorithm?: 'gzip' | 'zlib' | 'sharp' | null;
+  }>;
+
   // ============================================
   // Flags & Status
   // ============================================

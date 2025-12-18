@@ -5,6 +5,13 @@ import { ObjectId } from 'mongodb';
 import logger from '../logger';
 // Import auth middleware to extend Express Request type with user property
 import '../middlewares/auth';
+import { storeFiles, FileStorageError, deleteItemFiles } from '../services/files/FileStorageService';
+import { IAttachment } from '../types/Attachment';
+import * as fs from 'fs-extra';
+import * as path from 'path';
+import * as zlib from 'zlib';
+import { promisify } from 'util';
+import sharp from 'sharp';
 
 const collection = DBCONFIG.vault.collections;
 
@@ -41,6 +48,14 @@ export const addItem = async (req: Request, res: Response) => {
     // Validation is done by validateVaultItem middleware
     // At this point, we know the item is in the correct encrypted format
 
+    // Step 1: Check for file uploads (will be processed after item creation)
+    let attachments: IAttachment[] = [];
+    const files = (req.files as Express.Multer.File[] | undefined) || undefined;
+    
+    if (files && files.length > 0) {
+      logger.info(`Received ${files.length} file(s) for upload`);
+    }
+
     // Prepare item according to IVaultItem interface
     const newItem: any = {
       userId: new ObjectId(req.user.id),  // Link item to user (convert to ObjectId)
@@ -48,7 +63,7 @@ export const addItem = async (req: Request, res: Response) => {
       iv: req.body.iv,  // Base64 encoded IV
       category: req.body.category,
       field_count: req.body.field_count || 0,
-      attachment_count: req.body.attachment_count || 0,
+      attachment_count: files ? files.length : (req.body.attachment_count || 0),
       createdAt: new Date(),
       updatedAt: new Date(),
       deleted: false,
@@ -82,21 +97,66 @@ export const addItem = async (req: Request, res: Response) => {
       newItem.isFavorite = Boolean(req.body.isFavorite);
     }
 
-    // Save to database
+    // Save to database first (we need the itemId to store files)
     const db = new Database('vault');
     const result = await db.insertOne(collection.vaultItems, newItem);
+    const itemId = result.insertedId;
 
-    logger.info(`Encrypted item created by user ${req.user.email}: ${newItem.title || 'Untitled'} (ID: ${result.insertedId})`);
+    // Step 2: Store files if any (now that we have itemId)
+    if (files && files.length > 0) {
+      try {
+        attachments = await storeFiles(files, req.user.id, itemId);
+        
+        // Update item with attachment metadata
+        await db.updateOne(
+          collection.vaultItems,
+          { _id: itemId },
+          { 
+            $set: { 
+              attachments: attachments,
+              attachment_count: attachments.length,
+              updatedAt: new Date(),
+            } 
+          }
+        );
+        
+        logger.info(`Stored ${attachments.length} attachment(s) for item ${itemId}`);
+      } catch (error: any) {
+        // If file storage fails, delete the item (rollback)
+        await db.deleteOne(collection.vaultItems, { _id: itemId });
+        
+        if (error instanceof FileStorageError) {
+          res.status(400).json({
+            message: 'File upload error',
+            error: error.message,
+            code: error.code,
+          });
+          return;
+        }
+        
+        logger.error(`File storage failed, item rolled back: ${error.message}`);
+        throw error;
+      }
+    }
+
+    logger.info(
+      `Encrypted item created by user ${req.user.email}: ${newItem.title || 'Untitled'} ` +
+      `(ID: ${itemId}, ${attachments.length} attachment(s))`
+    );
+
+    // Fetch the complete item with attachments
+    const completeItem = await db.findOne(collection.vaultItems, { _id: itemId });
 
     // Return created item with id mapped from _id
-    const createdItem = {
-      id: result.insertedId.toString(),
+    const createdItem: any = {
+      success: true,
+      itemId: itemId.toString(),
       userId: req.user.id,
       encrypted_data: newItem.encrypted_data,
       iv: newItem.iv,
       category: newItem.category,
       field_count: newItem.field_count,
-      attachment_count: newItem.attachment_count,
+      attachment_count: attachments.length,
       title: newItem.title,
       folderId: newItem.folderId?.toString(),
       tags: newItem.tags,
@@ -106,6 +166,16 @@ export const addItem = async (req: Request, res: Response) => {
       deleted: false,
       accessCount: 0,
       lastAccessedAt: null,
+      attachments: attachments.map(att => ({
+        originalName: att.originalName,
+        storedName: att.storedName,
+        mimeType: att.mimeType,
+        fileSize: att.fileSize,
+        compressedSize: att.compressedSize,
+        filePath: att.filePath,
+        compressed: att.compressed,
+        createdAt: att.createdAt.toISOString(),
+      })),
     };
 
     res.status(201).json(createdItem);
@@ -219,6 +289,20 @@ export const getItem = async (req: Request, res: Response) => {
       formattedItem.iv = item.iv;
       formattedItem.field_count = item.field_count || 0;
       formattedItem.attachment_count = item.attachment_count || 0;
+      
+      // Include attachments if they exist
+      if (item.attachments && Array.isArray(item.attachments)) {
+        formattedItem.attachments = item.attachments.map((att: any) => ({
+          originalName: att.originalName,
+          storedName: att.storedName,
+          mimeType: att.mimeType,
+          fileSize: att.fileSize,
+          compressedSize: att.compressedSize,
+          filePath: att.filePath,
+          compressed: att.compressed,
+          createdAt: att.createdAt,
+        }));
+      }
     } else if (item.fields || item.username || item.password) {
       // Legacy plain-text format (for backward compatibility)
       logger.warn(`Legacy plain-text item accessed (ID: ${formattedItem.id}). Item should be migrated to encrypted format.`);
@@ -440,6 +524,40 @@ export const deleteItem = async (req: Request, res: Response) => {
     // Soft delete - mark as deleted instead of removing from DB
     // Query with ObjectId conversion to match how items are stored
     const db = new Database('vault');
+    
+    // First, check if item exists and belongs to user
+    const item = await db.findOne(collection.vaultItems, {
+      $or: [
+        { _id: new ObjectId(id) },
+        { id: id }
+      ],
+      $and: [
+        {
+          $or: [
+            { userId: new ObjectId(req.user.id) },  // Match ObjectId format (new items)
+            { userId: req.user.id }  // Match string format (legacy items)
+          ]
+        }
+      ]
+    });
+
+    if (!item) {
+      res.status(404).json({ 
+        message: 'Item not found or you don\'t have permission to delete it'
+      });
+      return;
+    }
+
+    // Delete associated files from disk
+    try {
+      await deleteItemFiles(req.user.id, id);
+      logger.info(`Deleted files for item ${id}`);
+    } catch (error: any) {
+      // Log error but continue with item deletion
+      logger.error(`Failed to delete files for item ${id}: ${error.message}`);
+    }
+
+    // Mark item as deleted
     const result = await db.updateOne(
       collection.vaultItems,
       { 
@@ -458,13 +576,6 @@ export const deleteItem = async (req: Request, res: Response) => {
       },
       { $set: { deleted: true, deletedAt: new Date().toISOString() } }
     );
-
-    if (result.matchedCount === 0) {
-      res.status(404).json({ 
-        message: 'Item not found or you don\'t have permission to delete it'
-      });
-      return;
-    }
 
     logger.info(`Item ${id} deleted by user ${req.user.email}`);
 
@@ -535,13 +646,29 @@ export const getItems = async (req: Request, res: Response) => {
 
       // If item is in encrypted format (new), include encrypted fields
       if (item.encrypted_data && item.iv) {
-        return {
+        const formatted: any = {
           ...baseItem,
           encrypted_data: item.encrypted_data,
           iv: item.iv,
           field_count: item.field_count || 0,
           attachment_count: item.attachment_count || 0,
         };
+        
+        // Include attachments if they exist
+        if (item.attachments && Array.isArray(item.attachments)) {
+          formatted.attachments = item.attachments.map((att: any) => ({
+            originalName: att.originalName,
+            storedName: att.storedName,
+            mimeType: att.mimeType,
+            fileSize: att.fileSize,
+            compressedSize: att.compressedSize,
+            filePath: att.filePath,
+            compressed: att.compressed,
+            createdAt: att.createdAt,
+          }));
+        }
+        
+        return formatted;
       }
 
       // Legacy plain-text format (for backward compatibility)
@@ -741,6 +868,320 @@ export const trackItemAccess = async (req: Request, res: Response) => {
     logger.error(error, 'Error tracking item access');
     res.status(500).json({ 
       message: 'Failed to track item access', 
+      error: error.message 
+    });
+  }
+};
+
+const gunzip = promisify(zlib.gunzip);
+
+/**
+ * Download File Attachment Controller
+ * 
+ * Downloads a file attachment for a vault item.
+ * Handles decompression if the file was compressed.
+ * 
+ * @route GET /v/:itemId/attachments/:attachmentId/download
+ * @access Protected (requires JWT)
+ */
+export const downloadAttachment = async (req: Request, res: Response) => {
+  const { itemId, attachmentId } = req.params;
+
+  try {
+    // Check authentication - support both header and query param (for React Native Linking)
+    let userId: string | undefined = req.user?.id;
+    
+    // If no user from middleware, try to get from query token (for React Native compatibility)
+    if (!userId && req.query.token) {
+      try {
+        const { verifyToken } = await import('../utils/generateToken');
+        const decoded = verifyToken(req.query.token as string);
+        userId = decoded.id;
+      } catch (tokenError) {
+        // Token in query is invalid, continue to check header
+      }
+    }
+
+    if (!userId) {
+      res.status(401).json({ 
+        message: 'Authentication required',
+        error: 'User information not found'
+      });
+      return;
+    }
+
+    // Validate IDs
+    if (!ObjectId.isValid(itemId)) {
+      res.status(400).json({ 
+        message: 'Invalid item ID format'
+      });
+      return;
+    }
+
+    const db = new Database('vault');
+    
+    // Find item and verify ownership
+    const item = await db.findOne(collection.vaultItems, {
+      $or: [
+        { _id: new ObjectId(itemId) },
+        { id: itemId }
+      ],
+      $and: [
+        {
+          $or: [
+            { userId: new ObjectId(userId) },
+            { userId: userId }
+          ]
+        },
+        { deleted: { $ne: true } }
+      ]
+    });
+
+    if (!item) {
+      res.status(404).json({ 
+        message: 'Item not found or you don\'t have permission to access it'
+      });
+      return;
+    }
+
+    // Find attachment in item
+    if (!item.attachments || !Array.isArray(item.attachments)) {
+      res.status(404).json({ 
+        message: 'No attachments found for this item'
+      });
+      return;
+    }
+
+    const attachment = item.attachments.find((att: any) => 
+      att.storedName === attachmentId || att.filePath?.includes(attachmentId)
+    );
+
+    if (!attachment) {
+      res.status(404).json({ 
+        message: 'Attachment not found'
+      });
+      return;
+    }
+
+    // Build file path
+    const baseDir = path.join(process.cwd(), 'output');
+    const filePath = path.join(baseDir, attachment.filePath);
+
+    // Security: Ensure path is within attachments directory
+    const normalizedPath = path.normalize(filePath);
+    const normalizedBase = path.normalize(baseDir);
+    
+    if (!normalizedPath.startsWith(normalizedBase)) {
+      res.status(403).json({ 
+        message: 'Invalid file path'
+      });
+      return;
+    }
+
+    // Check if file exists
+    if (!await fs.pathExists(filePath)) {
+      res.status(404).json({ 
+        message: 'File not found on server'
+      });
+      return;
+    }
+
+    // Read file
+    let fileBuffer = await fs.readFile(filePath);
+
+    // Decompress if needed
+    if (attachment.compressed && attachment.compressionAlgorithm === 'gzip') {
+      try {
+        fileBuffer = await gunzip(fileBuffer);
+      } catch (error: any) {
+        logger.error(`Failed to decompress file: ${error.message}`);
+        res.status(500).json({ 
+          message: 'Failed to decompress file'
+        });
+        return;
+      }
+    }
+
+    // Set headers for download
+    res.setHeader('Content-Type', attachment.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${attachment.originalName}"`);
+    res.setHeader('Content-Length', fileBuffer.length.toString());
+
+    // Send file
+    res.send(fileBuffer);
+
+    logger.info(`File downloaded: ${attachment.originalName} by user ${userId}`);
+  } catch (error: any) {
+    logger.error(error, 'Error downloading attachment');
+    res.status(500).json({ 
+      message: 'Failed to download file', 
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * View File Attachment Controller
+ * 
+ * Serves a file attachment for viewing (inline display).
+ * Handles decompression and image processing if needed.
+ * 
+ * @route GET /v/:itemId/attachments/:attachmentId/view
+ * @access Protected (requires JWT)
+ */
+export const viewAttachment = async (req: Request, res: Response) => {
+  const { itemId, attachmentId } = req.params;
+
+  try {
+    // Check authentication - support both header and query param (for React Native Linking)
+    let userId: string | undefined = req.user?.id;
+    
+    // If no user from middleware, try to get from query token (for React Native compatibility)
+    if (!userId && req.query.token) {
+      try {
+        const { verifyToken } = await import('../utils/generateToken');
+        const decoded = verifyToken(req.query.token as string);
+        userId = decoded.id;
+      } catch (tokenError) {
+        // Token in query is invalid, continue to check header
+      }
+    }
+
+    if (!userId) {
+      res.status(401).json({ 
+        message: 'Authentication required',
+        error: 'User information not found'
+      });
+      return;
+    }
+
+    // Validate IDs
+    if (!ObjectId.isValid(itemId)) {
+      res.status(400).json({ 
+        message: 'Invalid item ID format'
+      });
+      return;
+    }
+
+    const db = new Database('vault');
+    
+    // Find item and verify ownership
+    const item = await db.findOne(collection.vaultItems, {
+      $or: [
+        { _id: new ObjectId(itemId) },
+        { id: itemId }
+      ],
+      $and: [
+        {
+          $or: [
+            { userId: new ObjectId(userId) },
+            { userId: userId }
+          ]
+        },
+        { deleted: { $ne: true } }
+      ]
+    });
+
+    if (!item) {
+      res.status(404).json({ 
+        message: 'Item not found or you don\'t have permission to access it'
+      });
+      return;
+    }
+
+    // Find attachment in item
+    if (!item.attachments || !Array.isArray(item.attachments)) {
+      res.status(404).json({ 
+        message: 'No attachments found for this item'
+      });
+      return;
+    }
+
+    const attachment = item.attachments.find((att: any) => 
+      att.storedName === attachmentId || att.filePath?.includes(attachmentId)
+    );
+
+    if (!attachment) {
+      res.status(404).json({ 
+        message: 'Attachment not found'
+      });
+      return;
+    }
+
+    // Build file path
+    const baseDir = path.join(process.cwd(), 'output');
+    const filePath = path.join(baseDir, attachment.filePath);
+
+    // Security: Ensure path is within attachments directory
+    const normalizedPath = path.normalize(filePath);
+    const normalizedBase = path.normalize(baseDir);
+    
+    if (!normalizedPath.startsWith(normalizedBase)) {
+      res.status(403).json({ 
+        message: 'Invalid file path'
+      });
+      return;
+    }
+
+    // Check if file exists
+    if (!await fs.pathExists(filePath)) {
+      res.status(404).json({ 
+        message: 'File not found on server'
+      });
+      return;
+    }
+
+    // Read file
+    let fileBuffer = await fs.readFile(filePath);
+
+    // Decompress if needed
+    if (attachment.compressed && attachment.compressionAlgorithm === 'gzip') {
+      try {
+        fileBuffer = await gunzip(fileBuffer);
+      } catch (error: any) {
+        logger.error(`Failed to decompress file: ${error.message}`);
+        res.status(500).json({ 
+          message: 'Failed to decompress file'
+        });
+        return;
+      }
+    }
+
+    // For images, we can optionally resize/optimize
+    const isImage = attachment.mimeType?.startsWith('image/');
+    if (isImage && req.query.size) {
+      try {
+        const size = req.query.size as string;
+        const [width, height] = size.split('x').map(Number);
+        if (width && height) {
+          // Use sharp to resize
+          const resizedBuffer = await sharp(fileBuffer)
+            .resize(width, height, { fit: 'inside', withoutEnlargement: true })
+            .toBuffer();
+          // Create a new Buffer from the resized buffer to ensure type compatibility
+          // @ts-ignore - sharp Buffer type is compatible but TypeScript doesn't recognize it
+          fileBuffer = Buffer.from(resizedBuffer);
+        }
+      } catch (error: any) {
+        logger.warn(`Failed to resize image: ${error.message}`);
+        // Continue with original image
+      }
+    }
+
+    // Set headers for inline viewing
+    res.setHeader('Content-Type', attachment.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${attachment.originalName}"`);
+    res.setHeader('Content-Length', fileBuffer.length.toString());
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+
+    // Send file
+    res.send(fileBuffer);
+
+    logger.info(`File viewed: ${attachment.originalName} by user ${userId}`);
+  } catch (error: any) {
+    logger.error(error, 'Error viewing attachment');
+    res.status(500).json({ 
+      message: 'Failed to view file', 
       error: error.message 
     });
   }

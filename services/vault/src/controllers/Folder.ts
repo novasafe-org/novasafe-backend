@@ -464,7 +464,7 @@ export const updateFolder = async (req: Request, res: Response) => {
 /**
  * Delete Folder Controller
  * 
- * Deletes a folder and unlinks all associated items (sets folderId to null).
+ * Deletes a folder and all associated items permanently.
  * Only the owner can delete their folders.
  * 
  * @route DELETE /v/folders/:id
@@ -508,18 +508,16 @@ export const deleteFolder = async (req: Request, res: Response) => {
       return;
     }
 
-    // Unlink all items from this folder (set folderId to null)
-    await db.updateMany(
-      collection.vaultItems,
-      {
-        userId: req.user.id,
-        folderId: id,
-        deleted: { $ne: true }
-      },
-      {
-        $set: { folderId: null, updatedAt: new Date().toISOString() }
-      }
-    );
+    // Delete all items associated with this folder (hard delete)
+    // Handle both ObjectId and string formats for folderId
+    const deleteItemsResult = await db.getDb().collection(collection.vaultItems).deleteMany({
+      userId: req.user.id,
+      $or: [
+        { folderId: new ObjectId(id) },  // Match ObjectId format
+        { folderId: id }                  // Match string format
+      ],
+      deleted: { $ne: true }
+    });
 
     // Delete the folder (hard delete, not soft delete)
     await db.getDb().collection(collection.folders).deleteOne({
@@ -527,12 +525,13 @@ export const deleteFolder = async (req: Request, res: Response) => {
       userId: req.user.id
     });
 
-    logger.info(`Folder ${id} deleted by user ${req.user.email}. Items unlinked.`);
+    logger.info(`Folder ${id} deleted by user ${req.user.email}. ${deleteItemsResult.deletedCount} items deleted.`);
 
     // Respond with success
     res.status(200).json({
       message: 'Folder deleted successfully',
-      folderId: id
+      folderId: id,
+      itemsDeleted: deleteItemsResult.deletedCount
     });
   } catch (error: any) {
     logger.error(error, 'Error deleting folder');

@@ -21,6 +21,37 @@ import logger from '../logger';
 export const validateVaultItem = (req: Request, res: Response, next: NextFunction) => {
   const item = req.body;
 
+  // Handle FormData: convert string numbers to numbers
+  // When using multipart/form-data, all values come as strings
+  if (typeof item.field_count === 'string') {
+    const parsed = parseInt(item.field_count, 10);
+    if (!isNaN(parsed)) {
+      item.field_count = parsed;
+    }
+  }
+  
+  if (typeof item.attachment_count === 'string') {
+    const parsed = parseInt(item.attachment_count, 10);
+    if (!isNaN(parsed)) {
+      item.attachment_count = parsed;
+    }
+  }
+
+  // Handle tags if it's a JSON string (from FormData)
+  if (typeof item.tags === 'string') {
+    try {
+      item.tags = JSON.parse(item.tags);
+    } catch (e) {
+      // If parsing fails, treat as invalid
+      item.tags = undefined;
+    }
+  }
+
+  // Handle isFavorite if it's a string (from FormData)
+  if (typeof item.isFavorite === 'string') {
+    item.isFavorite = item.isFavorite === 'true';
+  }
+
   // Check if this is the new encrypted format
   const hasEncryptedData = item.encrypted_data && typeof item.encrypted_data === 'string';
   const hasIV = item.iv && typeof item.iv === 'string';
