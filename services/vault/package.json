@@ -8,12 +8,14 @@
     "dev": "ts-node-dev --require tsconfig-paths/register src/index.ts",
     "migrate:schema": "ts-node --require tsconfig-paths/register migrations/001-complete-schema-setup.ts",
     "migrate:indexes": "ts-node --require tsconfig-paths/register migrations/002-setup-indexes.ts",
+    "migrate:payments": "ts-node --require tsconfig-paths/register migrations/003-payment-schema-setup.ts",
     "migrate:all": "npm run migrate:schema && npm run migrate:indexes"
   },
   "dependencies": {
     "@types/fs-extra": "^11.0.4",
     "@types/multer": "^2.0.0",
     "@types/uuid": "^11.0.0",
+    "axios": "^1.13.2",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",

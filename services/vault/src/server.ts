@@ -9,6 +9,10 @@ import sessionRoute from './routes/sessionRoute';
 import folderRoute from './routes/folderRoute';
 import settingsRoute from './routes/settingsRoute';
 import shareRoute from './routes/shareRoute';
+import pricingRoute from './routes/pricingRoute';
+import geoRoute from './routes/geoRoute';
+import paymentRoute from './routes/paymentRoute';
+import subscriptionRoute from './routes/subscriptionRoute';
 import Database from '../database/connection'; // Import Database class
 import logger from './logger';
 import { DBCONFIG } from '../config/config';
@@ -42,6 +46,10 @@ app.use('/v', vaultRoute);
 app.use('/v/folders', folderRoute);
 app.use('/v/api/settings', settingsRoute);
 app.use('/v/share', shareRoute);
+app.use('/v/pricing', pricingRoute);
+app.use('/v/payments', paymentRoute);
+app.use('/v/subscriptions', subscriptionRoute);
+app.use('/v/geo', geoRoute);
 
 // Establish database connection at server startup
 const initializeDatabase = async () => {
