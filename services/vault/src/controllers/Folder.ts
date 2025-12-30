@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { DBCONFIG } from '../../config/config';
 import Database from '../../database/connection';
 import { ObjectId } from 'mongodb';
+import { logActivity } from '../utils/activityLogHelper';
 import logger from '../logger';
 import { IFolder } from '../models/Folder';
 
@@ -50,6 +51,25 @@ export const createFolder = async (req: Request, res: Response) => {
     const result = await db.insertOne(collection.folders, newFolder);
 
     logger.info(`Folder created by user ${req.user.email}: ${newFolder.name}`);
+
+    // Log folder creation (non-blocking)
+    try {
+      const user = await db.findOne(collection.vaultUsers, { _id: new ObjectId(req.user.id) }) as any;
+      if (user && user.companyName) {
+        await logActivity(req, user, {
+          action: 'VAULT_CREATED',
+          targetType: 'vault',
+          targetId: result.insertedId.toString(),
+          description: `Created folder: ${newFolder.name}`,
+          metadata: {
+            folderId: result.insertedId.toString(),
+            folderName: newFolder.name,
+          },
+        });
+      }
+    } catch (logError: any) {
+      logger.warn(`Failed to log folder creation: ${logError.message}`);
+    }
 
     // Return created folder with _id
     res.status(201).json({
@@ -440,6 +460,26 @@ export const updateFolder = async (req: Request, res: Response) => {
 
     logger.info(`Folder ${id} updated by user ${req.user.email}`);
 
+    // Log folder update (non-blocking)
+    try {
+      const user = await db.findOne(collection.vaultUsers, { _id: new ObjectId(req.user.id) }) as any;
+      if (user && user.companyName) {
+        await logActivity(req, user, {
+          action: updateData.name ? 'VAULT_RENAMED' : 'VAULT_CREATED',
+          targetType: 'vault',
+          targetId: id,
+          description: updateData.name ? `Renamed folder to: ${updateData.name}` : `Updated folder: ${updatedFolder.name}`,
+          metadata: {
+            folderId: id,
+            oldName: updatedFolder.name,
+            newName: updateData.name || updatedFolder.name,
+          },
+        });
+      }
+    } catch (logError: any) {
+      logger.warn(`Failed to log folder update: ${logError.message}`);
+    }
+
     // Respond with updated folder
     res.status(200).json({
       message: 'Folder updated successfully',
@@ -526,6 +566,26 @@ export const deleteFolder = async (req: Request, res: Response) => {
     });
 
     logger.info(`Folder ${id} deleted by user ${req.user.email}. ${deleteItemsResult.deletedCount} items deleted.`);
+
+    // Log folder deletion (non-blocking)
+    try {
+      const user = await db.findOne(collection.vaultUsers, { _id: new ObjectId(req.user.id) }) as any;
+      if (user && user.companyName) {
+        await logActivity(req, user, {
+          action: 'VAULT_DELETED',
+          targetType: 'vault',
+          targetId: id,
+          description: `Deleted folder: ${folder.name} (${deleteItemsResult.deletedCount} items deleted)`,
+          metadata: {
+            folderId: id,
+            folderName: folder.name,
+            itemsDeleted: deleteItemsResult.deletedCount,
+          },
+        });
+      }
+    } catch (logError: any) {
+      logger.warn(`Failed to log folder deletion: ${logError.message}`);
+    }
 
     // Respond with success
     res.status(200).json({

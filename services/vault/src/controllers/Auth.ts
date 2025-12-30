@@ -8,8 +8,10 @@ import { generateToken } from '../utils/generateToken';
 import { createSession, revokeSession, getSessionByTokenId } from '../services/sessionService';
 import { getClientIP, parseBrowser, parseOS, detectDevice } from '../utils/deviceDetection';
 import { saveUserPublicKey } from '../services/shareService';
+import { logActivity } from '../utils/activityLogHelper';
 import logger from '../logger';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 
 // Initialize Google OAuth2 client
 // This client is used to verify Google ID tokens sent from the frontend
@@ -102,69 +104,44 @@ export const googleSignIn = async (req: Request, res: Response): Promise<void> =
     const db = new Database('vault');
     let user = await db.findOne(collection.vaultUsers, { googleId }) as IUser | null;
 
-    // Step 4: Create new user if they don't exist (first-time sign-in)
+    // Step 4: Handle existing vs new users
+    // For new users, they should go through onboarding flow
+    // Google login should only work for existing users
     const isFirstTime = !user;
     
     if (!user) {
-      logger.info(`Creating new user with email: ${email}`);
-      
-      const newUser: Omit<IUser, '_id'> = {
-        googleId,
-        email,
-        name,
-        picture,
-        totpEnabled: false,
-        failedLoginAttempts: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+      // Check if user exists by email (might have signed up with email)
+      user = await db.findOne(collection.vaultUsers, { 
+        email: email.toLowerCase().trim() 
+      }) as IUser | null;
 
-      const result = await db.insertOne(collection.vaultUsers, newUser);
-      
-      // Retrieve the newly created user with MongoDB's _id
-      user = {
-        ...newUser,
-        _id: result.insertedId,
-      } as IUser;
-
-      logger.info(`New user created successfully with ID: ${result.insertedId}`);
-
-      // Automatically generate and save RSA key pair for sharing
-      try {
-        // Use Web Crypto API (available in Node.js 15+) to generate keys in JWK format
-        // @ts-ignore - webcrypto may not be in types for older Node versions
-        const webCrypto = globalThis.crypto || (crypto as any).webcrypto;
-        
-        if (!webCrypto || !webCrypto.subtle) {
-          throw new Error('Web Crypto API not available. Please use Node.js 15.0.0 or later.');
-        }
-
-        // Generate RSA-OAEP key pair (2048 bits)
-        const keyPair = await webCrypto.subtle.generateKey(
+      if (user) {
+        // User exists with email signup, update with Google ID
+        logger.info(`Linking Google account to existing email user: ${email}`);
+        await db.updateOne(
+          collection.vaultUsers,
+          { _id: user._id },
           {
-            name: 'RSA-OAEP',
-            modulusLength: 2048,
-            publicExponent: new Uint8Array([1, 0, 1]), // 65537
-            hash: 'SHA-256',
-          },
-          true, // extractable
-          ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey']
+            $set: {
+              googleId,
+              picture,
+              updatedAt: new Date(),
+            }
+          }
         );
-
-        // Export public key to JWK format
-        const publicKeyJwk = await webCrypto.subtle.exportKey('jwk', keyPair.publicKey);
-
-        // Save public key to database
-        await saveUserPublicKey(
-          result.insertedId.toString(),
-          JSON.stringify(publicKeyJwk),
-          'RSA-OAEP'
-        );
-
-        logger.info(`Sharing keys generated and saved for new user: ${email}`);
-      } catch (keyError: any) {
-        // Log error but don't fail user creation - keys can be generated later
-        logger.error(`Failed to generate sharing keys for new user ${email}: ${keyError.message}`);
+        user.googleId = googleId;
+        user.picture = picture;
+      } else {
+        // New user - they should go through onboarding
+        // Return error indicating they need to sign up first
+        res.status(404).json({
+          success: false,
+          message: 'No account found with this Google account. Please sign up first.',
+          error: 'Account not found',
+          userMessage: 'No account found with this email. Please sign up first.',
+          requiresSignup: true,
+        });
+        return;
       }
     } else {
       // User exists - update their information in case it changed on Google
@@ -262,6 +239,20 @@ export const googleSignIn = async (req: Request, res: Response): Promise<void> =
       // Log error but don't fail login if session creation fails
       logger.error(`Failed to create session: ${sessionError.message}`);
     }
+
+    // Log successful login (non-blocking)
+    logActivity(req, user, {
+      action: 'USER_LOGIN_SUCCESS',
+      targetType: 'user',
+      targetId: user._id?.toString() || user.googleId || null,
+      description: `User logged in successfully via Google`,
+      metadata: {
+        signupMethod: 'google',
+        hasPicture: !!user.picture,
+      },
+    }).catch((err) => {
+      logger.warn(`Failed to log activity: ${err.message}`);
+    });
 
     // Step 6: Return the token and user information to the frontend
     res.status(200).json({
@@ -406,6 +397,27 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
         // Log error but don't fail logout if session revocation fails
         logger.warn(`Failed to revoke session on logout: ${sessionError.message}`);
       }
+
+      // Fetch user for activity logging
+      const db = new Database('vault');
+      const user = await db.findOne(collection.vaultUsers, {
+        _id: new ObjectId(req.user.id),
+      }) as IUser | null;
+
+      if (user) {
+        // Log logout (non-blocking)
+        logActivity(req, user, {
+          action: 'USER_LOGOUT',
+          targetType: 'session',
+          targetId: tokenId || null,
+          description: `User logged out`,
+          metadata: {
+            tokenId: tokenId || null,
+          },
+        }).catch((err) => {
+          logger.warn(`Failed to log activity: ${err.message}`);
+        });
+      }
       
       logger.info(`User logged out: ${req.user.email}`);
     }
@@ -420,6 +432,294 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ 
       message: 'Logout failed',
       error: error.message
+    });
+  }
+};
+
+/**
+ * Email/Password Login Controller
+ * 
+ * This endpoint handles email and password authentication.
+ * It verifies the password, checks account status, and issues a JWT session token.
+ * 
+ * FLOW:
+ * 1. Frontend sends email and password
+ * 2. Backend verifies password hash
+ * 3. Backend checks account lock status
+ * 4. Backend issues JWT token for app sessions
+ * 5. Frontend stores JWT token and uses it for authenticated requests
+ * 
+ * SECURITY NOTES:
+ * - Passwords are hashed with bcrypt before storage
+ * - Account locks after 5 failed login attempts
+ * - Failed attempts are tracked and reset on successful login
+ * 
+ * @route POST /auth/email
+ * @access Public
+ */
+export const emailLogin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      res.status(400).json({
+        success: false,
+        message: 'Please provide both email and password.',
+        error: 'Email and password are required',
+        userMessage: 'Email and password are required.',
+      });
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      res.status(400).json({
+        success: false,
+        message: 'Please enter a valid email address.',
+        error: 'Invalid email format',
+        userMessage: 'Please enter a valid email address.',
+      });
+      return;
+    }
+
+    // Find user by email
+    const db = new Database('vault');
+    const user = await db.findOne(collection.vaultUsers, {
+      email: email.toLowerCase().trim(),
+    }) as IUser | null;
+
+    if (!user) {
+      res.status(401).json({
+        success: false,
+        message: 'Invalid email or password. Please check your credentials and try again.',
+        error: 'Invalid email or password',
+        userMessage: 'Invalid email or password. Please check your credentials.',
+      });
+      return;
+    }
+
+    // Check if user has password (email signup) or can use password login
+    if (!user.passwordHash && user.signupMethod !== 'email') {
+      res.status(401).json({
+        success: false,
+        message: 'This account uses Google sign-in. Please use Google to log in.',
+        error: 'This account uses Google sign-in',
+        userMessage: 'This account uses Google sign-in. Please use Google to log in.',
+      });
+      return;
+    }
+
+    // Check if account is locked
+    if (user.accountLockedUntil && new Date(user.accountLockedUntil) > new Date()) {
+      const lockTimeRemaining = Math.ceil(
+        (new Date(user.accountLockedUntil).getTime() - new Date().getTime()) / 1000 / 60
+      );
+      res.status(423).json({
+        success: false,
+        message: `Your account is temporarily locked. Please try again in ${lockTimeRemaining} minutes.`,
+        error: 'Account locked',
+        userMessage: `Account is locked. Please try again in ${lockTimeRemaining} minutes.`,
+        lockTimeRemaining,
+      });
+      return;
+    }
+
+    // Check if password hash exists
+    if (!user.passwordHash) {
+      res.status(401).json({
+        success: false,
+        message: 'This account uses Google sign-in. Please use Google to log in.',
+        error: 'Password not set for this account',
+        userMessage: 'This account uses Google sign-in. Please use Google to log in.',
+      });
+      return;
+    }
+
+    // Verify password
+    const isPasswordValid = bcrypt.compareSync(password, user.passwordHash);
+
+    if (!isPasswordValid) {
+      // Increment failed login attempts
+      const failedAttempts = (user.failedLoginAttempts || 0) + 1;
+      const maxAttempts = 5;
+      const lockDurationMinutes = 30;
+
+      let updateData: any = {
+        failedLoginAttempts: failedAttempts,
+        updatedAt: new Date(),
+      };
+
+      // Lock account after max attempts
+      if (failedAttempts >= maxAttempts) {
+        const lockUntil = new Date();
+        lockUntil.setMinutes(lockUntil.getMinutes() + lockDurationMinutes);
+        updateData.accountLockedUntil = lockUntil;
+
+        logger.warn(`Account locked due to ${failedAttempts} failed login attempts: ${email}`);
+
+        // Log critical security event
+        logActivity(req, user, {
+          action: failedAttempts >= maxAttempts ? 'MULTIPLE_FAILED_LOGINS' : 'USER_LOGIN_FAILED',
+          targetType: 'user',
+          targetId: user._id?.toString() || null,
+          description: `Failed login attempt ${failedAttempts}/${maxAttempts}. Account locked.`,
+          metadata: {
+            failedAttempts,
+            accountLocked: true,
+          },
+        }).catch((err) => {
+          logger.warn(`Failed to log activity: ${err.message}`);
+        });
+      } else {
+        // Log failed login
+        logActivity(req, user, {
+          action: 'USER_LOGIN_FAILED',
+          targetType: 'user',
+          targetId: user._id?.toString() || null,
+          description: `Failed login attempt ${failedAttempts}/${maxAttempts}`,
+          metadata: {
+            failedAttempts,
+          },
+        }).catch((err) => {
+          logger.warn(`Failed to log activity: ${err.message}`);
+        });
+      }
+
+      await db.updateOne(
+        collection.vaultUsers,
+        { _id: user._id },
+        { $set: updateData }
+      );
+
+      res.status(401).json({
+        success: false,
+        message: 'Invalid email or password. Please check your credentials and try again.',
+        error: 'Invalid email or password',
+        userMessage: failedAttempts >= maxAttempts 
+          ? 'Account locked due to too many failed attempts. Please try again later.'
+          : `Invalid email or password. ${maxAttempts - failedAttempts} attempts remaining.`,
+        failedAttempts,
+        accountLocked: failedAttempts >= maxAttempts,
+      });
+      return;
+    }
+
+    // Password is valid - reset failed attempts and unlock account
+    await db.updateOne(
+      collection.vaultUsers,
+      { _id: user._id },
+      {
+        $set: {
+          failedLoginAttempts: 0,
+          accountLockedUntil: null,
+          updatedAt: new Date(),
+        }
+      }
+    );
+
+    // Update user object
+    user.failedLoginAttempts = 0;
+    user.accountLockedUntil = null;
+
+    // Generate JWT token
+    const { token, tokenId } = generateToken(user);
+
+    // Create session
+    try {
+      const userAgent = req.headers['user-agent'] || 'Unknown';
+      const ipAddress = getClientIP(req);
+      const browser = parseBrowser(userAgent);
+      const os = parseOS(userAgent);
+      const refreshToken = crypto.randomBytes(32).toString('hex');
+
+      // Revoke existing sessions from same device (optional)
+      try {
+        const deviceType = detectDevice(userAgent);
+        const deviceName = `${browser} on ${os}`;
+        
+        const existingSessions = await db.findMany(collection.sessions, {
+          userId: new ObjectId(user._id || user.googleId || ''),
+          revoked: false,
+          deviceName: deviceName,
+          deviceType: deviceType,
+        }) as any[];
+        
+        if (existingSessions && existingSessions.length > 0) {
+          await db.updateMany(
+            collection.sessions,
+            {
+              userId: new ObjectId(user._id || user.googleId || ''),
+              deviceName: deviceName,
+              deviceType: deviceType,
+              revoked: false,
+            },
+            {
+              $set: {
+                revoked: true,
+                revokedAt: new Date(),
+              },
+            }
+          );
+          logger.info(`Revoked ${existingSessions.length} existing session(s) from same device for user: ${user.email}`);
+        }
+      } catch (revokeError: any) {
+        logger.warn(`Failed to revoke existing sessions on login: ${revokeError.message}`);
+      }
+
+      await createSession({
+        userId: user._id || user.googleId || '',
+        tokenId,
+        refreshToken,
+        deviceInfo: {
+          os,
+          browser,
+          ipAddress,
+          userAgent,
+        },
+      });
+
+      logger.info(`Session created for user: ${user.email}, tokenId: ${tokenId}`);
+    } catch (sessionError: any) {
+      logger.error(`Failed to create session: ${sessionError.message}`);
+      // Don't fail login if session creation fails
+    }
+
+    logger.info(`Email login successful: ${email}`);
+
+    // Log successful login (non-blocking)
+    logActivity(req, user, {
+      action: 'USER_LOGIN_SUCCESS',
+      targetType: 'user',
+      targetId: user._id?.toString() || null,
+      description: `User logged in successfully via email/password`,
+      metadata: {
+        signupMethod: 'email',
+      },
+    }).catch((err) => {
+      logger.warn(`Failed to log activity: ${err.message}`);
+    });
+
+    // Return token and user information
+    res.status(200).json({
+      message: 'Authentication successful',
+      token,
+      user: {
+        id: user._id?.toString() || user.googleId || '',
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+        createdAt: user.createdAt,
+        planId: user.planId,
+      },
+      requires2FA: user.totpEnabled || false,
+    });
+
+  } catch (error: any) {
+    logger.error(`Email login error: ${error.message}`);
+    res.status(500).json({
+      message: 'Authentication failed',
+      error: error.message || 'An unexpected error occurred',
     });
   }
 };

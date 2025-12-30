@@ -16,6 +16,8 @@ import {
   regenerateBackupCodes,
 } from '../controllers/TOTPController';
 import { authMiddleware } from '../middlewares/auth';
+import { loadRBACContext, requirePermission } from '../middlewares/rbac';
+import { Permission } from '../constants/rbac.constants';
 
 const router = express.Router();
 
@@ -33,12 +35,12 @@ const router = express.Router();
  *   "otpauthUrl": "otpauth://totp/..."
  * }
  */
-router.post('/setup', authMiddleware, setup2FA);
+router.post('/setup', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_UPDATE), setup2FA);
 
 /**
  * @route   POST /v/auth/2fa/enable
  * @desc    Enable 2FA after verifying TOTP token
- * @access  Protected (requires JWT token)
+ * @access  Protected (requires JWT token and settings:update permission)
  * 
  * REQUEST BODY:
  * {
@@ -51,7 +53,7 @@ router.post('/setup', authMiddleware, setup2FA);
  *   "enabled": true
  * }
  */
-router.post('/enable', authMiddleware, enable2FA);
+router.post('/enable', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_UPDATE), enable2FA);
 
 /**
  * @route   POST /v/auth/2fa/verify
@@ -75,7 +77,7 @@ router.post('/verify', authMiddleware, verify2FA);
 /**
  * @route   POST /v/auth/2fa/disable
  * @desc    Disable 2FA (requires TOTP token or password)
- * @access  Protected (requires JWT token)
+ * @access  Protected (requires JWT token and settings:update permission)
  * 
  * REQUEST BODY:
  * {
@@ -89,12 +91,12 @@ router.post('/verify', authMiddleware, verify2FA);
  *   "enabled": false
  * }
  */
-router.post('/disable', authMiddleware, disable2FA);
+router.post('/disable', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_UPDATE), disable2FA);
 
 /**
  * @route   GET /v/auth/2fa/status
  * @desc    Get 2FA status for current user
- * @access  Protected (requires JWT token)
+ * @access  Protected (requires JWT token and settings:read permission)
  * 
  * RESPONSE:
  * {
@@ -105,12 +107,12 @@ router.post('/disable', authMiddleware, disable2FA);
  *   "backupCodesUsedCount": 0
  * }
  */
-router.get('/status', authMiddleware, get2FAStatus);
+router.get('/status', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_READ), get2FAStatus);
 
 /**
  * @route   POST /v/auth/2fa/backup-codes
  * @desc    Regenerate backup codes
- * @access  Protected (requires JWT token)
+ * @access  Protected (requires JWT token and settings:update permission)
  * 
  * RESPONSE:
  * {
@@ -118,7 +120,7 @@ router.get('/status', authMiddleware, get2FAStatus);
  *   "backupCodes": ["ABC123", "DEF456", ...]
  * }
  */
-router.post('/backup-codes', authMiddleware, regenerateBackupCodes);
+router.post('/backup-codes', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_UPDATE), regenerateBackupCodes);
 
 export default router;
 

@@ -6,6 +6,8 @@
  */
 
 import { Request, Response } from 'express';
+// Import auth middleware to ensure Request type extension is available
+import '../middlewares/auth';
 import {
   createPaymentOrder,
   getPaymentStatus,
@@ -17,6 +19,7 @@ import { DBCONFIG } from '../../config/config';
 import { getUserSubscription } from '../services/subscriptionService';
 import { validateCoupon } from '../services/couponService';
 import { IPaymentOrder } from '../models/PaymentOrder';
+import { activityLogService } from '../services/activityLogService';
 import logger from '../logger';
 
 /**
@@ -472,7 +475,317 @@ export const handleRazorpayWebhook = async (req: Request, res: Response): Promis
       return;
     }
 
-    // Extract order ID from webhook data
+    // Helper function to fetch payment method details from Razorpay
+    // Defined here so it can be used by both subscription and payment webhook handlers
+    const fetchPaymentMethodDetails = async (razorpaySubscriptionId: string) => {
+      try {
+        const { RAZORPAY_CONFIG } = await import('../../config/config');
+        const auth = Buffer.from(`${RAZORPAY_CONFIG.keyId}:${RAZORPAY_CONFIG.keySecret}`).toString('base64');
+        const axios = (await import('axios')).default;
+
+        // Fetch subscription details from Razorpay
+        const subscriptionResponse = await axios.get(
+          `https://api.razorpay.com/v1/subscriptions/${razorpaySubscriptionId}`,
+          {
+            headers: { 'Authorization': `Basic ${auth}` },
+          }
+        );
+
+        const razorpaySub = subscriptionResponse.data;
+        
+        // Try to get payment method from customer's saved methods
+        let paymentMethodLast4: string | null = null;
+        let paymentMethodBrand: string | null = null;
+        let paymentMethodType: 'card' | 'upi' | 'netbanking' | 'wallet' | null = null;
+
+        // If subscription has a customer_id, try to fetch customer's payment methods
+        if (razorpaySub.customer_id) {
+          try {
+            const customerResponse = await axios.get(
+              `https://api.razorpay.com/v1/customers/${razorpaySub.customer_id}`,
+              {
+                headers: { 'Authorization': `Basic ${auth}` },
+              }
+            );
+            
+            const customer = customerResponse.data;
+            // Razorpay stores payment method info in customer object or we can check recent payments
+            // For now, we'll try to get it from the first successful payment
+          } catch (err) {
+            logger.warn('Could not fetch customer details for payment method');
+          }
+        }
+
+        // Try to get payment method from recent payments for this subscription
+        try {
+          const paymentsResponse = await axios.get(
+            `https://api.razorpay.com/v1/subscriptions/${razorpaySubscriptionId}/payments`,
+            {
+              headers: { 'Authorization': `Basic ${auth}` },
+              params: { count: 1 },
+            }
+          );
+
+          const payments = paymentsResponse.data.items || [];
+          if (payments.length > 0) {
+            const payment = payments[0];
+            if (payment.method === 'card' && payment.card) {
+              paymentMethodLast4 = payment.card.last4 || null;
+              paymentMethodBrand = payment.card.network || payment.card.type || null;
+              paymentMethodType = 'card';
+            } else if (payment.method === 'upi') {
+              paymentMethodType = 'upi';
+              paymentMethodBrand = 'UPI';
+            } else if (payment.method === 'netbanking') {
+              paymentMethodType = 'netbanking';
+              paymentMethodBrand = payment.bank || 'Net Banking';
+            } else if (payment.method === 'wallet') {
+              paymentMethodType = 'wallet';
+              paymentMethodBrand = payment.wallet || 'Wallet';
+            }
+          }
+        } catch (err) {
+          logger.warn('Could not fetch payment method from subscription payments');
+        }
+
+        return {
+          last4: paymentMethodLast4,
+          brand: paymentMethodBrand,
+          type: paymentMethodType,
+        };
+      } catch (error: any) {
+        logger.error(error, 'Error fetching payment method details from Razorpay');
+        return null;
+      }
+    };
+
+    // Handle subscription events
+    if (webhookData.event === 'subscription.activated' || 
+        webhookData.event === 'subscription.charged' ||
+        webhookData.event === 'subscription.canceled' ||
+        webhookData.event === 'subscription.completed') {
+      
+      const subscription = webhookData.data.subscription?.entity;
+      if (!subscription) {
+        logger.warn('Razorpay subscription webhook missing subscription data');
+        res.status(200).json({ message: 'Webhook received' });
+        return;
+      }
+
+      const razorpaySubscriptionId = subscription.id;
+      const userId = subscription.notes?.userId;
+
+      if (!razorpaySubscriptionId) {
+        logger.warn('Razorpay subscription webhook missing subscription ID');
+        res.status(200).json({ message: 'Webhook received' });
+        return;
+      }
+
+      // Find subscription in database
+      const db = new Database('vault');
+      const subscriptionDoc = await db.findOne(
+        DBCONFIG.vault.collections.subscriptions,
+        { providerSubscriptionId: razorpaySubscriptionId }
+      ) as any;
+
+      if (!subscriptionDoc) {
+        logger.warn(`Subscription not found for Razorpay subscription: ${razorpaySubscriptionId}`);
+        res.status(200).json({ message: 'Webhook received' });
+        return;
+      }
+
+      // Import subscription service
+      const { updateSubscription } = await import('../services/subscriptionService');
+
+      // Handle different subscription events
+      if (webhookData.event === 'subscription.activated' || webhookData.event === 'subscription.authenticated') {
+        // Subscription activated/authenticated (payment method added, trial started)
+        // NOTE: Payment method details should come from payment.authorized webhook
+        // We don't fetch from payments here because no payment has happened yet (trial period)
+        // Just mark payment method as added - details should already be stored from payment.authorized
+        
+        await updateSubscription(subscriptionDoc._id.toString(), {
+          status: 'trialing',
+          paymentMethodAdded: true,
+          // Don't overwrite existing payment method details if they're already stored
+        });
+        logger.info(
+          {
+            razorpaySubscriptionId,
+            event: webhookData.event,
+            hasStoredDetails: !!(subscriptionDoc.paymentMethodLast4 || subscriptionDoc.paymentMethodBrand),
+            note: 'Payment method details should come from payment.authorized webhook',
+          },
+          `Subscription ${webhookData.event}: ${razorpaySubscriptionId}`
+        );
+      } else if (webhookData.event === 'subscription.charged') {
+        // First charge after trial (subscription is now active)
+        // NOW we can fetch payment method details from the payment object
+        // This is when Razorpay exposes payment method details
+        
+        // Get the payment details from the webhook payload
+        const payment = webhookData.data.payment?.entity;
+        let paymentMethodLast4: string | null = null;
+        let paymentMethodBrand: string | null = null;
+        let paymentMethodType: 'card' | 'upi' | 'netbanking' | 'wallet' | null = null;
+        
+        if (payment) {
+          // Extract payment method details from the charged payment
+          if (payment.method === 'card' && payment.card) {
+            paymentMethodLast4 = payment.card.last4 || null;
+            paymentMethodBrand = payment.card.network || payment.card.type || null;
+            paymentMethodType = 'card';
+          } else if (payment.method === 'upi') {
+            paymentMethodType = 'upi';
+            paymentMethodBrand = 'UPI';
+          } else if (payment.method === 'netbanking') {
+            paymentMethodType = 'netbanking';
+            paymentMethodBrand = payment.bank || 'Net Banking';
+          } else if (payment.method === 'wallet') {
+            paymentMethodType = 'wallet';
+            paymentMethodBrand = payment.wallet || 'Wallet';
+          }
+        }
+        
+        // If we didn't get details from webhook payment, try fetching from subscription payments
+        if (!paymentMethodLast4 && !paymentMethodBrand) {
+          const paymentMethodDetails = await fetchPaymentMethodDetails(razorpaySubscriptionId);
+          if (paymentMethodDetails) {
+            paymentMethodLast4 = paymentMethodDetails.last4 || null;
+            paymentMethodBrand = paymentMethodDetails.brand || null;
+            paymentMethodType = paymentMethodDetails.type || null;
+          }
+        }
+        
+        // Update subscription - use payment method details from charge if available, otherwise keep existing
+        const updateData: any = {
+          status: 'active',
+          paymentMethodAdded: true,
+        };
+        
+        // Only update if we got new details (prefer details from charge over stored)
+        if (paymentMethodLast4 || paymentMethodBrand) {
+          updateData.paymentMethodLast4 = paymentMethodLast4;
+          updateData.paymentMethodBrand = paymentMethodBrand;
+          updateData.paymentMethodType = paymentMethodType;
+        }
+        
+        await updateSubscription(subscriptionDoc._id.toString(), updateData);
+        logger.info(
+          {
+            razorpaySubscriptionId,
+            paymentId: payment?.id,
+            paymentMethodLast4: updateData.paymentMethodLast4 || subscriptionDoc.paymentMethodLast4,
+            paymentMethodBrand: updateData.paymentMethodBrand || subscriptionDoc.paymentMethodBrand,
+            paymentMethodType: updateData.paymentMethodType || subscriptionDoc.paymentMethodType,
+          },
+          `Subscription charged (trial ended): ${razorpaySubscriptionId}`
+        );
+
+        // Log subscription activated (non-blocking)
+        try {
+          const user = await db.findOne(DBCONFIG.vault.collections.vaultUsers, {
+            _id: subscriptionDoc.userId,
+          }) as any;
+          if (user && user.companyName) {
+            await activityLogService.logEvent({
+              organizationId: user.companyName,
+              actorUserId: subscriptionDoc.userId?.toString() || null,
+              actorEmail: user.email || null,
+              actorRole: ((user.role || 'member').toLowerCase() === 'admin' || (user.role || 'member').toLowerCase() === 'super-admin') ? 'admin' : 'member',
+              targetType: 'subscription',
+              targetId: subscriptionDoc._id?.toString() || null,
+              action: 'SUBSCRIPTION_ACTIVATED',
+              description: `Subscription activated after trial period ended`,
+              metadata: {
+                subscriptionId: subscriptionDoc._id?.toString(),
+                planId: subscriptionDoc.planId,
+                razorpaySubscriptionId,
+                paymentId: payment?.id || null,
+              },
+            });
+          }
+        } catch (logError: any) {
+          logger.warn(`Failed to log subscription activated: ${logError.message}`);
+        }
+      } else if (webhookData.event === 'subscription.canceled') {
+        // Subscription canceled
+        await updateSubscription(subscriptionDoc._id.toString(), {
+          status: 'canceled',
+          cancelAtPeriodEnd: true,
+          canceledAt: new Date(),
+        });
+        logger.info(`Subscription canceled: ${razorpaySubscriptionId}`);
+      } else if (webhookData.event === 'subscription.completed') {
+        // Subscription completed (renewed)
+        await updateSubscription(subscriptionDoc._id.toString(), {
+          status: 'active',
+        });
+        logger.info(`Subscription renewed: ${razorpaySubscriptionId}`);
+      }
+
+      res.status(200).json({ message: 'Subscription webhook processed' });
+      return;
+    }
+
+    // Handle payment events
+    if (webhookData.event === 'payment.failed') {
+      const payment = webhookData.data.payment?.entity;
+      if (payment) {
+        const razorpaySubscriptionId = payment.subscription_id;
+        
+        if (razorpaySubscriptionId) {
+          // Find subscription and downgrade to Free
+          const db = new Database('vault');
+          const subscriptionDoc = await db.findOne(
+            DBCONFIG.vault.collections.subscriptions,
+            { providerSubscriptionId: razorpaySubscriptionId }
+          ) as any;
+
+          if (subscriptionDoc) {
+            const { updateSubscription } = await import('../services/subscriptionService');
+            await updateSubscription(subscriptionDoc._id.toString(), {
+              status: 'past_due',
+            });
+            logger.warn(`Payment failed for subscription: ${razorpaySubscriptionId}, marked as past_due`);
+
+            // Log payment failed (non-blocking)
+            try {
+              const user = await db.findOne(DBCONFIG.vault.collections.vaultUsers, {
+                _id: subscriptionDoc.userId,
+              }) as any;
+              if (user && user.companyName) {
+                await activityLogService.logEvent({
+                  organizationId: user.companyName,
+                  actorUserId: subscriptionDoc.userId?.toString() || null,
+                  actorEmail: user.email || null,
+                  actorRole: ((user.role || 'member').toLowerCase() === 'admin' || (user.role || 'member').toLowerCase() === 'super-admin') ? 'admin' : 'member',
+                  targetType: 'subscription',
+                  targetId: subscriptionDoc._id?.toString() || null,
+                  action: 'PAYMENT_FAILED',
+                  description: `Payment failed for subscription`,
+                  metadata: {
+                    subscriptionId: subscriptionDoc._id?.toString(),
+                    planId: subscriptionDoc.planId,
+                    razorpaySubscriptionId,
+                    paymentId: payment?.id || null,
+                    errorCode: payment?.error_code || null,
+                    errorDescription: payment?.error_description || null,
+                  },
+                });
+              }
+            } catch (logError: any) {
+              logger.warn(`Failed to log payment failed: ${logError.message}`);
+            }
+          }
+        }
+      }
+
+      res.status(200).json({ message: 'Payment failed webhook processed' });
+      return;
+    }
+
+    // Extract order ID from webhook data for payment events
     let orderId: string | null = null;
     
     if (webhookData.data.payment?.entity) {
@@ -490,14 +803,128 @@ export const handleRazorpayWebhook = async (req: Request, res: Response): Promis
       }
     }
 
-    if (!orderId) {
-      logger.warn('Razorpay webhook missing order ID');
-      res.status(400).json({ message: 'Missing order ID' });
+    // Handle payment.authorized event (fires when payment method is added to subscription)
+    // THIS IS THE PRIMARY WAY TO GET PAYMENT METHOD DETAILS DURING TRIAL
+    // Razorpay doesn't expose payment method details via API until first payment
+    if (webhookData.event === 'payment.authorized') {
+      logger.info(
+        { 
+          event: webhookData.event,
+          hasPayment: !!webhookData.data.payment?.entity 
+        },
+        'Received payment.authorized webhook'
+      );
+      
+      const payment = webhookData.data.payment?.entity;
+      if (payment && payment.subscription_id) {
+        const razorpaySubscriptionId = payment.subscription_id;
+        
+        logger.info(
+          {
+            razorpaySubscriptionId,
+            paymentId: payment.id,
+            paymentMethod: payment.method,
+            hasCard: !!payment.card,
+          },
+          'Processing payment.authorized webhook for subscription'
+        );
+        
+        // Find subscription in database
+        const db = new Database('vault');
+        const subscriptionDoc = await db.findOne(
+          DBCONFIG.vault.collections.subscriptions,
+          { providerSubscriptionId: razorpaySubscriptionId }
+        ) as any;
+
+        if (subscriptionDoc) {
+          // Extract payment method details from the authorized payment
+          // This is the ONLY reliable way to get payment method details during trial
+          let paymentMethodLast4: string | null = null;
+          let paymentMethodBrand: string | null = null;
+          let paymentMethodType: 'card' | 'upi' | 'netbanking' | 'wallet' | null = null;
+          
+          if (payment.method === 'card' && payment.card) {
+            paymentMethodLast4 = payment.card.last4 || null;
+            paymentMethodBrand = payment.card.network || payment.card.type || null;
+            paymentMethodType = 'card';
+            logger.info(
+              {
+                last4: paymentMethodLast4,
+                brand: paymentMethodBrand,
+                cardType: payment.card.type,
+                network: payment.card.network,
+              },
+              'Extracted card payment method details'
+            );
+          } else if (payment.method === 'upi') {
+            paymentMethodType = 'upi';
+            paymentMethodBrand = 'UPI';
+            logger.info('Extracted UPI payment method');
+          } else if (payment.method === 'netbanking') {
+            paymentMethodType = 'netbanking';
+            paymentMethodBrand = payment.bank || 'Net Banking';
+            logger.info({ bank: payment.bank }, 'Extracted netbanking payment method');
+          } else if (payment.method === 'wallet') {
+            paymentMethodType = 'wallet';
+            paymentMethodBrand = payment.wallet || 'Wallet';
+            logger.info({ wallet: payment.wallet }, 'Extracted wallet payment method');
+          } else {
+            logger.warn(
+              { 
+                paymentMethod: payment.method,
+                paymentId: payment.id 
+              },
+              'Unknown payment method type in payment.authorized'
+            );
+          }
+
+          const { updateSubscription } = await import('../services/subscriptionService');
+          await updateSubscription(subscriptionDoc._id.toString(), {
+            paymentMethodAdded: true,
+            paymentMethodLast4,
+            paymentMethodBrand,
+            paymentMethodType,
+          });
+          
+          logger.info(
+            {
+              razorpaySubscriptionId,
+              paymentId: payment.id,
+              paymentMethodLast4,
+              paymentMethodBrand,
+              paymentMethodType,
+              subscriptionId: subscriptionDoc._id.toString(),
+            },
+            `Payment method authorized and stored for subscription: ${razorpaySubscriptionId}`
+          );
+        } else {
+          logger.warn(
+            { razorpaySubscriptionId },
+            'Subscription not found for payment.authorized webhook'
+          );
+        }
+      } else {
+        logger.warn(
+          { 
+            hasPayment: !!payment,
+            hasSubscriptionId: !!(payment?.subscription_id) 
+          },
+          'payment.authorized webhook missing payment or subscription_id'
+        );
+      }
+      
+      res.status(200).json({ message: 'Payment authorized webhook processed' });
       return;
     }
 
-    // Process payment callback based on event type
+    // Process payment callback for payment.success/payment.captured
     if (webhookData.event === 'payment.success' || webhookData.event === 'payment.captured') {
+      if (!orderId) {
+        logger.warn('Razorpay payment webhook missing order ID');
+        res.status(200).json({ message: 'Webhook received' });
+        return;
+      }
+
       const result = await processPaymentCallback({
         orderId,
         providerResponse: {
@@ -512,11 +939,7 @@ export const handleRazorpayWebhook = async (req: Request, res: Response): Promis
         success: result.success,
       });
 
-      logger.info(`Razorpay webhook processed for order: ${orderId}, success: ${result.success}`);
-    } else if (webhookData.event === 'subscription.activated' || webhookData.event === 'subscription.charged') {
-      // Handle subscription events
-      logger.info(`Razorpay subscription event: ${webhookData.event} for order: ${orderId}`);
-      res.status(200).json({ message: 'Subscription webhook processed' });
+      logger.info(`Razorpay payment webhook processed for order: ${orderId}, success: ${result.success}`);
     } else {
       logger.info(`Razorpay webhook event handled: ${webhookData.event}`);
       res.status(200).json({ message: 'Webhook received' });

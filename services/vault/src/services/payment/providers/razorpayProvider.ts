@@ -319,7 +319,10 @@ class RazorpayProvider implements IPaymentProvider {
   }
 
   /**
-   * Create recurring subscription in Razorpay
+   * Create recurring subscription in Razorpay with optional free trial
+   * 
+   * @param request - Subscription creation request (includes trialDays)
+   * @returns Subscription details including checkout data
    */
   async createRecurringSubscription(
     request: CreateRecurringSubscriptionRequest
@@ -333,22 +336,44 @@ class RazorpayProvider implements IPaymentProvider {
         throw new Error('Razorpay configuration is incomplete');
       }
 
-      const { paymentOrder, billingCycle } = request;
+      const { paymentOrder, billingCycle, userEmail, userFirstName, userPhone, trialDays = 30 } = request;
 
-      // First, create a plan (if not exists) or use existing plan
+      // First, create or get Razorpay customer
+      const customerId = await this.getOrCreateCustomer({
+        email: userEmail,
+        name: userFirstName,
+        contact: userPhone,
+      });
+
+      // Create or get Razorpay plan
+      // Razorpay subscriptions require a plan_id - Plans API must be available
       const planId = await this.getOrCreatePlan(paymentOrder, billingCycle);
 
+      // Calculate trial period
+      const now = Math.floor(Date.now() / 1000); // Unix timestamp
+      const trialEnd = now + (trialDays * 24 * 60 * 60); // Trial end in seconds
+
       // Create subscription
-      const subscriptionPayload = {
+      // Razorpay doesn't support trial_end or charge_at fields in subscription creation
+      // We'll handle the trial period in our application layer
+      // For now, set start_at to trial end date so subscription starts after trial
+      // This prevents immediate charging during the trial period
+      const subscriptionPayload: any = {
         plan_id: planId,
-        total_count: billingCycle === 'monthly' ? 12 : 1, // Monthly = 12 payments, Yearly = 1 payment
+        customer_id: customerId, // Required: Link subscription to customer
+        customer_notify: 1, // Notify customer
+        total_count: billingCycle === 'monthly' ? 12 : 1, // Auto-renew
+        start_at: trialDays > 0 ? trialEnd : now, // Start after trial ends, or immediately if no trial
         notes: {
           orderId: paymentOrder.orderId,
           userId: paymentOrder.userId.toString(),
+          planId: paymentOrder.planId,
+          cycle: billingCycle,
+          trialDays: trialDays > 0 ? trialDays.toString() : undefined, // Store trial info in notes
         },
       };
 
-      logger.info(`Creating Razorpay subscription for order: ${paymentOrder.orderId}`);
+      logger.info(`Creating Razorpay subscription with ${trialDays}-day trial for order: ${paymentOrder.orderId}`);
 
       const response = await this.axiosInstance.post<RazorpaySubscriptionResponse>(
         '/v1/subscriptions',
@@ -359,16 +384,83 @@ class RazorpayProvider implements IPaymentProvider {
 
       return {
         subscriptionId: subscription.id,
-        customerToken: subscription.customer_id || '',
+        customerToken: customerId,
+        checkoutData: {
+          subscriptionId: subscription.id,
+          keyId: RAZORPAY_CONFIG.keyId, // Frontend needs this for Razorpay Checkout SDK
+        },
         providerMetadata: {
           razorpaySubscriptionId: subscription.id,
-          planId: planId,
+          razorpayCustomerId: customerId,
+          razorpayPlanId: planId,
           status: subscription.status,
+          trialEnd: trialDays > 0 ? new Date(trialEnd * 1000).toISOString() : null,
+          chargeAt: subscription.charge_at ? new Date(subscription.charge_at * 1000).toISOString() : null,
         },
       };
     } catch (error: any) {
-      logger.error(error, 'Error creating Razorpay recurring subscription');
-      throw new Error(`Razorpay subscription creation failed: ${error.message}`);
+      // Log the full error response from Razorpay for debugging
+      const errorResponse = error.response?.data;
+      const errorDetails = errorResponse || error.message;
+      
+      logger.error(
+        {
+          error: error.message,
+          errorResponse,
+          errorDetails,
+          planId: request.paymentOrder.planId,
+          billingCycle: request.billingCycle,
+          trialDays: request.trialDays,
+        },
+        'Error creating Razorpay recurring subscription'
+      );
+      
+      // Extract more detailed error message from Razorpay response
+      const razorpayError = errorResponse?.error?.description || 
+                           errorResponse?.error?.reason || 
+                           errorResponse?.error?.field ||
+                           errorResponse?.error?.code ||
+                           error.message;
+      throw new Error(`Razorpay subscription creation failed: ${razorpayError}`);
+    }
+  }
+
+  /**
+   * Get or create Razorpay customer
+   */
+  private async getOrCreateCustomer(customerData: {
+    email: string;
+    name: string;
+    contact?: string;
+  }): Promise<string> {
+    try {
+      // Try to find existing customer by email
+      const customersResponse = await this.axiosInstance.get('/v1/customers', {
+        params: {
+          email: customerData.email,
+          count: 1,
+        },
+      });
+
+      if (customersResponse.data.items && customersResponse.data.items.length > 0) {
+        return customersResponse.data.items[0].id;
+      }
+
+      // Create new customer
+      const customerPayload: any = {
+        name: customerData.name,
+        email: customerData.email,
+      };
+
+      if (customerData.contact) {
+        customerPayload.contact = customerData.contact;
+      }
+
+      const response = await this.axiosInstance.post('/v1/customers', customerPayload);
+      return response.data.id;
+    } catch (error: any) {
+      logger.error(error, 'Error getting or creating Razorpay customer');
+      throw new Error(`Failed to get or create customer: ${error.message}`);
     }
   }
 
@@ -598,15 +690,26 @@ class RazorpayProvider implements IPaymentProvider {
           },
         });
 
+        // Search for existing plan by item name, amount, and currency
         const existingPlan = plansResponse.data.items.find(
-          (plan: any) => plan.item?.name === planName
+          (plan: any) => {
+            const item = plan.item || plan;
+            return (
+              item.name === planName ||
+              (item.amount === amountInSmallestUnit &&
+               item.currency === paymentOrder.currency &&
+               plan.period === (billingCycle === 'monthly' ? 'monthly' : 'yearly'))
+            );
+          }
         );
 
         if (existingPlan) {
+          logger.info(`Found existing Razorpay plan: ${existingPlan.id} for ${planName}`);
           return existingPlan.id;
         }
-      } catch (error) {
-        // Plan not found, create new one
+      } catch (error: any) {
+        // If fetching plans fails, log but continue to try creating
+        logger.warn(`Could not fetch existing plans: ${error.message}`);
       }
 
       // Create new plan
@@ -625,11 +728,47 @@ class RazorpayProvider implements IPaymentProvider {
         },
       };
 
+      logger.info(`Creating Razorpay plan: ${planName} with amount ${amountInSmallestUnit} ${paymentOrder.currency}`);
       const response = await this.axiosInstance.post('/v1/plans', planPayload);
+      logger.info(`Successfully created Razorpay plan: ${response.data.id}`);
       return response.data.id;
     } catch (error: any) {
-      logger.error(error, 'Error getting or creating Razorpay plan');
-      throw new Error(`Failed to create Razorpay plan: ${error.message}`);
+      // Log the full error response from Razorpay for debugging
+      const errorResponse = error.response?.data;
+      const errorDetails = errorResponse || error.message;
+      
+      logger.error(
+        {
+          error: error.message,
+          errorResponse,
+          errorDetails,
+          planId: paymentOrder.planId,
+          billingCycle,
+          planName: `plan_${paymentOrder.planId}_${billingCycle}`,
+        },
+        'Error getting or creating Razorpay plan'
+      );
+      
+      // Extract more detailed error message from Razorpay response
+      const razorpayError = errorResponse?.error?.description || 
+                           errorResponse?.error?.reason || 
+                           errorResponse?.error?.field ||
+                           errorResponse?.error?.code ||
+                           error.message;
+      
+      // If Plans API is not available, provide helpful error message
+      if (errorResponse?.error?.description?.includes('not found') || 
+          errorResponse?.error?.code === 'BAD_REQUEST_ERROR') {
+        throw new Error(
+          `Razorpay Plans API is not available. Please ensure:\n` +
+          `1. Your Razorpay account has Subscriptions/Plans API enabled\n` +
+          `2. You're using the correct API keys (test keys for sandbox, live keys for production)\n` +
+          `3. The Plans API feature is activated in your Razorpay dashboard\n` +
+          `Original error: ${razorpayError}`
+        );
+      }
+      
+      throw new Error(`Failed to create Razorpay plan: ${razorpayError}`);
     }
   }
 }

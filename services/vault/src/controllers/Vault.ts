@@ -5,8 +5,10 @@ import { ObjectId } from 'mongodb';
 import logger from '../logger';
 // Import auth middleware to extend Express Request type with user property
 import '../middlewares/auth';
+import { addUserPermissionsToResponse } from '../utils/responseHelper';
 import { storeFiles, FileStorageError, deleteItemFiles } from '../services/files/FileStorageService';
 import { IAttachment } from '../types/Attachment';
+import { logActivity } from '../utils/activityLogHelper';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as zlib from 'zlib';
@@ -144,6 +146,28 @@ export const addItem = async (req: Request, res: Response) => {
       `(ID: ${itemId}, ${attachments.length} attachment(s))`
     );
 
+    // Log item creation (non-blocking)
+    try {
+      const user = await db.findOne(collection.vaultUsers, { _id: new ObjectId(req.user.id) }) as any;
+      if (user && user.companyName) {
+        await logActivity(req, user, {
+          action: 'ITEM_CREATED',
+          targetType: 'item',
+          targetId: itemId.toString(),
+          description: `Created vault item: ${newItem.title || 'Untitled'}`,
+          metadata: {
+            itemId: itemId.toString(),
+            category: newItem.category,
+            hasAttachments: attachments.length > 0,
+            attachmentCount: attachments.length,
+            folderId: newItem.folderId?.toString() || null,
+          },
+        });
+      }
+    } catch (logError: any) {
+      logger.warn(`Failed to log item creation: ${logError.message}`);
+    }
+
     // Fetch the complete item with attachments
     const completeItem = await db.findOne(collection.vaultItems, { _id: itemId });
 
@@ -178,7 +202,9 @@ export const addItem = async (req: Request, res: Response) => {
       })),
     };
 
-    res.status(201).json(createdItem);
+    // Include user permissions in response
+    const response = addUserPermissionsToResponse(req, createdItem);
+    res.status(201).json(response);
   } catch (error: any) {
     logger.error(error, 'Error adding item');
     res.status(500).json({ 
@@ -316,7 +342,29 @@ export const getItem = async (req: Request, res: Response) => {
 
     logger.info(`Item ${id} fetched by user ${req.user.email}`);
 
-    res.status(200).json({ item: formattedItem });
+    // Log item view (non-blocking)
+    try {
+      const user = await db.findOne(collection.vaultUsers, { _id: new ObjectId(req.user.id) }) as any;
+      if (user && user.companyName) {
+        await logActivity(req, user, {
+          action: 'ITEM_VIEWED',
+          targetType: 'item',
+          targetId: id,
+          description: `Viewed vault item: ${formattedItem.title || 'Untitled'}`,
+          metadata: {
+            itemId: id,
+            category: formattedItem.category,
+            accessCount: formattedItem.accessCount || 0,
+          },
+        });
+      }
+    } catch (logError: any) {
+      logger.warn(`Failed to log item view: ${logError.message}`);
+    }
+
+    // Include user permissions in response
+    const response = addUserPermissionsToResponse(req, { item: formattedItem });
+    res.status(200).json(response);
   } catch (error: any) {
     logger.error(error, 'Error fetching item');
     res.status(500).json({ 
@@ -440,6 +488,26 @@ export const updateItem = async (req: Request, res: Response) => {
     }
 
     logger.info(`Item ${id} updated by user ${req.user.email}`);
+
+    // Log item update (non-blocking)
+    try {
+      const user = await db.findOne(collection.vaultUsers, { _id: new ObjectId(req.user.id) }) as any;
+      if (user && user.companyName) {
+        await logActivity(req, user, {
+          action: 'ITEM_UPDATED',
+          targetType: 'item',
+          targetId: id,
+          description: `Updated vault item: ${updateData.title || 'Untitled'}`,
+          metadata: {
+            itemId: id,
+            category: updateData.category || null,
+            fieldsUpdated: Object.keys(updateData).filter(k => k !== 'updatedAt').length,
+          },
+        });
+      }
+    } catch (logError: any) {
+      logger.warn(`Failed to log item update: ${logError.message}`);
+    }
 
     // Fetch updated item to return
     // Query with ObjectId conversion to match how items are stored
@@ -579,6 +647,26 @@ export const deleteItem = async (req: Request, res: Response) => {
 
     logger.info(`Item ${id} deleted by user ${req.user.email}`);
 
+    // Log item deletion (non-blocking)
+    try {
+      const user = await db.findOne(collection.vaultUsers, { _id: new ObjectId(req.user.id) }) as any;
+      if (user && user.companyName) {
+        await logActivity(req, user, {
+          action: 'ITEM_DELETED',
+          targetType: 'item',
+          targetId: id,
+          description: `Deleted vault item: ${item.title || 'Untitled'}`,
+          metadata: {
+            itemId: id,
+            category: item.category || null,
+            hadAttachments: !!(item.attachments && item.attachments.length > 0),
+          },
+        });
+      }
+    } catch (logError: any) {
+      logger.warn(`Failed to log item deletion: ${logError.message}`);
+    }
+
     // Respond with success
     res.status(200).json({ 
       message: 'Item deleted successfully', 
@@ -693,7 +781,9 @@ export const getItems = async (req: Request, res: Response) => {
     });
 
     // Respond with data
-    res.status(200).json({ items: formattedItems });
+    // Include user permissions in response
+    const response = addUserPermissionsToResponse(req, { items: formattedItems });
+    res.status(200).json(response);
   } catch (error: any) {
     logger.error(error, 'Error fetching items');
     res.status(500).json({ 

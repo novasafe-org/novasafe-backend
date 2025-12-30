@@ -13,6 +13,8 @@ import {
   revokeAllOtherSessions,
 } from '../controllers/SessionController';
 import { authMiddleware } from '../middlewares/auth';
+import { loadRBACContext, requirePermission } from '../middlewares/rbac';
+import { Permission } from '../constants/rbac.constants';
 
 const router = express.Router();
 
@@ -42,12 +44,12 @@ const router = express.Router();
  *   "count": 3
  * }
  */
-router.get('/', authMiddleware, getSessions);
+router.get('/', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_READ), getSessions);
 
 /**
  * @route   DELETE /v/auth/sessions/:sessionId
  * @desc    Revoke a specific session
- * @access  Protected (requires JWT token)
+ * @access  Protected (requires JWT token and settings:update permission)
  * 
  * RESPONSE:
  * {
@@ -55,19 +57,19 @@ router.get('/', authMiddleware, getSessions);
  *   "sessionId": "507f1f77bcf86cd799439011"
  * }
  */
-router.delete('/:sessionId', authMiddleware, revokeSessionById);
+router.delete('/:sessionId', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_UPDATE), revokeSessionById);
 
 /**
  * @route   POST /v/auth/sessions/revoke-all
  * @desc    Revoke all sessions except the current one
- * @access  Protected (requires JWT token)
+ * @access  Protected (requires JWT token and settings:update permission)
  * 
  * RESPONSE:
  * {
  *   "message": "All other sessions revoked successfully"
  * }
  */
-router.post('/revoke-all', authMiddleware, revokeAllOtherSessions);
+router.post('/revoke-all', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_UPDATE), revokeAllOtherSessions);
 
 export default router;
 

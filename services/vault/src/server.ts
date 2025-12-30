@@ -13,6 +13,11 @@ import pricingRoute from './routes/pricingRoute';
 import geoRoute from './routes/geoRoute';
 import paymentRoute from './routes/paymentRoute';
 import subscriptionRoute from './routes/subscriptionRoute';
+import onboardingRoute from './routes/onboardingRoute';
+import accountRoute from './routes/accountRoute';
+import billingRoute from './routes/billingRoute';
+import activityLogRoutes from './routes/admin/activityLogRoutes';
+import accessManagementRoutes from './routes/admin/accessManagementRoutes';
 import Database from '../database/connection'; // Import Database class
 import logger from './logger';
 import { DBCONFIG } from '../config/config';
@@ -50,6 +55,11 @@ app.use('/v/pricing', pricingRoute);
 app.use('/v/payments', paymentRoute);
 app.use('/v/subscriptions', subscriptionRoute);
 app.use('/v/geo', geoRoute);
+app.use('/v/onboarding', onboardingRoute);
+app.use('/v/account', accountRoute);
+app.use('/v/billing', billingRoute);
+app.use('/v/admin/activity-logs', activityLogRoutes);
+app.use('/v/admin/access', accessManagementRoutes);
 
 // Establish database connection at server startup
 const initializeDatabase = async () => {

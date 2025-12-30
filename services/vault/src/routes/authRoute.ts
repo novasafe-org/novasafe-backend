@@ -1,5 +1,5 @@
 import express from 'express';
-import { googleSignIn, getCurrentUser, logout } from '../controllers/Auth';
+import { googleSignIn, getCurrentUser, logout, emailLogin } from '../controllers/Auth';
 import { authMiddleware } from '../middlewares/auth';
 
 /**
@@ -53,6 +53,32 @@ const router = express.Router();
  * ```
  */
 router.post('/google', googleSignIn);
+
+/**
+ * @route   POST /v/auth/email
+ * @desc    Authenticate user with email and password
+ * @access  Public
+ * 
+ * REQUEST BODY:
+ * {
+ *   "email": "user@example.com",
+ *   "password": "userpassword"
+ * }
+ * 
+ * RESPONSE:
+ * {
+ *   "message": "Authentication successful",
+ *   "token": "eyJhbGciOiJIUzI1NiIs...",
+ *   "user": {
+ *     "id": "507f1f77bcf86cd799439011",
+ *     "email": "user@example.com",
+ *     "name": "John Doe",
+ *     "createdAt": "2024-01-15T10:30:00.000Z"
+ *   },
+ *   "requires2FA": false
+ * }
+ */
+router.post('/email', emailLogin);
 
 /**
  * @route   GET /v/auth/me

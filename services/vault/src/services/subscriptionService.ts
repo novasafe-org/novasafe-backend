@@ -21,17 +21,32 @@ export interface CreateSubscriptionParams {
   trialDays?: number;
   isGrandfathered?: boolean;
   grandfatheredPlanId?: PlanId;
+  provider?: 'razorpay' | 'payu' | 'paddle' | 'revenuecat';
+  providerSubscriptionId?: string;
+  providerCustomerId?: string;
+  providerCustomerToken?: string;
+  paymentMethodAdded?: boolean;
   payuSubscriptionId?: string;
   payuCustomerToken?: string;
 }
 
 export interface UpdateSubscriptionParams {
   status?: SubscriptionStatus;
+  billingPeriod?: BillingPeriod;
   currentPeriodStart?: Date;
   currentPeriodEnd?: Date;
   cancelAtPeriodEnd?: boolean;
   canceledAt?: Date | null;
   expiresAt?: Date | null;
+  trialEnd?: Date | null;
+  trialEndsAt?: Date | null;
+  paymentMethodAdded?: boolean;
+  paymentMethodLast4?: string | null;
+  paymentMethodBrand?: string | null;
+  paymentMethodType?: 'card' | 'upi' | 'netbanking' | 'wallet' | null;
+  providerSubscriptionId?: string;
+  providerCustomerId?: string;
+  providerCustomerToken?: string;
   payuSubscriptionId?: string;
   payuCustomerToken?: string;
 }
@@ -93,6 +108,11 @@ export const createSubscription = async (
       grandfatheredPlanId: params.grandfatheredPlanId || null,
       lastPaymentOrderId: params.paymentOrderId ? new ObjectId(params.paymentOrderId) : null,
       initialPaymentOrderId: params.paymentOrderId ? new ObjectId(params.paymentOrderId) : null,
+      provider: params.provider || null,
+      providerSubscriptionId: params.providerSubscriptionId || null,
+      providerCustomerId: params.providerCustomerId || null,
+      providerCustomerToken: params.providerCustomerToken || null,
+      paymentMethodAdded: params.paymentMethodAdded || false,
       payuSubscriptionId: params.payuSubscriptionId || null,
       payuCustomerToken: params.payuCustomerToken || null,
       createdAt: now,

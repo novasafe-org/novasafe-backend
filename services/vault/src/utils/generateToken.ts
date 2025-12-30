@@ -34,7 +34,7 @@ export const generateToken = (user: IUser, tokenId?: string): TokenWithSessionId
   // Create minimal payload to keep token size small
   // Note: jti is added via jwtid option, not in payload
   const payload: IUserPayload = {
-    id: user._id?.toString() || user.googleId,
+    id: user._id?.toString() || user.googleId || '',
     email: user.email,
     name: user.name,
     picture: user.picture,

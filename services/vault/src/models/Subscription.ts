@@ -18,7 +18,7 @@ export type SubscriptionStatus =
 
 export type BillingPeriod = 'monthly' | 'yearly' | 'one_time';
 
-export type PlanId = 'free' | 'basic' | 'pro' | 'premium' | 'enterprise';
+export type PlanId = 'free' | 'individual' | 'family' | 'team' | 'business';
 
 export interface ISubscription {
   /**
@@ -151,11 +151,48 @@ export interface ISubscription {
   providerSubscriptionId?: string | null;
 
   /**
+   * Provider customer ID (e.g., Razorpay customer_id)
+   * Used to link subscription to customer in payment provider
+   * Optional: null if not available
+   */
+  providerCustomerId?: string | null;
+
+  /**
    * Provider customer token (for recurring payments)
    * Used to store payment method for future charges
    * Optional: null if not available
    */
   providerCustomerToken?: string | null;
+
+  /**
+   * Whether payment method has been added to subscription
+   * For trial subscriptions, this indicates card/UPI is saved but not charged
+   * Default: false
+   */
+  paymentMethodAdded?: boolean;
+
+  /**
+   * Payment method details (stored after checkout)
+   * Last 4 digits of card/account
+   */
+  paymentMethodLast4?: string | null;
+
+  /**
+   * Payment method brand (e.g., Visa, Mastercard, UPI, NetBanking)
+   */
+  paymentMethodBrand?: string | null;
+
+  /**
+   * Payment method type (card, upi, netbanking, wallet)
+   */
+  paymentMethodType?: 'card' | 'upi' | 'netbanking' | 'wallet' | null;
+
+  /**
+   * Trial end date (alias for trialEnd for clarity)
+   * When trial period ends and billing starts
+   * Optional: null if no trial
+   */
+  trialEndsAt?: Date | null;
 
   // ============================================
   // Legacy PayU Fields (for backward compatibility)

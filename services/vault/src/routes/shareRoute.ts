@@ -6,6 +6,8 @@
 
 import { Router } from 'express';
 import { authMiddleware } from '../middlewares/auth';
+import { loadRBACContext, requirePermission } from '../middlewares/rbac';
+import { Permission } from '../constants/rbac.constants';
 import {
   createShareController,
   getReceivedSharesController,
@@ -20,18 +22,19 @@ const router = Router();
 
 // All routes require authentication
 router.use(authMiddleware);
+router.use(loadRBACContext);
 
 // Share operations
-router.post('/create', createShareController);
-router.get('/list', (req, res) => {
+router.post('/create', requirePermission(Permission.SHARE_MANAGE), createShareController);
+router.get('/list', requirePermission(Permission.SHARE_VIEW), (req, res) => {
   // Route to appropriate controller based on query parameter
   if (req.query.type === 'sent') {
     return getSentSharesController(req, res);
   }
   return getReceivedSharesController(req, res);
 });
-router.post('/revoke', revokeShareController);
-router.patch('/update', updateSharePermissionController);
+router.post('/revoke', requirePermission(Permission.SHARE_MANAGE), revokeShareController);
+router.patch('/update', requirePermission(Permission.SHARE_MANAGE), updateSharePermissionController);
 
 // Public key operations
 router.get('/keys/public', getPublicKeyController);

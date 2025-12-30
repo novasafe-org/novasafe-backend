@@ -28,6 +28,13 @@ export const DBCONFIG: Record<string, DBConfigGeneric<Record<string, string>>> =
       subscriptions: 'subscriptions',
       paymentOrders: 'payment_orders',
       coupons: 'coupons',
+      // Onboarding collections
+      otps: 'otps',
+      // Access Management collections
+      invitations: 'invitations',
+      accessRequests: 'accessRequests',
+      activityLogs: 'activityLogs',
+      organizationMembers: 'organizationMembers',
     }
   }
 };

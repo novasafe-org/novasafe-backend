@@ -70,6 +70,7 @@ export interface CreateRecurringSubscriptionRequest {
   userFirstName: string;
   userPhone?: string;
   billingCycle: 'monthly' | 'yearly';
+  trialDays?: number; // Optional trial period in days
 }
 
 /**
@@ -78,6 +79,10 @@ export interface CreateRecurringSubscriptionRequest {
 export interface CreateRecurringSubscriptionResponse {
   subscriptionId: string;
   customerToken: string;
+  checkoutData?: {
+    subscriptionId: string;
+    keyId: string; // Razorpay key ID for frontend SDK
+  };
   providerMetadata?: Record<string, any>;
 }
 

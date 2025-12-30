@@ -12,8 +12,8 @@ import logger from '../logger';
 const PRICING_PLANS = {
   INR: [
     {
-      id: 'basic',
-      name: 'Basic',
+      id: 'individual',
+      name: 'Individual',
       description: 'For individuals starting out',
       features: [
         'Unlimited AI prompts',
@@ -24,8 +24,8 @@ const PRICING_PLANS = {
       yearlyPrice: { amount: 7999, currency: 'INR' },
     },
     {
-      id: 'pro',
-      name: 'Pro',
+      id: 'family',
+      name: 'Family',
       description: 'Perfect for professionals',
       features: [
         'Unlimited AI prompts',
@@ -40,8 +40,8 @@ const PRICING_PLANS = {
       isRecommended: true,
     },
     {
-      id: 'enterprise',
-      name: 'Enterprise',
+      id: 'business',
+      name: 'Business',
       description: 'Tailored for businesses',
       features: [
         'Unlimited AI prompts',
@@ -58,8 +58,8 @@ const PRICING_PLANS = {
   ],
   USD: [
     {
-      id: 'pro',
-      name: 'Pro',
+      id: 'family',
+      name: 'Family',
       description: 'For individuals who need more',
       features: [
         'Unlimited Safes & Items',
@@ -73,11 +73,11 @@ const PRICING_PLANS = {
       isRecommended: true,
     },
     {
-      id: 'premium',
-      name: 'Premium',
+      id: 'team',
+      name: 'Team',
       description: 'Advanced security for families & power users',
       features: [
-        'Everything in Pro',
+        'Everything in Family',
         'Family Sharing (up to 5 users)',
         'Advanced Access Control',
         'Larger Attachments',
@@ -89,8 +89,8 @@ const PRICING_PLANS = {
   ],
   EUR: [
     {
-      id: 'pro',
-      name: 'Pro',
+      id: 'family',
+      name: 'Family',
       description: 'For individuals who need more',
       features: [
         'Unlimited Safes & Items',
@@ -104,11 +104,11 @@ const PRICING_PLANS = {
       isRecommended: true,
     },
     {
-      id: 'premium',
-      name: 'Premium',
+      id: 'team',
+      name: 'Team',
       description: 'Advanced security for families & power users',
       features: [
-        'Everything in Pro',
+        'Everything in Family',
         'Family Sharing (up to 5 users)',
         'Advanced Access Control',
         'Larger Attachments',
@@ -120,8 +120,8 @@ const PRICING_PLANS = {
   ],
   GBP: [
     {
-      id: 'pro',
-      name: 'Pro',
+      id: 'family',
+      name: 'Family',
       description: 'For individuals who need more',
       features: [
         'Unlimited Safes & Items',
@@ -135,11 +135,11 @@ const PRICING_PLANS = {
       isRecommended: true,
     },
     {
-      id: 'premium',
-      name: 'Premium',
+      id: 'team',
+      name: 'Team',
       description: 'Advanced security for families & power users',
       features: [
-        'Everything in Pro',
+        'Everything in Family',
         'Family Sharing (up to 5 users)',
         'Advanced Access Control',
         'Larger Attachments',

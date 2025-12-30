@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import Database from '../../database/connection';
 import { ISettings, DEFAULT_SETTINGS } from '../models/Settings';
+import { addUserPermissionsToResponse } from '../utils/responseHelper';
 import logger from '../logger';
 
 const COLLECTION_NAME = 'user_settings';
@@ -29,7 +30,7 @@ export const getSettings = async (req: Request, res: Response): Promise<void> =>
 
     if (!settings) {
       // Return default settings if user settings don't exist
-      res.status(200).json({
+      const response = addUserPermissionsToResponse(req, {
         message: 'Settings retrieved successfully',
         data: {
           userId,
@@ -38,13 +39,15 @@ export const getSettings = async (req: Request, res: Response): Promise<void> =>
           updatedAt: new Date(),
         }
       });
+      res.status(200).json(response);
       return;
     }
 
-    res.status(200).json({
+    const response = addUserPermissionsToResponse(req, {
       message: 'Settings retrieved successfully',
       data: settings
     });
+    res.status(200).json(response);
   } catch (error: any) {
     logger.error(`Error getting settings: ${error.message}`);
     res.status(500).json({
@@ -93,13 +96,14 @@ export const createSettings = async (req: Request, res: Response): Promise<void>
 
     const result = await db.insertOne(COLLECTION_NAME, newSettings);
 
-    res.status(201).json({
+    const response = addUserPermissionsToResponse(req, {
       message: 'Settings created successfully',
       data: {
         _id: result.insertedId,
         ...newSettings
       }
     });
+    res.status(201).json(response);
   } catch (error: any) {
     logger.error(`Error creating settings: ${error.message}`);
     res.status(500).json({
@@ -177,10 +181,11 @@ export const updateSettings = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    res.status(200).json({
+    const response = addUserPermissionsToResponse(req, {
       message: 'Settings updated successfully',
       data: result.value
     });
+    res.status(200).json(response);
   } catch (error: any) {
     logger.error(`Error updating settings: ${error.message}`);
     res.status(500).json({
@@ -230,10 +235,11 @@ export const resetSettings = async (req: Request, res: Response): Promise<void> 
       }
     );
 
-    res.status(200).json({
+    const response = addUserPermissionsToResponse(req, {
       message: 'Settings reset successfully',
       data: result.value
     });
+    res.status(200).json(response);
   } catch (error: any) {
     logger.error(`Error resetting settings: ${error.message}`);
     res.status(500).json({
@@ -261,7 +267,7 @@ export const backupVault = async (req: Request, res: Response): Promise<void> =>
 
     // TODO: Implement actual backup logic
     // For now, return a success response
-    res.status(200).json({
+    const response = addUserPermissionsToResponse(req, {
       message: 'Vault backup initiated successfully',
       data: {
         backupId: `backup_${Date.now()}`,
@@ -269,6 +275,7 @@ export const backupVault = async (req: Request, res: Response): Promise<void> =>
         status: 'completed'
       }
     });
+    res.status(200).json(response);
   } catch (error: any) {
     logger.error(`Error backing up vault: ${error.message}`);
     res.status(500).json({
@@ -296,7 +303,7 @@ export const restoreVault = async (req: Request, res: Response): Promise<void> =
 
     // TODO: Implement actual restore logic
     // For now, return a success response
-    res.status(200).json({
+    const response = addUserPermissionsToResponse(req, {
       message: 'Vault restore initiated successfully',
       data: {
         restoreId: `restore_${Date.now()}`,
@@ -304,6 +311,7 @@ export const restoreVault = async (req: Request, res: Response): Promise<void> =
         status: 'completed'
       }
     });
+    res.status(200).json(response);
   } catch (error: any) {
     logger.error(`Error restoring vault: ${error.message}`);
     res.status(500).json({

@@ -9,25 +9,82 @@
 export interface IUser {
   /**
    * Google's unique identifier for the user (from 'sub' claim in Google JWT)
-   * This is used to uniquely identify users across sessions
+   * Optional: Only present if user signed up with Google
    */
-  googleId: string;
+  googleId?: string;
 
   /**
-   * User's full name from Google profile
+   * User's full name
    */
   name: string;
 
   /**
-   * User's email address from Google profile
-   * This should be verified by Google
+   * User's email address
+   * Verified by Google for OAuth users, verified by OTP for email signup
    */
   email: string;
 
   /**
    * URL to user's profile picture from Google
+   * Optional: Only present if user signed up with Google
    */
   picture?: string;
+
+  /**
+   * Signup method: 'google' or 'email'
+   * Default: 'email'
+   */
+  signupMethod?: 'google' | 'email';
+
+  /**
+   * Hashed password (bcrypt)
+   * Optional: Only present for email signup users
+   */
+  passwordHash?: string;
+
+  /**
+   * Email verification status
+   * true: Email is verified (Google OAuth or OTP verified)
+   * false: Email not yet verified (for email signup)
+   */
+  emailVerified?: boolean;
+
+  /**
+   * Timestamp when email was verified
+   * Optional: null if email not verified
+   */
+  emailVerifiedAt?: Date | null;
+
+  /**
+   * Onboarding completion status
+   * true: User has completed onboarding (recovery key generated)
+   * false: User is still in onboarding flow
+   */
+  onboardingCompleted?: boolean;
+
+  /**
+   * Selected plan during onboarding
+   * 'individual' | 'family' | 'team' | 'business'
+   */
+  planId?: string;
+
+  /**
+   * Company name (for team/business plans)
+   * Optional
+   */
+  companyName?: string;
+
+  /**
+   * Phone number (for team/business plans)
+   * Optional
+   */
+  phoneNumber?: string;
+
+  /**
+   * Company domain (for business plans)
+   * Optional
+   */
+  companyDomain?: string;
 
   /**
    * Timestamp of when the user first signed up

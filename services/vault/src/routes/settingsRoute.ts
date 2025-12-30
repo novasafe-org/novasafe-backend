@@ -8,6 +8,8 @@ import {
   restoreVault,
 } from '../controllers/Settings';
 import { authMiddleware } from '../middlewares/auth';
+import { loadRBACContext, requirePermission } from '../middlewares/rbac';
+import { Permission } from '../constants/rbac.constants';
 
 const router = Router();
 
@@ -18,22 +20,22 @@ const router = Router();
  */
 
 // Get user settings (returns defaults if not found)
-router.get('/', authMiddleware, getSettings);
+router.get('/', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_READ), getSettings);
 
 // Create new user settings (with defaults)
-router.post('/', authMiddleware, createSettings);
+router.post('/', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_UPDATE), createSettings);
 
 // Update user settings (partial update)
-router.patch('/', authMiddleware, updateSettings);
+router.patch('/', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_UPDATE), updateSettings);
 
 // Reset settings to defaults
-router.delete('/reset', authMiddleware, resetSettings);
+router.delete('/reset', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_UPDATE), resetSettings);
 
 // Backup vault data
-router.post('/backup', authMiddleware, backupVault);
+router.post('/backup', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_READ), backupVault);
 
 // Restore vault data
-router.post('/restore', authMiddleware, restoreVault);
+router.post('/restore', authMiddleware, loadRBACContext, requirePermission(Permission.SETTINGS_UPDATE), restoreVault);
 
 export default router;
 
