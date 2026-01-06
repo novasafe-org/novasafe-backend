@@ -38,6 +38,10 @@ export const getActivityLogs = async (req: Request, res: Response): Promise<void
 
     const organizationId = adminContext.organizationId;
 
+    // IMPORTANT: Admins see ALL logs for their organization
+    // The organizationId filter ensures all organization logs are returned
+    // No actor filtering is applied by default - admins can see all users' activities
+
     // Parse query parameters
     const filters: ActivityLogFilters = {};
     const pagination: ActivityLogPagination = {};

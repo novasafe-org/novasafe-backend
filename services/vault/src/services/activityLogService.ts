@@ -143,8 +143,11 @@ class ActivityLogService {
       const skip = (page - 1) * limit;
 
       // Build query
+      // IMPORTANT: This filters by organizationId (company name)
+      // Admins will see ALL logs for their organization, not just their own
+      // Actor filters (actorUserId, actorEmail) are optional and only applied if provided
       const query: any = {
-        organizationId,
+        organizationId, // This ensures all organization logs are returned
       };
 
       // Date range filter

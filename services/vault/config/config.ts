@@ -35,6 +35,13 @@ export const DBCONFIG: Record<string, DBConfigGeneric<Record<string, string>>> =
       accessRequests: 'accessRequests',
       activityLogs: 'activityLogs',
       organizationMembers: 'organizationMembers',
+      // Secrets Manager collections
+      secrets: 'secrets',
+      secretVersions: 'secretVersions',
+      secretAccessLogs: 'secretAccessLogs',
+      // Machine Auth collections
+      personalAccessTokens: 'personalAccessTokens',
+      serviceAccounts: 'serviceAccounts',
     }
   }
 };

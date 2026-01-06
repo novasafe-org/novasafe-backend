@@ -18,6 +18,11 @@ import accountRoute from './routes/accountRoute';
 import billingRoute from './routes/billingRoute';
 import activityLogRoutes from './routes/admin/activityLogRoutes';
 import accessManagementRoutes from './routes/admin/accessManagementRoutes';
+import invitationRoute from './routes/invitationRoute';
+import secretsUIRoute from './routes/secretsUIRoute';
+import secretsAPIRoute from './routes/secretsAPIRoute';
+import patRoute from './routes/patRoute';
+import serviceAccountRoute from './routes/serviceAccountRoute';
 import Database from '../database/connection'; // Import Database class
 import logger from './logger';
 import { DBCONFIG } from '../config/config';
@@ -60,6 +65,13 @@ app.use('/v/account', accountRoute);
 app.use('/v/billing', billingRoute);
 app.use('/v/admin/activity-logs', activityLogRoutes);
 app.use('/v/admin/access', accessManagementRoutes);
+app.use('/v/invitations', invitationRoute);
+// UI routes - accept user JWTs from browser
+app.use('/v/secrets', secretsUIRoute);
+// Machine API routes - only accept PAT/Service Account (reject user JWTs)
+app.use('/api/v1/secrets', secretsAPIRoute);
+app.use('/v/pats', patRoute);
+app.use('/v/service-accounts', serviceAccountRoute);
 
 // Establish database connection at server startup
 const initializeDatabase = async () => {

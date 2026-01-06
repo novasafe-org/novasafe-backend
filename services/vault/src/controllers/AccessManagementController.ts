@@ -20,6 +20,8 @@ import {
   getAccessRequests,
   approveAccessRequest,
   rejectAccessRequest,
+  getInvitationByToken,
+  acceptInvitation,
 } from '../services/accessManagementService';
 import { logActivity } from '../utils/activityLogHelper';
 import { addUserPermissionsToResponse } from '../utils/responseHelper';
@@ -590,6 +592,155 @@ export const rejectAccessRequestController = async (req: Request, res: Response)
       success: false,
       message: 'Failed to reject access request',
       error: error.message,
+    });
+  }
+};
+
+/**
+ * Get invitation by token (public endpoint - no auth required)
+ * GET /invitations/verify/:token
+ */
+export const getInvitationByTokenController = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token } = req.params;
+
+    if (!token) {
+      res.status(400).json({
+        success: false,
+        message: 'Bad Request',
+        error: 'Invitation token is required',
+      });
+      return;
+    }
+
+    const invitation = await getInvitationByToken(token);
+
+    if (!invitation) {
+      res.status(404).json({
+        success: false,
+        message: 'Not Found',
+        error: 'Invalid or expired invitation token',
+        userMessage: 'This invitation link is invalid or has expired. Please contact your administrator for a new invitation.',
+      });
+      return;
+    }
+
+    // Return invitation details (without sensitive info)
+    res.status(200).json({
+      success: true,
+      message: 'Invitation found',
+      data: {
+        email: invitation.email,
+        role: invitation.role,
+        organizationId: invitation.organizationId,
+        expiresAt: invitation.expiresAt,
+      },
+    });
+  } catch (error: any) {
+    logger.error({ error: error.message }, 'Failed to get invitation by token');
+    res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+      error: error.message || 'Failed to verify invitation',
+    });
+  }
+};
+
+/**
+ * Accept invitation and create account (public endpoint - no auth required)
+ * POST /invitations/accept
+ */
+export const acceptInvitationController = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token: invitationToken, name, password, signupMethod, googleId, picture } = req.body;
+
+    if (!invitationToken) {
+      res.status(400).json({
+        success: false,
+        message: 'Bad Request',
+        error: 'Invitation token is required',
+      });
+      return;
+    }
+
+    if (!name) {
+      res.status(400).json({
+        success: false,
+        message: 'Bad Request',
+        error: 'Name is required',
+      });
+      return;
+    }
+
+    if (signupMethod === 'email' && !password) {
+      res.status(400).json({
+        success: false,
+        message: 'Bad Request',
+        error: 'Password is required for email signup',
+      });
+      return;
+    }
+
+    const result = await acceptInvitation(invitationToken, {
+      name,
+      password: password || '',
+      signupMethod: signupMethod || 'email',
+      googleId,
+      picture,
+    });
+
+    // Generate JWT token for the new user
+    const { generateToken } = await import('../utils/generateToken');
+    const { token, tokenId } = generateToken(result.user);
+
+    res.status(200).json({
+      success: true,
+      message: 'Invitation accepted and account created successfully',
+      data: {
+        user: {
+          id: result.user._id!.toString(),
+          email: result.user.email,
+          name: result.user.name,
+          role: (result.user as any).role,
+          planId: result.user.planId,
+          companyName: result.user.companyName,
+          onboardingCompleted: result.user.onboardingCompleted,
+        },
+        token: token,
+        invitation: {
+          role: result.invitation.role,
+          organizationId: result.invitation.organizationId,
+        },
+      },
+    });
+  } catch (error: any) {
+    logger.error({ error: error.message }, 'Failed to accept invitation');
+    
+    // Handle specific error cases
+    if (error.message.includes('already exists')) {
+      res.status(409).json({
+        success: false,
+        message: 'Conflict',
+        error: error.message,
+        userMessage: 'An account with this email already exists. Please log in instead.',
+      });
+      return;
+    }
+
+    if (error.message.includes('Invalid or expired')) {
+      res.status(404).json({
+        success: false,
+        message: 'Not Found',
+        error: error.message,
+        userMessage: 'This invitation link is invalid or has expired. Please contact your administrator for a new invitation.',
+      });
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+      error: error.message || 'Failed to accept invitation',
     });
   }
 };

@@ -25,6 +25,7 @@ import { generateToken } from '../utils/generateToken';
 import { createSession } from '../services/sessionService';
 import { getClientIP, parseBrowser, parseOS } from '../utils/deviceDetection';
 import { saveUserPublicKey } from '../services/shareService';
+import { sendOTPEmail } from '../services/emailService';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import Database from '../../database/connection';
@@ -147,28 +148,60 @@ export const sendOTP = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Check if email already exists
+    // Note: For invited users, we allow OTP even if email exists (they're accepting invitation)
     const exists = await checkEmailExists(email);
     if (exists) {
-      res.status(409).json({
-        success: false,
-        message: 'An account with this email already exists. Please log in instead.',
-        error: 'Email already registered',
-        userMessage: 'This email is already registered. Would you like to log in?',
-      });
-      return;
+      // Check if this is for an invitation acceptance (query param)
+      const isInvitationFlow = req.query.invitation === 'true';
+      if (!isInvitationFlow) {
+        res.status(409).json({
+          success: false,
+          message: 'An account with this email already exists. Please log in instead.',
+          error: 'Email already registered',
+          userMessage: 'This email is already registered. Would you like to log in?',
+        });
+        return;
+      }
     }
 
     // Generate and store OTP
     const otp = await createOTP(email, 'email_verification');
 
-    // TODO: Send OTP via email service (e.g., SendGrid, AWS SES, etc.)
-    // For now, we'll log it (remove in production!)
-    logger.info(`OTP for ${email}: ${otp}`);
+    // Send OTP via email service
+    try {
+      const emailSent = await sendOTPEmail(email, otp);
+      if (!emailSent) {
+        logger.warn({ email }, 'Failed to send OTP email, but OTP was generated');
+        // Still return success - OTP is generated and can be verified
+        // In development, include OTP in response
+        res.status(200).json({
+          success: true,
+          message: 'OTP generated successfully',
+          // In development, include OTP for testing
+          otp: process.env.NODE_ENV === 'development' ? otp : undefined,
+          expiresIn: 600, // 10 minutes in seconds
+          emailSent: false,
+        });
+        return;
+      }
+    } catch (error: any) {
+      logger.error({ error: error.message, email }, 'Error sending OTP email');
+      // Still return success - OTP is generated
+      res.status(200).json({
+        success: true,
+        message: 'OTP generated successfully',
+        // In development, include OTP for testing
+        otp: process.env.NODE_ENV === 'development' ? otp : undefined,
+        expiresIn: 600,
+        emailSent: false,
+      });
+      return;
+    }
 
     res.status(200).json({
-      message: 'OTP sent successfully',
-      // In production, don't send OTP in response
-      // For development/testing only:
+      success: true,
+      message: 'OTP sent successfully to your email',
+      // In development, include OTP for testing
       otp: process.env.NODE_ENV === 'development' ? otp : undefined,
       expiresIn: 600, // 10 minutes in seconds
     });

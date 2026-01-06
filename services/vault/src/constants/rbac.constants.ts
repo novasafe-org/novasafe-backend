@@ -67,6 +67,12 @@ export enum Permission {
   // Organization settings permissions
   SETTINGS_READ = 'settings:read',
   SETTINGS_UPDATE = 'settings:update',
+  
+  // Secrets Manager permissions
+  SECRETS_CREATE = 'secrets:create',
+  SECRETS_READ = 'secrets:read',
+  SECRETS_UPDATE = 'secrets:update',
+  SECRETS_DELETE = 'secrets:delete',
 }
 
 /**
@@ -100,6 +106,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.LOGS_EXPORT,
     Permission.SETTINGS_READ,
     Permission.SETTINGS_UPDATE,
+    Permission.SECRETS_CREATE,
+    Permission.SECRETS_READ,
+    Permission.SECRETS_UPDATE,
+    Permission.SECRETS_DELETE,
   ],
   
   [UserRole.ADMIN]: [
@@ -127,6 +137,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.LOGS_EXPORT,
     Permission.SETTINGS_READ,
     Permission.SETTINGS_UPDATE,
+    Permission.SECRETS_CREATE,
+    Permission.SECRETS_READ,
+    Permission.SECRETS_UPDATE,
+    Permission.SECRETS_DELETE,
   ],
   
   [UserRole.MEMBER]: [
@@ -138,6 +152,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.ITEM_UPDATE,
     Permission.ITEM_DELETE,
     Permission.SHARE_VIEW,
+    Permission.SECRETS_CREATE,
+    Permission.SECRETS_READ,
+    Permission.SECRETS_UPDATE,
+    Permission.SECRETS_DELETE,
     // Note: Limited vault/item permissions based on assigned access
   ],
   
@@ -146,6 +164,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.VAULT_READ,
     Permission.ITEM_READ,
     Permission.SHARE_VIEW,
+    Permission.SECRETS_READ,
     // Note: No create/update/delete permissions
   ],
 };

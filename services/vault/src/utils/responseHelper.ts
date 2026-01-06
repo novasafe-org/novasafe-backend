@@ -12,6 +12,7 @@ import { attachUserPermissions } from '../middlewares/rbac';
 /**
  * Add user permissions to response data
  * Use this helper to ensure all responses include permissions
+ * Merges permissions into existing user object instead of replacing it
  */
 export const addUserPermissionsToResponse = (req: Request, data: any): any => {
   if (!req.rbacContext) {
@@ -20,6 +21,20 @@ export const addUserPermissionsToResponse = (req: Request, data: any): any => {
 
   try {
     const userPermissions = attachUserPermissions(req);
+    
+    // If data has a user object, merge permissions into it
+    // Otherwise, just add the user permissions
+    if (data.user && typeof data.user === 'object') {
+      return {
+        ...data,
+        user: {
+          ...data.user, // Keep all existing user fields (name, avatar, planId, etc.)
+          ...userPermissions, // Add/override with permissions data (id, email, role, permissions)
+        },
+      };
+    }
+    
+    // If no user object exists, just add permissions
     return {
       ...data,
       user: userPermissions,

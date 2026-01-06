@@ -106,7 +106,13 @@ export const getAccountDetails = async (req: Request, res: Response): Promise<vo
         phoneNumber: user.phoneNumber,
         planId: user.planId || 'individual',
         signupMethod: user.signupMethod || 'email',
-        createdAt: user.createdAt,
+        createdAt: user.createdAt 
+          ? (user.createdAt instanceof Date 
+              ? user.createdAt.toISOString() 
+              : typeof user.createdAt === 'string' 
+                ? user.createdAt 
+                : new Date(user.createdAt).toISOString())
+          : new Date().toISOString(),
         emailVerified: user.emailVerified || false,
         onboardingCompleted: user.onboardingCompleted || false,
       },

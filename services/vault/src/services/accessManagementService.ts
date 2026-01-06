@@ -1027,3 +1027,225 @@ export const rejectAccessRequest = async (
   }
 };
 
+/**
+ * Get invitation by token (public endpoint - no auth required)
+ * Used to verify invitation and get invitation details for acceptance flow
+ */
+export const getInvitationByToken = async (token: string): Promise<IInvitation | null> => {
+  try {
+    const db = new Database('vault');
+    
+    // Find invitation by token
+    const invitation = await db.findOne(collection.invitations, {
+      token,
+      status: 'pending',
+    }) as IInvitation | null;
+
+    if (!invitation) {
+      return null;
+    }
+
+    // Check if invitation is expired
+    const now = new Date();
+    if (new Date(invitation.expiresAt) < now) {
+      // Mark as expired
+      await db.updateOne(
+        collection.invitations,
+        { _id: invitation._id },
+        {
+          $set: {
+            status: 'expired',
+            updatedAt: new Date(),
+          },
+        }
+      );
+      return null;
+    }
+
+    return invitation;
+  } catch (error: any) {
+    logger.error({ error: error.message, token }, 'Failed to get invitation by token');
+    throw error;
+  }
+};
+
+/**
+ * Accept invitation and create account for invited user
+ * This creates a new user account with the invited role and organization
+ */
+export const acceptInvitation = async (
+  token: string,
+  userData: {
+    name: string;
+    password: string;
+    signupMethod: 'email' | 'google';
+    googleId?: string;
+    picture?: string;
+  }
+): Promise<{ user: IUser; invitation: IInvitation }> => {
+  try {
+    const db = new Database('vault');
+
+    // Get invitation by token
+    const invitation = await getInvitationByToken(token);
+    if (!invitation) {
+      throw new Error('Invalid or expired invitation token');
+    }
+
+    // Check if email already exists
+    const existingUser = await db.findOne(collection.vaultUsers, {
+      email: invitation.email.toLowerCase().trim(),
+    }) as IUser | null;
+
+    if (existingUser) {
+      // If user exists, verify they're accepting the right invitation
+      if (existingUser.companyName !== invitation.organizationId) {
+        throw new Error('Email already exists with a different organization');
+      }
+      // User already exists in this organization - update invitation status
+      await db.updateOne(
+        collection.invitations,
+        { _id: invitation._id },
+        {
+          $set: {
+            status: 'accepted',
+            acceptedAt: new Date(),
+            acceptedBy: existingUser._id,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      // Update user role if needed
+      if ((existingUser as any).role !== invitation.role) {
+        await db.updateOne(
+          collection.vaultUsers,
+          { _id: existingUser._id },
+          {
+            $set: {
+              role: invitation.role,
+              updatedAt: new Date(),
+            },
+          }
+        );
+        (existingUser as any).role = invitation.role;
+      }
+
+      // Create membership record
+      const { upsertMembership } = await import('./rbacService');
+      await upsertMembership(
+        existingUser._id!.toString(),
+        invitation.organizationId,
+        invitation.role as any
+      );
+
+      // Log activity
+      await activityLogService.logEvent({
+        organizationId: invitation.organizationId,
+        actorUserId: existingUser._id!.toString(),
+        actorEmail: existingUser.email,
+        actorRole: invitation.role as any,
+        targetType: 'invitation' as const,
+        targetId: invitation._id!.toString(),
+        action: 'INVITATION_ACCEPTED',
+        description: `Invitation accepted by ${existingUser.email}`,
+        metadata: {
+          email: existingUser.email,
+          role: invitation.role,
+        },
+        severity: 'info',
+      });
+
+      return { user: existingUser, invitation };
+    }
+
+    // Create new user account
+    const bcrypt = await import('bcryptjs');
+    const passwordHash = userData.signupMethod === 'email' 
+      ? bcrypt.hashSync(userData.password, 10) 
+      : undefined;
+
+    // Get organization details from the admin who sent the invitation
+    const adminUser = await db.findOne(collection.vaultUsers, {
+      _id: new ObjectId(invitation.invitedBy),
+    }) as IUser | null;
+
+    if (!adminUser) {
+      throw new Error('Organization not found');
+    }
+
+    // Create user with invited role and organization
+    const newUser: any = {
+      email: invitation.email.toLowerCase().trim(),
+      name: userData.name,
+      signupMethod: userData.signupMethod,
+      passwordHash,
+      emailVerified: userData.signupMethod === 'google', // Google emails are pre-verified
+      emailVerifiedAt: userData.signupMethod === 'google' ? new Date() : null,
+      onboardingCompleted: false,
+      planId: adminUser.planId, // Use the same plan as the organization
+      companyName: invitation.organizationId, // Set organization
+      role: invitation.role, // Set invited role
+      googleId: userData.googleId,
+      picture: userData.picture,
+      totpEnabled: false,
+      failedLoginAttempts: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    // Insert user
+    const result = await db.insertOne(collection.vaultUsers, newUser);
+    const user: IUser = {
+      ...newUser,
+      _id: result.insertedId,
+    };
+
+    // Update invitation status
+    await db.updateOne(
+      collection.invitations,
+      { _id: invitation._id },
+      {
+        $set: {
+          status: 'accepted',
+          acceptedAt: new Date(),
+          acceptedBy: result.insertedId,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    // Create membership record
+    const { upsertMembership } = await import('./rbacService');
+    await upsertMembership(
+      result.insertedId.toString(),
+      invitation.organizationId,
+      invitation.role as any
+    );
+
+    // Log activity
+    await activityLogService.logEvent({
+      organizationId: invitation.organizationId,
+      actorUserId: result.insertedId.toString(),
+      actorEmail: user.email,
+      actorRole: invitation.role as any,
+      targetType: 'invitation' as const,
+      targetId: invitation._id!.toString(),
+      action: 'INVITATION_ACCEPTED',
+      description: `Invitation accepted by ${user.email}`,
+      metadata: {
+        email: user.email,
+        role: invitation.role,
+      },
+      severity: 'info',
+    });
+
+    logger.info({ email: user.email, role: invitation.role, organizationId: invitation.organizationId }, 'Invitation accepted and account created');
+
+    return { user, invitation };
+  } catch (error: any) {
+    logger.error({ error: error.message, token }, 'Failed to accept invitation');
+    throw error;
+  }
+};
+

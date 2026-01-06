@@ -83,9 +83,23 @@ class Database {
     return db.collection(collectionName).findOne(query);
   }
 
-  async findMany(collectionName: string, query: any): Promise<any[]> {
+  async findMany(collectionName: string, query: any, options?: { skip?: number; limit?: number; sort?: any }): Promise<any[]> {
     const db = this.getDb();
-    return db.collection(collectionName).find(query).toArray();
+    let cursor = db.collection(collectionName).find(query);
+    
+    if (options?.sort) {
+      cursor = cursor.sort(options.sort);
+    }
+    
+    if (options?.skip) {
+      cursor = cursor.skip(options.skip);
+    }
+    
+    if (options?.limit) {
+      cursor = cursor.limit(options.limit);
+    }
+    
+    return cursor.toArray();
   }
 
   async updateOne(collectionName: string, filter: any, update: any): Promise<any> {

@@ -1332,6 +1332,1783 @@
 				}
 			],
 			"description": "Settings endpoints"
+		},
+		{
+			"name": "Secrets Manager",
+			"item": [
+				{
+					"name": "Get All Secrets",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/secrets?category=api-key&type=aws&search=production",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"secrets"
+							],
+							"query": [
+								{
+									"key": "category",
+									"value": "api-key",
+									"description": "Filter by category"
+								},
+								{
+									"key": "type",
+									"value": "aws",
+									"description": "Filter by type"
+								},
+								{
+									"key": "search",
+									"value": "production",
+									"description": "Search query"
+								}
+							]
+						},
+						"description": "Get all secrets for authenticated user."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Secret by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/secrets/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"secrets",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{secret_id}}"
+								}
+							]
+						},
+						"description": "Get a single secret by ID."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Secret",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    if (response.id) {",
+									"        pm.environment.set('secret_id', response.id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"AWS Production Key\",\n  \"category\": \"api-key\",\n  \"type\": \"aws\",\n  \"encrypted_data\": \"base64_encoded_ciphertext\",\n  \"iv\": \"base64_encoded_iv\",\n  \"tags\": [\"production\", \"aws\"],\n  \"expiresAt\": \"2025-12-31T23:59:59.000Z\",\n  \"rotationEnabled\": true,\n  \"rotationInterval\": 90\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/secrets",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"secrets"
+							]
+						},
+						"description": "Create a new secret."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Secret",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated AWS Key\",\n  \"encrypted_data\": \"new_ciphertext\",\n  \"iv\": \"new_iv\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/secrets/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"secrets",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{secret_id}}"
+								}
+							]
+						},
+						"description": "Update a secret."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Secret",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/secrets/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"secrets",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{secret_id}}"
+								}
+							]
+						},
+						"description": "Delete a secret (soft delete)."
+					},
+					"response": []
+				},
+				{
+					"name": "Track Secret Access",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/secrets/:id/trackAccess",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"secrets",
+								":id",
+								"trackAccess"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{secret_id}}"
+								}
+							]
+						},
+						"description": "Track secret access for analytics."
+					},
+					"response": []
+				},
+				{
+					"name": "Rotate Secret",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/secrets/:id/rotate",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"secrets",
+								":id",
+								"rotate"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{secret_id}}"
+								}
+							]
+						},
+						"description": "Rotate a secret."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Secret Versions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/secrets/:id/versions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"secrets",
+								":id",
+								"versions"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{secret_id}}"
+								}
+							]
+						},
+						"description": "Get secret version history."
+					},
+					"response": []
+				}
+			],
+			"description": "Secrets Manager endpoints"
+		},
+		{
+			"name": "Onboarding",
+			"item": [
+				{
+					"name": "Check Email",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user@example.com\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/onboarding/check-email",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"onboarding",
+								"check-email"
+							]
+						},
+						"description": "Check if email already exists."
+					},
+					"response": []
+				},
+				{
+					"name": "Send OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user@example.com\",\n  \"isInvitationFlow\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/onboarding/send-otp?isInvitationFlow=false",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"onboarding",
+								"send-otp"
+							],
+							"query": [
+								{
+									"key": "isInvitationFlow",
+									"value": "false"
+								}
+							]
+						},
+						"description": "Send OTP to email for verification."
+					},
+					"response": []
+				},
+				{
+					"name": "Verify OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user@example.com\",\n  \"otp\": \"123456\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/onboarding/verify-otp",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"onboarding",
+								"verify-otp"
+							]
+						},
+						"description": "Verify OTP code."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Account",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    if (response.userId) {",
+									"        pm.environment.set('user_id', response.userId);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user@example.com\",\n  \"fullName\": \"John Doe\",\n  \"password\": \"SecurePassword123!\",\n  \"signupMethod\": \"email\",\n  \"planId\": \"individual\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/onboarding/create-account",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"onboarding",
+								"create-account"
+							]
+						},
+						"description": "Create a new user account."
+					},
+					"response": []
+				},
+				{
+					"name": "Generate Recovery Key",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{user_id}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/onboarding/generate-recovery-key",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"onboarding",
+								"generate-recovery-key"
+							]
+						},
+						"description": "Generate recovery key for user."
+					},
+					"response": []
+				},
+				{
+					"name": "Complete Onboarding",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    if (response.token) {",
+									"        pm.environment.set('auth_token', response.token);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{user_id}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/onboarding/complete",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"onboarding",
+								"complete"
+							]
+						},
+						"description": "Complete onboarding process."
+					},
+					"response": []
+				}
+			],
+			"description": "Onboarding endpoints"
+		},
+		{
+			"name": "Invitations",
+			"item": [
+				{
+					"name": "Verify Invitation Token",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/v/invitations/verify/:token",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"invitations",
+								"verify",
+								":token"
+							],
+							"variable": [
+								{
+									"key": "token",
+									"value": "invitation_token_here"
+								}
+							]
+						},
+						"description": "Verify invitation token (public endpoint)."
+					},
+					"response": []
+				},
+				{
+					"name": "Accept Invitation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"invitationToken\": \"token_here\",\n  \"name\": \"John Doe\",\n  \"password\": \"SecurePassword123!\",\n  \"signupMethod\": \"email\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/invitations/accept",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"invitations",
+								"accept"
+							]
+						},
+						"description": "Accept invitation and create account (public endpoint)."
+					},
+					"response": []
+				}
+			],
+			"description": "Invitation endpoints (public)"
+		},
+		{
+			"name": "Account",
+			"item": [
+				{
+					"name": "Get Account Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/account",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"account"
+							]
+						},
+						"description": "Get current user's account details."
+					},
+					"response": []
+				}
+			],
+			"description": "Account endpoints"
+		},
+		{
+			"name": "Billing",
+			"item": [
+				{
+					"name": "Start Trial",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"planId\": \"individual\",\n  \"billingCycle\": \"monthly\",\n  \"currency\": \"INR\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/billing/start-trial",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"billing",
+								"start-trial"
+							]
+						},
+						"description": "Start a 30-day free trial."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Subscription",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/billing/subscription",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"billing",
+								"subscription"
+							]
+						},
+						"description": "Get current subscription details."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Payment Method",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"subscriptionId\": \"{{subscription_id}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/billing/update-payment-method",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"billing",
+								"update-payment-method"
+							]
+						},
+						"description": "Update payment method for subscription."
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Subscription",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"subscriptionId\": \"{{subscription_id}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/billing/cancel-subscription",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"billing",
+								"cancel-subscription"
+							]
+						},
+						"description": "Cancel subscription (cancels at period end)."
+					},
+					"response": []
+				},
+				{
+					"name": "Restore Subscription",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/billing/restore",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"billing",
+								"restore"
+							]
+						},
+						"description": "Restore subscription on app launch."
+					},
+					"response": []
+				}
+			],
+			"description": "Billing endpoints"
+		},
+		{
+			"name": "Pricing",
+			"item": [
+				{
+					"name": "Get Pricing Plans",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/v/pricing/plans?currency=INR",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"pricing",
+								"plans"
+							],
+							"query": [
+								{
+									"key": "currency",
+									"value": "INR"
+								}
+							]
+						},
+						"description": "Get all pricing plans."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Pricing Config",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/v/pricing/config?currency=INR",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"pricing",
+								"config"
+							],
+							"query": [
+								{
+									"key": "currency",
+									"value": "INR"
+								}
+							]
+						},
+						"description": "Get pricing configuration."
+					},
+					"response": []
+				}
+			],
+			"description": "Pricing endpoints"
+		},
+		{
+			"name": "Payments",
+			"item": [
+				{
+					"name": "Create Order",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"planId\": \"pro\",\n  \"period\": \"yearly\",\n  \"currency\": \"INR\",\n  \"couponCode\": \"WELCOME20\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/payments/create-order",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"payments",
+								"create-order"
+							]
+						},
+						"description": "Create a new payment order."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Order Status",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/payments/status?orderId=ORD_1234567890",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"payments",
+								"status"
+							],
+							"query": [
+								{
+									"key": "orderId",
+									"value": "ORD_1234567890"
+								}
+							]
+						},
+						"description": "Get payment order status."
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Payment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderId\": \"ORD_1234567890\",\n  \"razorpay_payment_id\": \"pay_xxxxxxxxxxxxx\",\n  \"razorpay_order_id\": \"order_xxxxxxxxxxxxx\",\n  \"razorpay_signature\": \"abc123...\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/payments/verify",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"payments",
+								"verify"
+							]
+						},
+						"description": "Verify payment after Razorpay SDK payment completion."
+					},
+					"response": []
+				},
+				{
+					"name": "Validate Coupon",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"couponCode\": \"WELCOME20\",\n  \"planId\": \"pro\",\n  \"period\": \"yearly\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/payments/validate-coupon",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"payments",
+								"validate-coupon"
+							]
+						},
+						"description": "Validate a coupon code."
+					},
+					"response": []
+				}
+			],
+			"description": "Payment endpoints"
+		},
+		{
+			"name": "Subscriptions",
+			"item": [
+				{
+					"name": "Get Current Subscription",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/subscriptions/me",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"subscriptions",
+								"me"
+							]
+						},
+						"description": "Get current user's subscription."
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Subscription",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"cancelImmediately\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/subscriptions/cancel",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"subscriptions",
+								"cancel"
+							]
+						},
+						"description": "Cancel current subscription."
+					},
+					"response": []
+				},
+				{
+					"name": "Restore Purchases",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/subscriptions/restore",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"subscriptions",
+								"restore"
+							]
+						},
+						"description": "Restore purchases (for mobile apps)."
+					},
+					"response": []
+				}
+			],
+			"description": "Subscription endpoints"
+		},
+		{
+			"name": "Access Management (Admin)",
+			"item": [
+				{
+					"name": "Get Users",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/admin/access/users",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"access",
+								"users"
+							]
+						},
+						"description": "Get all users (admin only)."
+					},
+					"response": []
+				},
+				{
+					"name": "Update User Role",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"role\": \"admin\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/admin/access/users/:userId/role",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"access",
+								"users",
+								":userId",
+								"role"
+							],
+							"variable": [
+								{
+									"key": "userId",
+									"value": "{{user_id}}"
+								}
+							]
+						},
+						"description": "Update user role (admin only)."
+					},
+					"response": []
+				},
+				{
+					"name": "Update User Status",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"suspended\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/admin/access/users/:userId/status",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"access",
+								"users",
+								":userId",
+								"status"
+							],
+							"variable": [
+								{
+									"key": "userId",
+									"value": "{{user_id}}"
+								}
+							]
+						},
+						"description": "Update user status (admin only)."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Invitation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"newuser@example.com\",\n  \"role\": \"member\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v/admin/access/invitations",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"access",
+								"invitations"
+							]
+						},
+						"description": "Create invitation (admin only)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Invitations",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/admin/access/invitations",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"access",
+								"invitations"
+							]
+						},
+						"description": "Get all invitations (admin only)."
+					},
+					"response": []
+				},
+				{
+					"name": "Resend Invitation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/admin/access/invitations/:invitationId/resend",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"access",
+								"invitations",
+								":invitationId",
+								"resend"
+							],
+							"variable": [
+								{
+									"key": "invitationId",
+									"value": "{{invitation_id}}"
+								}
+							]
+						},
+						"description": "Resend invitation (admin only)."
+					},
+					"response": []
+				},
+				{
+					"name": "Revoke Invitation",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/admin/access/invitations/:invitationId",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"access",
+								"invitations",
+								":invitationId"
+							],
+							"variable": [
+								{
+									"key": "invitationId",
+									"value": "{{invitation_id}}"
+								}
+							]
+						},
+						"description": "Revoke invitation (admin only)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Shared Vaults",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/admin/access/shared-vaults",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"access",
+								"shared-vaults"
+							]
+						},
+						"description": "Get shared vaults (admin only)."
+					},
+					"response": []
+				},
+				{
+					"name": "Stop Sharing Vault",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/admin/access/shared-vaults/:vaultId",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"access",
+								"shared-vaults",
+								":vaultId"
+							],
+							"variable": [
+								{
+									"key": "vaultId",
+									"value": "{{folder_id}}"
+								}
+							]
+						},
+						"description": "Stop sharing vault (admin only)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Access Requests",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/admin/access/access-requests",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"access",
+								"access-requests"
+							]
+						},
+						"description": "Get access requests (admin only)."
+					},
+					"response": []
+				},
+				{
+					"name": "Approve Access Request",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/admin/access/access-requests/:requestId/approve",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"access",
+								"access-requests",
+								":requestId",
+								"approve"
+							],
+							"variable": [
+								{
+									"key": "requestId",
+									"value": "{{request_id}}"
+								}
+							]
+						},
+						"description": "Approve access request (admin only)."
+					},
+					"response": []
+				},
+				{
+					"name": "Reject Access Request",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/admin/access/access-requests/:requestId/reject",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"access",
+								"access-requests",
+								":requestId",
+								"reject"
+							],
+							"variable": [
+								{
+									"key": "requestId",
+									"value": "{{request_id}}"
+								}
+							]
+						},
+						"description": "Reject access request (admin only)."
+					},
+					"response": []
+				}
+			],
+			"description": "Access Management endpoints (admin only)"
+		},
+		{
+			"name": "Activity Logs (Admin)",
+			"item": [
+				{
+					"name": "Get Activity Logs",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/admin/activity-logs?page=1&limit=20&action=create&userId={{user_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"activity-logs"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "action",
+									"value": "create"
+								},
+								{
+									"key": "userId",
+									"value": "{{user_id}}"
+								}
+							]
+						},
+						"description": "Get activity logs with filtering and pagination (admin only)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Activity Log by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/admin/activity-logs/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"activity-logs",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "{{log_id}}"
+								}
+							]
+						},
+						"description": "Get a single activity log by ID (admin only)."
+					},
+					"response": []
+				},
+				{
+					"name": "Export Activity Logs",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/admin/activity-logs/export?format=csv&startDate=2024-01-01&endDate=2024-12-31",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"admin",
+								"activity-logs",
+								"export"
+							],
+							"query": [
+								{
+									"key": "format",
+									"value": "csv"
+								},
+								{
+									"key": "startDate",
+									"value": "2024-01-01"
+								},
+								{
+									"key": "endDate",
+									"value": "2024-12-31"
+								}
+							]
+						},
+						"description": "Export activity logs (CSV/JSON) (admin only)."
+					},
+					"response": []
+				}
+			],
+			"description": "Activity Log endpoints (admin only)"
+		},
+		{
+			"name": "Vault Attachments",
+			"item": [
+				{
+					"name": "Download Attachment",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/:itemId/attachments/:attachmentId/download",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								":itemId",
+								"attachments",
+								":attachmentId",
+								"download"
+							],
+							"variable": [
+								{
+									"key": "itemId",
+									"value": "{{item_id}}"
+								},
+								{
+									"key": "attachmentId",
+									"value": "{{attachment_id}}"
+								}
+							]
+						},
+						"description": "Download file attachment."
+					},
+					"response": []
+				},
+				{
+					"name": "View Attachment",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v/:itemId/attachments/:attachmentId/view",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								":itemId",
+								"attachments",
+								":attachmentId",
+								"view"
+							],
+							"variable": [
+								{
+									"key": "itemId",
+									"value": "{{item_id}}"
+								},
+								{
+									"key": "attachmentId",
+									"value": "{{attachment_id}}"
+								}
+							]
+						},
+						"description": "View file attachment (inline)."
+					},
+					"response": []
+				}
+			],
+			"description": "Vault attachment endpoints"
+		},
+		{
+			"name": "Geo",
+			"item": [
+				{
+					"name": "Get Country from IP",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/v/geo/country",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v",
+								"geo",
+								"country"
+							]
+						},
+						"description": "Get user country from IP address."
+					},
+					"response": []
+				}
+			],
+			"description": "Geo endpoints"
+		},
+		{
+			"name": "Health",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"description": "Health check endpoint."
+					},
+					"response": []
+				}
+			],
+			"description": "Health check endpoint"
 		}
 	],
 	"variable": [

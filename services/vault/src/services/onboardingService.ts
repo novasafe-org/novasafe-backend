@@ -387,6 +387,31 @@ export const completeOnboarding = async (userId: string): Promise<void> => {
 
       logger.info(`30-day free trial subscription created for userId: ${userId}, plan: ${planId}`);
     }
+
+    // Create default "Personal" folder for the user
+    try {
+      const existingPersonalFolder = await db.findOne(collection.folders, {
+        userId: new ObjectId(userId),
+        name: 'Personal',
+      });
+
+      if (!existingPersonalFolder) {
+        const personalFolder: any = {
+          userId: new ObjectId(userId),
+          name: 'Personal',
+          description: 'Default safe for your personal items',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          accessCount: 0,
+        };
+
+        const folderResult = await db.insertOne(collection.folders, personalFolder);
+        logger.info(`Personal folder created for userId: ${userId}, folderId: ${folderResult.insertedId}`);
+      }
+    } catch (folderError: any) {
+      // Don't fail onboarding if folder creation fails, just log it
+      logger.warn(`Failed to create Personal folder during onboarding: ${folderError.message}`);
+    }
     
     logger.info(`Onboarding completed for userId: ${userId}`);
   } catch (error: any) {

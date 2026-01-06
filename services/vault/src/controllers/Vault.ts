@@ -9,6 +9,7 @@ import { addUserPermissionsToResponse } from '../utils/responseHelper';
 import { storeFiles, FileStorageError, deleteItemFiles } from '../services/files/FileStorageService';
 import { IAttachment } from '../types/Attachment';
 import { logActivity } from '../utils/activityLogHelper';
+import { createWelcomeItem, hasWelcomeItem } from '../services/welcomeItemService';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as zlib from 'zlib';
@@ -78,9 +79,13 @@ export const addItem = async (req: Request, res: Response) => {
       newItem.title = req.body.title;
     }
 
-    if (req.body.folderId !== undefined && req.body.folderId !== null) {
-      // Validate and convert folderId to ObjectId
-      if (ObjectId.isValid(req.body.folderId)) {
+    // Handle folderId: explicitly set to null if provided as null, or validate and convert if provided as a value
+    if (req.body.folderId !== undefined) {
+      if (req.body.folderId === null) {
+        // Explicitly set folderId to null for items in "Personal" safe (no folder)
+        newItem.folderId = null;
+      } else if (ObjectId.isValid(req.body.folderId)) {
+        // Validate and convert folderId to ObjectId for items in a specific folder
         newItem.folderId = new ObjectId(req.body.folderId);
       } else {
         res.status(400).json({
@@ -701,13 +706,40 @@ export const getItems = async (req: Request, res: Response) => {
       return;
     }
 
-    // Fetch data - ONLY items belonging to this user
     const db = new Database('vault');
+    const userId = req.user.id;
+
+    // Check if user has a welcome item, if not create one
+    try {
+      const hasWelcome = await hasWelcomeItem(userId);
+      if (!hasWelcome) {
+        // Fetch user details to get name and email
+        const user = await db.findOne(collection.vaultUsers, {
+          _id: new ObjectId(userId),
+        });
+
+        if (user) {
+          const userName = (user as any).name || (user as any).fullName || req.user.email?.split('@')[0] || 'User';
+          const userEmail = (user as any).email || req.user.email || '';
+          // Note: We don't store plain passwords, so password will be empty
+          // If user has a password set, it's hashed and we can't retrieve it
+          const userPassword = ''; // Passwords are hashed, we can't retrieve plain password
+
+          await createWelcomeItem(userId, userName, userEmail, userPassword);
+          logger.info(`Welcome item created for user ${userId}`);
+        }
+      }
+    } catch (welcomeError: any) {
+      // Don't fail the request if welcome item creation fails
+      logger.warn(`Failed to create welcome item: ${welcomeError.message}`);
+    }
+
+    // Fetch data - ONLY items belonging to this user
     // Query with ObjectId conversion to match how items are stored
     const items = await db.findMany(collection.vaultItems, { 
       $or: [
-        { userId: new ObjectId(req.user.id) },  // Match ObjectId format (new items)
-        { userId: req.user.id }  // Match string format (legacy items)
+        { userId: new ObjectId(userId) },  // Match ObjectId format (new items)
+        { userId: userId }  // Match string format (legacy items)
       ],
       deleted: { $ne: true }  // Exclude deleted items
     });
@@ -740,6 +772,8 @@ export const getItems = async (req: Request, res: Response) => {
           iv: item.iv,
           field_count: item.field_count || 0,
           attachment_count: item.attachment_count || 0,
+          // Include welcome item flag if present
+          _isWelcomeItem: item._isWelcomeItem || false,
         };
         
         // Include attachments if they exist
@@ -773,6 +807,8 @@ export const getItems = async (req: Request, res: Response) => {
           notes: item.notes,
           // Mark as legacy format
           _legacyFormat: true,
+          // Include welcome item flag if present
+          _isWelcomeItem: item._isWelcomeItem || false,
         };
       }
 
