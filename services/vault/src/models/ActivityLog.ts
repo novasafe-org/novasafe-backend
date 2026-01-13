@@ -22,6 +22,9 @@ export type ActivityLogAction =
   | 'MFA_ENABLED'
   | 'MFA_DISABLED'
   | 'SESSION_REVOKED'
+  | 'VAULT_UNLOCKED'
+  | 'PASSWORD_RESET' // Password reset action (permanently deletes encrypted data)
+  | 'ACCOUNT_RECOVERED' // Account recovery using recovery key (restores encrypted data instead of deleting)
   // Vault & Item
   | 'VAULT_CREATED'
   | 'VAULT_RENAMED'

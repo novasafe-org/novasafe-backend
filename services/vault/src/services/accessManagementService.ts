@@ -372,11 +372,25 @@ export const createInvitation = async (
           expiresAt
         );
         if (!emailSent) {
-          logger.warn({ email }, 'Failed to send invitation email, but invitation was created');
+          logger.error({ 
+            email, 
+            organizationId,
+            smtpHost: process.env.SMTP_HOST,
+            smtpPort: process.env.SMTP_PORT,
+            smtpUser: process.env.SMTP_USER ? '***configured***' : 'NOT SET',
+            smtpPassword: process.env.SMTP_PASSWORD ? '***configured***' : 'NOT SET',
+          }, 'Failed to send invitation email, but invitation was created. Check SMTP configuration and server logs for details.');
+        } else {
+          logger.info({ email, organizationId }, 'Invitation email sent successfully');
         }
       } catch (error: any) {
-        logger.error({ error: error.message, email }, 'Error sending invitation email');
-        // Don't fail the invitation creation if email fails
+        logger.error({ 
+          error: error.message, 
+          email,
+          stack: error.stack,
+          code: error.code 
+        }, 'Error sending invitation email');
+        // Don't fail the invitation creation if email fails, but log the error
       }
     }
 
@@ -533,6 +547,7 @@ export const resendInvitation = async (
 
     // Send invitation email
     try {
+      logger.info({ invitationId, email: invitation.email }, 'Attempting to resend invitation email');
       const emailSent = await sendInvitationEmail(
         invitation.email,
         updatedInvitation.token,
@@ -542,10 +557,25 @@ export const resendInvitation = async (
         expiresAt
       );
       if (!emailSent) {
-        logger.warn({ email: invitation.email }, 'Failed to send resend invitation email, but invitation was updated');
+        logger.error({ 
+          email: invitation.email,
+          invitationId,
+          smtpHost: process.env.SMTP_HOST,
+          smtpPort: process.env.SMTP_PORT,
+          smtpUser: process.env.SMTP_USER ? '***configured***' : 'NOT SET',
+          smtpPassword: process.env.SMTP_PASSWORD ? '***configured***' : 'NOT SET',
+        }, 'Failed to send resend invitation email, but invitation was updated. Check SMTP configuration and server logs.');
+      } else {
+        logger.info({ email: invitation.email, invitationId }, 'Resend invitation email sent successfully');
       }
     } catch (error: any) {
-      logger.error({ error: error.message, email: invitation.email }, 'Error sending resend invitation email');
+      logger.error({ 
+        error: error.message, 
+        email: invitation.email,
+        invitationId,
+        stack: error.stack,
+        code: error.code 
+      }, 'Error sending resend invitation email');
       // Don't fail the resend if email fails
     }
 

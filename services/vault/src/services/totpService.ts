@@ -52,21 +52,22 @@ export const generateTOTPSecret = (
  * Verify a TOTP token
  * @param token - 6-digit TOTP code from user
  * @param secret - User's TOTP secret (base32)
- * @param window - Time window for verification (default: 1, allows ±30 seconds)
+ * @param window - Time window for verification (default: 0, only current token)
  * @returns true if token is valid
  */
 export const verifyTOTP = (
   token: string,
   secret: string,
-  window: number = 1
+  window: number = 0
 ): boolean => {
   try {
-    // Verify the token
+    // Verify the token with window=0 (only current time step, no tolerance)
+    // This ensures only the current 30-second window token is accepted
     const verified = speakeasy.totp.verify({
       secret,
       encoding: 'base32',
       token,
-      window, // Allows tokens from ±1 time step (30 seconds)
+      window, // window=0 means only current time step (strict verification)
     });
 
     return verified === true;

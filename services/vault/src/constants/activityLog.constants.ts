@@ -32,6 +32,9 @@ export const ACTIVITY_LOG_ACTIONS = {
     'MFA_ENABLED',
     'MFA_DISABLED',
     'SESSION_REVOKED',
+    'VAULT_UNLOCKED',
+    'PASSWORD_RESET',
+    'ACCOUNT_RECOVERED',
   ] as const,
   VAULT_ITEM: [
     'VAULT_CREATED',
@@ -84,6 +87,9 @@ export const ACTION_SEVERITY_MAP: Record<ActivityLogAction, ActivityLogSeverity>
   MFA_ENABLED: 'info',
   MFA_DISABLED: 'warning',
   SESSION_REVOKED: 'info',
+  VAULT_UNLOCKED: 'info',
+  PASSWORD_RESET: 'warning', // Permanently deletes encrypted data
+  ACCOUNT_RECOVERED: 'info', // Restores encrypted data using recovery key
   // Vault & Item - info for normal operations
   VAULT_CREATED: 'info',
   VAULT_RENAMED: 'info',

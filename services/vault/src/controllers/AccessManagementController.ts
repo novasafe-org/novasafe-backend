@@ -249,6 +249,10 @@ export const createInvitationController = async (req: Request, res: Response): P
       invitedBy: inv.invitedBy.toString(),
     }));
 
+    // Check if SMTP is configured
+    const smtpConfigured = !!(process.env.SMTP_USER && process.env.SMTP_PASSWORD);
+    const smtpWarning = !smtpConfigured ? 'Warning: SMTP not configured. Invitations were created but emails were not sent. Please configure SMTP settings.' : null;
+
     res.status(201).json({
       success: true,
       data: {
@@ -256,10 +260,13 @@ export const createInvitationController = async (req: Request, res: Response): P
         successCount: results.success.length,
         failedCount: results.failed.length,
         failed: results.failed,
+        smtpConfigured,
+        warning: smtpWarning,
       },
       message: results.failed.length > 0
         ? `Created ${results.success.length} invitation(s), ${results.failed.length} failed`
         : `Successfully created ${results.success.length} invitation(s)`,
+      warning: smtpWarning,
     });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Failed to create invitations');

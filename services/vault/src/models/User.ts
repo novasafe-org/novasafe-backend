@@ -148,6 +148,19 @@ export interface IUser {
    */
   lastPasswordChange?: Date | null;
 
+  /**
+   * Hashed password reset token (SHA-256)
+   * Used for password reset flow
+   * Optional: null if no reset token
+   */
+  passwordResetToken?: string | null;
+
+  /**
+   * Timestamp when password reset token expires
+   * Optional: null if no reset token
+   */
+  passwordResetExpiry?: Date | null;
+
   // ============================================
   // Level 2: Two-Factor Authentication
   // ============================================
@@ -254,5 +267,6 @@ export interface IUserPayload {
   email: string;
   name: string;
   picture?: string;
+  preAuth?: boolean; // Indicates if this is a pre-authentication token (for 2FA flow)
 }
 

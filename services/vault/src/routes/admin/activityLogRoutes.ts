@@ -33,23 +33,11 @@ router.get(
 );
 
 /**
- * GET /admin/activity-logs/:id
- * Get a single activity log by ID
- * Requires: logs:read permission
- */
-router.get(
-  '/:id',
-  authMiddleware,
-  adminAuthMiddleware,
-  loadRBACContext,
-  requirePermission(Permission.LOGS_READ),
-  getActivityLogById
-);
-
-/**
  * GET /admin/activity-logs/export
  * Export activity logs (CSV/JSON)
  * Requires: logs:export permission
+ * 
+ * NOTE: This route must come BEFORE /:id route to prevent "export" from being treated as an ID
  */
 router.get(
   '/export',
@@ -58,6 +46,22 @@ router.get(
   loadRBACContext,
   requirePermission(Permission.LOGS_EXPORT),
   exportActivityLogs
+);
+
+/**
+ * GET /admin/activity-logs/:id
+ * Get a single activity log by ID
+ * Requires: logs:read permission
+ * 
+ * NOTE: This route must come AFTER /export route to prevent route conflicts
+ */
+router.get(
+  '/:id',
+  authMiddleware,
+  adminAuthMiddleware,
+  loadRBACContext,
+  requirePermission(Permission.LOGS_READ),
+  getActivityLogById
 );
 
 export default router;

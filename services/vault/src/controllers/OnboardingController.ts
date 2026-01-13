@@ -147,21 +147,41 @@ export const sendOTP = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check if email already exists
+    // Check if email already exists and user onboarding status
     // Note: For invited users, we allow OTP even if email exists (they're accepting invitation)
-    const exists = await checkEmailExists(email);
-    if (exists) {
-      // Check if this is for an invitation acceptance (query param)
-      const isInvitationFlow = req.query.invitation === 'true';
-      if (!isInvitationFlow) {
-        res.status(409).json({
-          success: false,
-          message: 'An account with this email already exists. Please log in instead.',
-          error: 'Email already registered',
-          userMessage: 'This email is already registered. Would you like to log in?',
-        });
-        return;
+    // Also allow OTP if user exists but onboarding is not completed (user is still in onboarding flow)
+    // This prevents errors when user creates account but hasn't completed onboarding yet
+    const isInvitationFlow = req.query.invitation === 'true';
+    let isOnboardingInProgress = false;
+    
+    try {
+      const db = new Database('vault');
+      const user = await db.findOne(DBCONFIG.vault.collections.vaultUsers, {
+        email: email.toLowerCase().trim(),
+      }) as IUser | null;
+      
+      if (user) {
+        // Allow OTP if onboarding is not completed (user is still in onboarding flow)
+        // This handles the case where account was created but user is still completing onboarding steps
+        if (user.onboardingCompleted === false) {
+          isOnboardingInProgress = true;
+          logger.info(`Allowing OTP for user in onboarding: ${email}`);
+        }
+        
+        // Only reject if email exists, not an invitation, and onboarding is completed
+        if (!isInvitationFlow && !isOnboardingInProgress) {
+          res.status(409).json({
+            success: false,
+            message: 'An account with this email already exists. Please log in instead.',
+            error: 'Email already registered',
+            userMessage: 'This email is already registered. Would you like to log in?',
+          });
+          return;
+        }
       }
+    } catch (error: any) {
+      logger.error(`Error checking email and onboarding status: ${error.message}`);
+      // If we can't check, proceed with normal flow (allow OTP generation)
     }
 
     // Generate and store OTP
@@ -171,6 +191,9 @@ export const sendOTP = async (req: Request, res: Response): Promise<void> => {
     try {
       const emailSent = await sendOTPEmail(email, otp);
       if (!emailSent) {
+        // TODO: Remove this log after development
+        logger.debug({ email, otp }, 'OTP generated and email sent'); // Temporary log OTP for development purposes, remove after development
+        // TODO: Remove this log after development
         logger.warn({ email }, 'Failed to send OTP email, but OTP was generated');
         // Still return success - OTP is generated and can be verified
         // In development, include OTP in response

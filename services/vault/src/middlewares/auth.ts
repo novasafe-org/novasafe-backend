@@ -75,8 +75,23 @@ export const authMiddleware = async (
     // Verify and decode the token
     const decoded = verifyToken(token);
 
-    // Check if session is revoked (if tokenId exists)
-    if (decoded.jti) {
+    // CRITICAL SECURITY: Check if this is a pre-auth token
+    // Pre-auth tokens can ONLY be used for 2FA verification
+    const isPreAuthToken = (decoded as any).preAuth === true;
+    const is2FAVerifyRoute = req.path.includes('/2fa/verify') || req.originalUrl.includes('/2fa/verify');
+    
+    if (isPreAuthToken && !is2FAVerifyRoute) {
+      res.status(403).json({ 
+        message: 'Pre-authentication token',
+        error: 'This token requires 2FA verification. Please complete 2FA verification first.',
+        code: 'PRE_AUTH_TOKEN_REQUIRES_2FA'
+      });
+      return;
+    }
+
+    // Check if session is revoked (if tokenId exists and not a pre-auth token)
+    // Pre-auth tokens don't have sessions yet - session is created after 2FA verification
+    if (decoded.jti && !isPreAuthToken) {
       const session = await getSessionByTokenId(decoded.jti);
       
       // If session doesn't exist or is revoked, reject the request
@@ -111,6 +126,9 @@ export const authMiddleware = async (
 
     // Attach tokenId to request for session tracking
     (req as any).tokenId = decoded.jti;
+    
+    // Attach pre-auth flag for use in route handlers
+    (req as any).isPreAuthToken = isPreAuthToken;
 
     // Proceed to next middleware or route handler
     next();

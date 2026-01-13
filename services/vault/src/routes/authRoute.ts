@@ -1,5 +1,5 @@
 import express from 'express';
-import { googleSignIn, getCurrentUser, logout, emailLogin } from '../controllers/Auth';
+import { googleSignIn, getCurrentUser, logout, emailLogin, unlockVault, forgotPassword, resetPassword, recoverAccount } from '../controllers/Auth';
 import { authMiddleware } from '../middlewares/auth';
 
 /**
@@ -146,6 +146,99 @@ router.get('/me', authMiddleware, getCurrentUser);
  * ```
  */
 router.post('/logout', authMiddleware, logout);
+
+/**
+ * @route   POST /v/auth/unlock
+ * @desc    Unlock vault after inactivity (password only, no 2FA required)
+ * @access  Public
+ * 
+ * REQUEST BODY:
+ * {
+ *   "email": "user@example.com",
+ *   "password": "userpassword"
+ * }
+ * 
+ * RESPONSE:
+ * {
+ *   "message": "Vault unlocked successfully",
+ *   "token": "eyJhbGciOiJIUzI1NiIs...",
+ *   "user": {
+ *     "id": "507f1f77bcf86cd799439011",
+ *     "email": "user@example.com",
+ *     "name": "John Doe",
+ *     "createdAt": "2024-01-15T10:30:00.000Z"
+ *   },
+ *   "requires2FA": false
+ * }
+ */
+router.post('/unlock', unlockVault);
+
+/**
+ * @route   POST /v/auth/forgot-password
+ * @desc    Request password reset link
+ * @access  Public
+ * 
+ * REQUEST BODY:
+ * {
+ *   "email": "user@example.com"
+ * }
+ * 
+ * RESPONSE:
+ * {
+ *   "success": true,
+ *   "message": "If an account exists, we've sent a password reset link to your email."
+ * }
+ */
+router.post('/forgot-password', forgotPassword);
+
+/**
+ * @route   POST /v/auth/reset-password
+ * @desc    Reset password using token from email
+ * @access  Public
+ * 
+ * REQUEST BODY:
+ * {
+ *   "token": "reset_token_from_email",
+ *   "password": "new_password"
+ * }
+ * 
+ * RESPONSE:
+ * {
+ *   "success": true,
+ *   "message": "Password has been reset successfully. All encrypted vault data has been permanently deleted."
+ * }
+ * 
+ * NOTE: This endpoint permanently deletes all encrypted vault data.
+ * This is a zero-knowledge system - data cannot be recovered without the password.
+ */
+router.post('/reset-password', resetPassword);
+
+/**
+ * @route   POST /v/auth/recover-account
+ * @desc    Recover account using recovery key (restores encrypted data)
+ * @access  Public
+ * 
+ * REQUEST BODY:
+ * {
+ *   "email": "user@example.com",
+ *   "recoveryKey": "base64_encoded_recovery_key",
+ *   "masterPassword": "base64_encoded_master_password" (optional, if encryptedData provided),
+ *   "encryptedData": "base64_encoded_encrypted_data" (optional),
+ *   "newPassword": "new_password"
+ * }
+ * 
+ * RESPONSE:
+ * {
+ *   "success": true,
+ *   "message": "Account recovered successfully. Your encrypted vault data has been restored.",
+ *   "token": "jwt_token",
+ *   "user": { ... }
+ * }
+ * 
+ * NOTE: This endpoint RESTORES encrypted vault data instead of deleting it.
+ * Use this if you have a recovery key file from account creation.
+ */
+router.post('/recover-account', recoverAccount);
 
 export default router;
 

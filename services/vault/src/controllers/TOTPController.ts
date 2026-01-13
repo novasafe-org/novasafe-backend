@@ -14,9 +14,13 @@
 
 import { Request, Response } from 'express';
 import { ObjectId } from 'mongodb';
+import crypto from 'crypto';
 import { DBCONFIG } from '../../config/config';
 import Database from '../../database/connection';
-import { IUser } from '../models/User';
+import { IUser, IUserPayload } from '../models/User';
+import { generateToken } from '../utils/generateToken';
+import { createSession } from '../services/sessionService';
+import { getClientIP, parseBrowser, parseOS, detectDevice } from '../utils/deviceDetection';
 import {
   generateTOTPSecret,
   verifyTOTP,
@@ -27,6 +31,18 @@ import {
 import { encryptServerSecret, decryptServerSecret } from '../services/encryptionService';
 import logger from '../logger';
 import QRCode from 'qrcode';
+
+/**
+ * Extend Express Request to include user payload
+ * This allows route handlers to access req.user
+ */
+declare global {
+  namespace Express {
+    interface Request {
+      user?: IUserPayload;
+    }
+  }
+}
 
 const collection = DBCONFIG.vault.collections;
 
@@ -212,9 +228,9 @@ export const verify2FA = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const { token, backupCode } = req.body;
+    const { token: totpToken, backupCode } = req.body;
 
-    if (!token && !backupCode) {
+    if (!totpToken && !backupCode) {
       res.status(400).json({
         message: 'Token required',
         error: 'Please provide a TOTP token or backup code',
@@ -243,8 +259,8 @@ export const verify2FA = async (req: Request, res: Response): Promise<void> => {
     let isValid = false;
 
     // Verify TOTP token
-    if (token) {
-      if (typeof token !== 'string' || token.length !== 6) {
+    if (totpToken) {
+      if (typeof totpToken !== 'string' || totpToken.length !== 6) {
         res.status(400).json({
           message: 'Invalid token',
           error: 'TOTP token must be 6 digits',
@@ -264,7 +280,7 @@ export const verify2FA = async (req: Request, res: Response): Promise<void> => {
       const secret = decryptServerSecret(user.totpSecret, user.totpSecretIV || '');
 
       // Verify the token
-      isValid = verifyTOTP(token, secret);
+      isValid = verifyTOTP(totpToken, secret);
 
       if (isValid) {
         // Update last verified timestamp
@@ -318,19 +334,94 @@ export const verify2FA = async (req: Request, res: Response): Promise<void> => {
     }
 
     if (!isValid) {
+      // Provide more specific error message for TOTP failures
+      const errorMessage = totpToken 
+        ? 'Invalid verification code.'
+        : 'Invalid backup code. Please check and try again.';
+      
       res.status(401).json({
         message: 'Verification failed',
-        error: 'Invalid verification code or backup code',
+        error: errorMessage,
+        code: totpToken ? 'TOTP_EXPIRED' : 'BACKUP_CODE_INVALID',
       });
       return;
+    }
+
+    // CRITICAL SECURITY: Generate FULL token ONLY after successful 2FA verification
+    // This ensures token is only issued when 2FA is properly verified
+    // Check if current token is a pre-auth token (should be, but verify)
+    const isPreAuthToken = (req.user as any)?.preAuth === true;
+    
+    // Generate full token (not pre-auth) after 2FA verification
+    const { token, tokenId } = generateToken(user, undefined, false); // isPreAuth = false
+
+    // Create session after 2FA verification
+    try {
+      const userAgent = req.headers['user-agent'] || 'Unknown';
+      const ipAddress = getClientIP(req);
+      const browser = parseBrowser(userAgent);
+      const os = parseOS(userAgent);
+      const refreshToken = crypto.randomBytes(32).toString('hex');
+
+      // Revoke existing sessions from same device
+      try {
+        const deviceType = detectDevice(userAgent);
+        const deviceName = `${browser} on ${os}`;
+        
+        const existingSessions = await db.findMany(collection.sessions, {
+          userId: new ObjectId(user._id?.toString() || user.googleId || ''),
+          revoked: false,
+          deviceName: deviceName,
+          deviceType: deviceType,
+        }) as any[];
+        
+        if (existingSessions && existingSessions.length > 0) {
+          await db.updateMany(
+            collection.sessions,
+            {
+              userId: new ObjectId(user._id?.toString() || user.googleId || ''),
+              deviceName: deviceName,
+              deviceType: deviceType,
+              revoked: false,
+            },
+            {
+              $set: {
+                revoked: true,
+                revokedAt: new Date(),
+              },
+            }
+          );
+        }
+      } catch (revokeError: any) {
+        // Log but don't fail - session cleanup is optional
+        logger.warn(`Failed to revoke existing sessions after 2FA: ${revokeError.message}`);
+      }
+
+      await createSession({
+        userId: user._id || user.googleId || '',
+        tokenId,
+        refreshToken,
+        deviceInfo: {
+          os,
+          browser,
+          ipAddress,
+          userAgent,
+        },
+      });
+
+      logger.info(`Session created after 2FA verification for user: ${user.email}, tokenId: ${tokenId}`);
+    } catch (sessionError: any) {
+      logger.error(`Failed to create session after 2FA: ${sessionError.message}`);
+      // Don't fail 2FA verification if session creation fails
     }
 
     res.status(200).json({
       message: '2FA verification successful',
       verified: true,
+      token, // Return the token after successful 2FA verification
     });
 
-    logger.info(`2FA verified for user: ${user.email}`);
+    logger.info(`2FA verified and token issued for user: ${user.email}`);
   } catch (error: any) {
     logger.error(`2FA verification error: ${error.message}`);
     res.status(500).json({

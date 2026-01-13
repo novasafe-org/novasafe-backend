@@ -202,21 +202,18 @@ export const exportActivityLogs = async (req: Request, res: Response): Promise<v
 
     const organizationId = adminContext.organizationId;
 
-    // Date range is required for export
-    if (!req.query.startDate || !req.query.endDate) {
-      res.status(400).json({
-        success: false,
-        message: 'Bad Request',
-        error: 'startDate and endDate are required for export',
-        userMessage: 'Please specify a date range for export',
-      });
-      return;
-    }
+    // Parse filters - date range defaults to last 30 days if not provided
+    const defaultStartDate = new Date();
+    defaultStartDate.setDate(defaultStartDate.getDate() - 30);
+    const defaultEndDate = new Date();
 
-    // Parse filters
     const filters: ActivityLogFilters = {
-      startDate: new Date(req.query.startDate as string),
-      endDate: new Date(req.query.endDate as string),
+      startDate: req.query.startDate 
+        ? new Date(req.query.startDate as string) 
+        : defaultStartDate,
+      endDate: req.query.endDate 
+        ? new Date(req.query.endDate as string) 
+        : defaultEndDate,
     };
 
     if (req.query.action) {

@@ -22,7 +22,7 @@ export interface TokenWithSessionId {
   tokenId: string; // JWT ID (jti) for session tracking
 }
 
-export const generateToken = (user: IUser, tokenId?: string): TokenWithSessionId => {
+export const generateToken = (user: IUser, tokenId?: string, isPreAuth?: boolean): TokenWithSessionId => {
   // Ensure JWT_SECRET is configured
   if (!process.env.JWT_SECRET) {
     throw new Error('JWT_SECRET environment variable is not configured');
@@ -33,21 +33,23 @@ export const generateToken = (user: IUser, tokenId?: string): TokenWithSessionId
 
   // Create minimal payload to keep token size small
   // Note: jti is added via jwtid option, not in payload
-  const payload: IUserPayload = {
+  const payload: IUserPayload & { preAuth?: boolean } = {
     id: user._id?.toString() || user.googleId || '',
     email: user.email,
     name: user.name,
     picture: user.picture,
+    preAuth: isPreAuth || false, // Mark as pre-auth token if 2FA is required
   };
 
   // Sign the token with our secret key
-  // Token expires in 7 days (604800 seconds)
+  // Pre-auth tokens expire in 10 minutes (for 2FA verification)
+  // Full tokens expire in 7 days (604800 seconds)
   // jwtid option automatically adds 'jti' claim to the payload
   const token = jwt.sign(
     payload,
     process.env.JWT_SECRET,
     { 
-      expiresIn: '7d',
+      expiresIn: isPreAuth ? '10m' : '7d', // Pre-auth tokens expire quickly
       issuer: 'vault-backend',
       audience: 'vault-frontend',
       jwtid: jti, // JWT ID claim (automatically added to payload)

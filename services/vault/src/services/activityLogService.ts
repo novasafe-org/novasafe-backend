@@ -237,6 +237,12 @@ class ActivityLogService {
    */
   async getLogById(logId: string, organizationId: string): Promise<IActivityLog | null> {
     try {
+      // Validate that logId is a valid ObjectId before attempting to use it
+      if (!ObjectId.isValid(logId)) {
+        logger.warn(`Invalid log ID format: ${logId}`);
+        return null;
+      }
+
       const log = await this.db.findOne(collection.auditLogs, {
         _id: new ObjectId(logId),
         organizationId,
