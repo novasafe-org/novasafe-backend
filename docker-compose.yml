@@ -10,6 +10,24 @@ services:
       - .env
     restart: always
 
+  redis:
+    image: redis:7-alpine
+    container_name: novasafe-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  redis-data:
+
   # app2backend:
   #   image: pkt43/app2backend:latest
   #   container_name: app2backend

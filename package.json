@@ -20,11 +20,13 @@
     "start:auth": "pnpm --filter auth-service run dev",
     "start:notification": "pnpm --filter notification-service run dev",
     "start:file": "pnpm --filter file-service run dev",
+    "start:scheduler": "node scripts/start-scheduler.js",
     "build:vault": "pnpm --filter vault-service run build",
     "build:gateway": "pnpm --filter gateway-service run build",
     "build:auth": "pnpm --filter auth-service run build",
     "build:notification": "pnpm --filter notification-service run build",
-    "build:file": "pnpm --filter file-service run build"
+    "build:file": "pnpm --filter file-service run build",
+    "build:scheduler": "pnpm --filter vault-scheduler-service run build"
   },
   "dependencies": {
     

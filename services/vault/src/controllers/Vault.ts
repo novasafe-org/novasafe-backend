@@ -630,7 +630,8 @@ export const deleteItem = async (req: Request, res: Response) => {
       logger.error(`Failed to delete files for item ${id}: ${error.message}`);
     }
 
-    // Mark item as deleted
+    // Soft delete: Set deleted_at timestamp, but keep deleted = false
+    // The scheduler will permanently delete after 30 days
     const result = await db.updateOne(
       collection.vaultItems,
       { 
@@ -647,7 +648,7 @@ export const deleteItem = async (req: Request, res: Response) => {
           }
         ]
       },
-      { $set: { deleted: true, deletedAt: new Date().toISOString() } }
+      { $set: { deleted: false, deleted_at: new Date() } }
     );
 
     logger.info(`Item ${id} deleted by user ${req.user.email}`);
@@ -741,7 +742,8 @@ export const getItems = async (req: Request, res: Response) => {
         { userId: new ObjectId(userId) },  // Match ObjectId format (new items)
         { userId: userId }  // Match string format (legacy items)
       ],
-      deleted: { $ne: true }  // Exclude deleted items
+      deleted: { $ne: true },  // Exclude permanently deleted items
+      deleted_at: null  // Exclude soft-deleted items (in trash)
     });
 
     logger.info(`Fetched ${items.length} items for user ${req.user.email}`);

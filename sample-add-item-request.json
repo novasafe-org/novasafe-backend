@@ -1,0 +1,12 @@
+{
+  "title": "Gmail Account",
+  "category": "password",
+  "encrypted_data": "dGhpc2lzYW5leGFtcGxlZW5jcnlwdGVkZGF0YWZvcnRlc3Rpbmc=",
+  "iv": "bNe69t3qfZRSGYhW",
+  "field_count": 3,
+  "attachment_count": 0,
+  "folderId": null,
+  "tags": ["email", "google"],
+  "isFavorite": false
+}
+

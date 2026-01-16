@@ -113,8 +113,17 @@ export interface IVaultItem {
    * Soft delete flag
    * Items are not permanently deleted, just marked as deleted
    * Default: false
+   * When user deletes: deleted = false, deleted_at = NOW()
+   * After 30 days: deleted = true (permanent deletion)
    */
   deleted?: boolean;
+
+  /**
+   * Timestamp when the item was soft-deleted
+   * Used for 30-day retention period before permanent deletion
+   * NULL if item is not deleted
+   */
+  deleted_at?: Date | string | null;
 
   // ============================================
   // Timestamps

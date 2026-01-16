@@ -1,0 +1,169 @@
+{
+  "description": "Sample request bodies for POST /v/addItem endpoint",
+  "note": "All sensitive data must be encrypted client-side using AES-256-GCM before sending. These examples show the structure with placeholder base64 values.",
+  "examples": [
+    {
+      "name": "Password Item - Gmail Account",
+      "request": {
+        "title": "Gmail Account",
+        "category": "password",
+        "encrypted_data": "dGhpc2lzYW5leGFtcGxlZW5jcnlwdGVkZGF0YWZvcnRlc3Rpbmc=",
+        "iv": "41cwblOzDiuI8mcI",
+        "field_count": 3,
+        "attachment_count": 0,
+        "folderId": null,
+        "tags": ["email", "google", "work"],
+        "isFavorite": false
+      }
+    },
+    {
+      "name": "Password Item - Bank Login",
+      "request": {
+        "title": "Chase Bank Login",
+        "category": "password",
+        "encrypted_data": "YW5vdGhlcmV4YW1wbGVvZmVuY3J5cHRlZGRhdGFmb3J0ZXN0aW5ncHVycG9zZXM=",
+        "iv": "f6OpQx2qepVZWWUZ",
+        "field_count": 4,
+        "attachment_count": 0,
+        "folderId": null,
+        "tags": ["banking", "financial"],
+        "isFavorite": true
+      }
+    },
+    {
+      "name": "Financial Item - Credit Card",
+      "request": {
+        "title": "Visa Credit Card",
+        "category": "financial",
+        "encrypted_data": "Y3JlZGl0Y2FyZGVuY3J5cHRlZGRhdGFleGFtcGxlZm9ydGVzdGluZ3B1cnBvc2Vz",
+        "iv": "DotNqH0GafTVB8Qv",
+        "field_count": 5,
+        "attachment_count": 0,
+        "folderId": null,
+        "tags": ["credit-card", "visa"],
+        "isFavorite": false
+      }
+    },
+    {
+      "name": "Personal ID - Driver License",
+      "request": {
+        "title": "Driver License",
+        "category": "personal-id",
+        "encrypted_data": "ZHJpdmVybGljZW5zZWVuY3J5cHRlZGRhdGFleGFtcGxlZm9ydGVzdGluZ3B1cnBvc2Vz",
+        "iv": "f0xrc+UIqgLNPEJ4",
+        "field_count": 4,
+        "attachment_count": 1,
+        "folderId": null,
+        "tags": ["id", "license", "government"],
+        "isFavorite": false
+      }
+    },
+    {
+      "name": "Note Item - Secure Note",
+      "request": {
+        "title": "Important Secure Note",
+        "category": "notes",
+        "encrypted_data": "c2VjdXJlbm90ZWVuY3J5cHRlZGRhdGFleGFtcGxlZm9ydGVzdGluZ3B1cnBvc2Vz",
+        "iv": "6hq/gWCqizYysxml",
+        "field_count": 1,
+        "attachment_count": 0,
+        "folderId": null,
+        "tags": ["important", "personal"],
+        "isFavorite": true
+      }
+    },
+    {
+      "name": "Medical Item - Insurance Card",
+      "request": {
+        "title": "Health Insurance Card",
+        "category": "medical",
+        "encrypted_data": "aGVhbHRoaW5zdXJhbmNlY2FyZGVuY3J5cHRlZGRhdGFleGFtcGxlZm9ydGVzdGluZ3B1cnBvc2Vz",
+        "iv": "fH86ccFKLyJBOJgj",
+        "field_count": 3,
+        "attachment_count": 0,
+        "folderId": null,
+        "tags": ["insurance", "health"],
+        "isFavorite": false
+      }
+    },
+    {
+      "name": "Property Item - Property Document",
+      "request": {
+        "title": "House Deed",
+        "category": "property",
+        "encrypted_data": "cHJvcGVydHlkZWN1bWVudGVuY3J5cHRlZGRhdGFleGFtcGxlZm9ydGVzdGluZ3B1cnBvc2Vz",
+        "iv": "gS8YDqRs+Oo59u92",
+        "field_count": 2,
+        "attachment_count": 1,
+        "folderId": null,
+        "tags": ["property", "deed", "legal"],
+        "isFavorite": false
+      }
+    },
+    {
+      "name": "Misc Item - API Key",
+      "request": {
+        "title": "AWS API Key",
+        "category": "misc",
+        "encrypted_data": "YXBpa2V5ZW5jcnlwdGVkZGF0YWV4YW1wbGVmb3J0ZXN0aW5ncHVycG9zZXM=",
+        "iv": "ZzpseKTe4ffoVQb6",
+        "field_count": 2,
+        "attachment_count": 0,
+        "folderId": null,
+        "tags": ["api", "aws", "cloud"],
+        "isFavorite": false
+      }
+    },
+    {
+      "name": "Password Item - WiFi Password",
+      "request": {
+        "title": "Home WiFi Network",
+        "category": "password",
+        "encrypted_data": "d2lmaXBhc3N3b3JkZW5jcnlwdGVkZGF0YWV4YW1wbGVmb3J0ZXN0aW5ncHVycG9zZXM=",
+        "iv": "s1kvUzKUxjMTZXyV",
+        "field_count": 2,
+        "attachment_count": 0,
+        "folderId": null,
+        "tags": ["wifi", "network", "home"],
+        "isFavorite": false
+      }
+    },
+    {
+      "name": "Photos Item - Family Photos",
+      "request": {
+        "title": "Family Vacation Photos",
+        "category": "photos",
+        "encrypted_data": "cGhvdG9zZW5jcnlwdGVkZGF0YWV4YW1wbGVmb3J0ZXN0aW5ncHVycG9zZXM=",
+        "iv": "B2y+rwV4oxKQD9mX",
+        "field_count": 1,
+        "attachment_count": 5,
+        "folderId": null,
+        "tags": ["photos", "family", "vacation"],
+        "isFavorite": true
+      }
+    }
+  ],
+  "field_descriptions": {
+    "title": "Optional - Item title (string). Can be plain text for search/filtering.",
+    "category": "Required - Item category. Valid values: 'password', 'personal-id', 'property', 'financial', 'medical', 'photos', 'notes', 'misc'",
+    "encrypted_data": "Required - Base64 encoded AES-256-GCM ciphertext containing all sensitive item data. Must be valid base64.",
+    "iv": "Required - Base64 encoded 12-byte initialization vector. When decoded, must be exactly 12 bytes (16 base64 characters).",
+    "field_count": "Required - Number of encrypted fields in this item (number >= 0).",
+    "attachment_count": "Required - Number of attachments linked to this item (number >= 0).",
+    "folderId": "Optional - MongoDB ObjectId string of the folder this item belongs to, or null for items in Personal safe.",
+    "tags": "Optional - Array of tag strings for organization.",
+    "isFavorite": "Optional - Boolean indicating if item is favorited (default: false)."
+  },
+  "validation_notes": {
+    "iv_validation": "IV must be exactly 12 bytes when base64 decoded. A 12-byte IV will be exactly 16 base64 characters (no padding). Example: '41cwblOzDiuI8mcI' decodes to 12 bytes.",
+    "encrypted_data_validation": "encrypted_data must be valid base64 encoded string. The actual encrypted content depends on your encryption implementation.",
+    "category_validation": "Category must be a non-empty string. Common values: 'password', 'financial', 'notes', etc.",
+    "field_count_validation": "field_count must be a number >= 0. Represents the number of encrypted fields stored in encrypted_data.",
+    "attachment_count_validation": "attachment_count must be a number >= 0. If files are uploaded via multipart/form-data, this should match the number of files."
+  },
+  "usage_example": {
+    "curl": "curl -X POST http://localhost:3123/v/addItem \\\n  -H 'Content-Type: application/json' \\\n  -H 'Authorization: Bearer YOUR_JWT_TOKEN' \\\n  -d @sample_request.json",
+    "note": "Replace YOUR_JWT_TOKEN with a valid JWT token obtained from authentication endpoint."
+  }
+}
+
