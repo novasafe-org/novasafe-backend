@@ -84,9 +84,9 @@ export async function chargeRecurringSubscription(
     );
 
     // Update payment order with transaction details
-    const db = new (await import('../database/connection')).default('vault');
+    const db = new (await import('../../database/connection')).default('vault');
     await db.updateOne(
-      (await import('../config/config')).DBCONFIG.vault.collections.paymentOrders,
+      (await import('../../config/config')).DBCONFIG.vault.collections.paymentOrders,
       { orderId: paymentOrder.orderId },
       {
         $set: {
@@ -121,8 +121,8 @@ export async function processDueRecurringSubscriptions(): Promise<{
   failed: number;
 }> {
   try {
-    const db = new (await import('../database/connection')).default('vault');
-    const { DBCONFIG } = await import('../config/config');
+    const db = new (await import('../../database/connection')).default('vault');
+    const { DBCONFIG } = await import('../../config/config');
     const now = new Date();
 
     // Find all active subscriptions that are due for renewal
