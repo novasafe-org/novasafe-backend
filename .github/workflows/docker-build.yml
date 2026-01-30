@@ -86,13 +86,27 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
         run: |
-          sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} bash << 'DEPLOY_SCRIPT'
+          sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} bash << EOF
             set -e
             echo 'Starting backend deployment...'
             
             # Navigate to deployment directory
             cd ${DEPLOY_PATH}
-            echo "Current directory: $(pwd)"
+            echo "Current directory: \$(pwd)"
+            
+            # Check if docker-compose.yml exists
+            if [ ! -f "docker-compose.yml" ]; then
+              echo "Error: docker-compose.yml not found in ${DEPLOY_PATH}"
+              echo "Listing files in current directory:"
+              ls -la
+              exit 1
+            fi
+            
+            # Create .env file if it doesn't exist (docker-compose.yml may require it)
+            if [ ! -f ".env" ]; then
+              echo "Note: .env file not found, creating empty one..."
+              touch .env
+            fi
             
             # Login to GHCR to pull private images
             echo 'Logging in to GHCR...'
@@ -109,24 +123,45 @@ jobs:
             
             # Run docker compose (try V2 first, fallback to V1)
             echo 'Starting services with docker compose...'
-            if command -v docker &> /dev/null && docker compose version &> /dev/null; then
-              DOCKER_COMPOSE_CMD="docker compose"
-            elif command -v docker-compose &> /dev/null; then
-              DOCKER_COMPOSE_CMD="docker-compose"
+            
+            # Check which docker compose command is available
+            # Try docker compose (V2) first
+            if docker compose version &> /dev/null 2>&1; then
+              export DOCKER_COMPOSE_CMD="docker compose"
+              echo "✓ Found: docker compose (V2)"
+            # Fallback to docker-compose (V1)
+            elif command -v docker-compose &> /dev/null 2>&1; then
+              export DOCKER_COMPOSE_CMD="docker-compose"
+              echo "✓ Found: docker-compose (V1)"
             else
-              echo "Error: Neither 'docker compose' nor 'docker-compose' found"
+              echo "✗ Error: Neither 'docker compose' nor 'docker-compose' found"
+              echo "Checking docker installation..."
+              docker --version || echo "Docker not found"
               exit 1
             fi
             
-            echo "Using: $DOCKER_COMPOSE_CMD"
+            # Verify variable is set (critical check)
+            if [ -z "\$DOCKER_COMPOSE_CMD" ]; then
+              echo "✗ Error: DOCKER_COMPOSE_CMD is empty after detection"
+              echo "Debug: DOCKER_COMPOSE_CMD value is: [\$DOCKER_COMPOSE_CMD]"
+              exit 1
+            fi
+            
+            echo "Using command: \$DOCKER_COMPOSE_CMD"
+            
+            # Verify command works
+            \$DOCKER_COMPOSE_CMD version || {
+              echo "✗ Error: \$DOCKER_COMPOSE_CMD version check failed"
+              exit 1
+            }
             
             # Pull latest backend image only
             echo 'Pulling latest backend image...'
-            $DOCKER_COMPOSE_CMD pull backend || true
+            \$DOCKER_COMPOSE_CMD -f docker-compose.yml pull backend || true
             
             # Start/restart only backend service (doesn't affect other containers)
             echo 'Restarting backend service only...'
-            $DOCKER_COMPOSE_CMD up -d --force-recreate --no-deps backend
+            \$DOCKER_COMPOSE_CMD -f docker-compose.yml up -d --force-recreate --no-deps backend
             
             # Wait for service to be healthy
             echo 'Waiting for backend to be healthy...'
@@ -146,5 +181,5 @@ jobs:
             curl -f http://localhost:3123/health || echo "Health check failed (container may still be starting)"
             
             echo 'Backend deployment completed successfully!'
-          DEPLOY_SCRIPT
+          EOF
 
