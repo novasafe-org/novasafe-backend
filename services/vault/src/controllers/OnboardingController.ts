@@ -405,6 +405,10 @@ export const createAccountEndpoint = async (req: Request, res: Response): Promis
 
     logger.info(`Account created successfully: ${email}, userId: ${userId}`);
 
+    // Generate redirect URL based on user's plan and company
+    const { getRedirectUrl } = await import('../utils/redirectUrl');
+    const redirectUrl = getRedirectUrl(user.planId || 'individual', user.companyName);
+
     res.status(201).json({
       message: 'Account created successfully',
       success: true,
@@ -414,7 +418,9 @@ export const createAccountEndpoint = async (req: Request, res: Response): Promis
         email: user.email,
         name: user.name,
         planId: user.planId,
+        companyName: user.companyName,
       },
+      redirectUrl,
     });
   } catch (error: any) {
     logger.error(`Create account error: ${error.message}`);
@@ -550,6 +556,10 @@ export const completeOnboardingEndpoint = async (req: Request, res: Response): P
 
     logger.info(`Onboarding completed for userId: ${userId}`);
 
+    // Generate redirect URL based on user's plan and company
+    const { getRedirectUrl } = await import('../utils/redirectUrl');
+    const redirectUrl = getRedirectUrl(user.planId || 'individual', user.companyName);
+
     res.status(200).json({
       message: 'Onboarding completed successfully',
       token,
@@ -558,7 +568,9 @@ export const completeOnboardingEndpoint = async (req: Request, res: Response): P
         email: user.email,
         name: user.name,
         planId: user.planId,
+        companyName: user.companyName,
       },
+      redirectUrl,
     });
   } catch (error: any) {
     logger.error(`Complete onboarding error: ${error.message}`);

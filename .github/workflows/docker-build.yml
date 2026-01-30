@@ -1,0 +1,150 @@
+name: Build & Deploy Backend
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'services/vault/**'
+      - 'common/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'Dockerfile'
+      - '.github/workflows/docker-build.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    if: success()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH_BACKEND || secrets.DEPLOY_PATH }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} bash << 'DEPLOY_SCRIPT'
+            set -e
+            echo 'Starting backend deployment...'
+            
+            # Navigate to deployment directory
+            cd ${DEPLOY_PATH}
+            echo "Current directory: $(pwd)"
+            
+            # Login to GHCR to pull private images
+            echo 'Logging in to GHCR...'
+            echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin || true
+            
+            # Pull latest image
+            echo 'Pulling latest backend image...'
+            docker pull ghcr.io/${GITHUB_REPO}:latest || true
+            
+            # Stop and remove existing backend container (if running standalone, not via compose)
+            echo 'Stopping existing backend container (if any)...'
+            docker stop backend vault-backend || true
+            docker rm backend vault-backend || true
+            
+            # Run docker compose (try V2 first, fallback to V1)
+            echo 'Starting services with docker compose...'
+            if command -v docker &> /dev/null && docker compose version &> /dev/null; then
+              DOCKER_COMPOSE_CMD="docker compose"
+            elif command -v docker-compose &> /dev/null; then
+              DOCKER_COMPOSE_CMD="docker-compose"
+            else
+              echo "Error: Neither 'docker compose' nor 'docker-compose' found"
+              exit 1
+            fi
+            
+            echo "Using: $DOCKER_COMPOSE_CMD"
+            
+            # Pull latest backend image only
+            echo 'Pulling latest backend image...'
+            $DOCKER_COMPOSE_CMD pull backend || true
+            
+            # Start/restart only backend service (doesn't affect other containers)
+            echo 'Restarting backend service only...'
+            $DOCKER_COMPOSE_CMD up -d --force-recreate --no-deps backend
+            
+            # Wait for service to be healthy
+            echo 'Waiting for backend to be healthy...'
+            sleep 10
+            
+            # Show running containers
+            echo 'Current running containers:'
+            docker ps
+            
+            # Show backend logs (last 50 lines)
+            echo 'Backend container logs:'
+            docker logs backend --tail 50 || true
+            
+            # Test health endpoint
+            echo 'Testing health endpoint...'
+            sleep 5
+            curl -f http://localhost:3123/health || echo "Health check failed (container may still be starting)"
+            
+            echo 'Backend deployment completed successfully!'
+          DEPLOY_SCRIPT
+

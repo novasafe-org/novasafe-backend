@@ -274,7 +274,11 @@ export const googleSignIn = async (req: Request, res: Response): Promise<void> =
       });
     }
 
-    // Step 6: Return the token and user information to the frontend
+    // Step 6: Generate redirect URL based on user's plan and company
+    const { getRedirectUrl } = await import('../utils/redirectUrl');
+    const redirectUrl = getRedirectUrl(user.planId || 'individual', user.companyName);
+
+    // Step 7: Return the token and user information to the frontend
     // If 2FA is required, token will be null and frontend must verify 2FA first
     res.status(200).json({
       message: requires2FA 
@@ -287,8 +291,11 @@ export const googleSignIn = async (req: Request, res: Response): Promise<void> =
         name: user.name,
         email: user.email,
         picture: user.picture,
+        planId: user.planId,
+        companyName: user.companyName,
         createdAt: user.createdAt,
       },
+      redirectUrl,
       isFirstTime,
       requires2FA,
     });
@@ -745,6 +752,10 @@ export const emailLogin = async (req: Request, res: Response): Promise<void> => 
       });
     }
 
+    // Generate redirect URL based on user's plan and company
+    const { getRedirectUrl } = await import('../utils/redirectUrl');
+    const redirectUrl = getRedirectUrl(user.planId || 'individual', user.companyName);
+
     // Return token and user information
     // If 2FA is required, token will be null and frontend must verify 2FA first
     res.status(200).json({
@@ -757,9 +768,11 @@ export const emailLogin = async (req: Request, res: Response): Promise<void> => 
         email: user.email,
         name: user.name,
         picture: user.picture,
-        createdAt: user.createdAt,
         planId: user.planId,
+        companyName: user.companyName,
+        createdAt: user.createdAt,
       },
+      redirectUrl,
       requires2FA,
     });
 
