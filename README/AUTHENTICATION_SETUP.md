@@ -98,7 +98,7 @@ Edit `.env` and set these values:
 
 ```env
 # Server
-PORT=3123
+PORT=5001
 
 # Google OAuth
 GOOGLE_CLIENT_ID=your-actual-client-id.apps.googleusercontent.com
@@ -128,7 +128,7 @@ pnpm dev
 npm run dev
 ```
 
-The server will run on `http://localhost:3123`
+The server will run on `http://localhost:5001`
 
 ---
 
@@ -140,7 +140,7 @@ Authenticate user with Google OAuth credential.
 
 **Request:**
 ```http
-POST http://localhost:3123/auth/google
+POST http://localhost:5001/auth/google
 Content-Type: application/json
 
 {
@@ -180,7 +180,7 @@ Get current authenticated user's information.
 
 **Request:**
 ```http
-GET http://localhost:3123/auth/me
+GET http://localhost:5001/auth/me
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
@@ -214,7 +214,7 @@ Logout current user.
 
 **Request:**
 ```http
-POST http://localhost:3123/auth/logout
+POST http://localhost:5001/auth/logout
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
@@ -266,7 +266,7 @@ function Login() {
 
   const handleGoogleLogin = async (credentialResponse: CredentialResponse) => {
     try {
-      const response = await fetch('http://localhost:3123/auth/google', {
+      const response = await fetch('http://localhost:5001/auth/google', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -296,7 +296,7 @@ function Login() {
     const authToken = localStorage.getItem('authToken');
     
     try {
-      await fetch('http://localhost:3123/auth/logout', {
+      await fetch('http://localhost:5001/auth/logout', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -340,7 +340,7 @@ const fetchProtectedData = async () => {
   const token = localStorage.getItem('authToken');
 
   try {
-    const response = await fetch('http://localhost:3123/v/items', {
+    const response = await fetch('http://localhost:5001/v/items', {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
@@ -366,7 +366,7 @@ const fetchProtectedData = async () => {
 
 ```tsx
 // api/client.ts
-const API_BASE_URL = 'http://localhost:3123';
+const API_BASE_URL = 'http://localhost:5001';
 
 export class ApiClient {
   private getAuthHeader() {
@@ -499,7 +499,7 @@ const getVaultItems = async () => {
 First, get a Google credential from your frontend, then:
 
 ```bash
-curl -X POST http://localhost:3123/auth/google \
+curl -X POST http://localhost:5001/auth/google \
   -H "Content-Type: application/json" \
   -d '{"credential":"YOUR_GOOGLE_CREDENTIAL_HERE"}'
 ```
@@ -507,14 +507,14 @@ curl -X POST http://localhost:3123/auth/google \
 **2. Get Current User:**
 
 ```bash
-curl -X GET http://localhost:3123/auth/me \
+curl -X GET http://localhost:5001/auth/me \
   -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE"
 ```
 
 **3. Logout:**
 
 ```bash
-curl -X POST http://localhost:3123/auth/logout \
+curl -X POST http://localhost:5001/auth/logout \
   -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE"
 ```
 
@@ -522,7 +522,7 @@ curl -X POST http://localhost:3123/auth/logout \
 
 1. **POST /auth/google**
    - Method: POST
-   - URL: `http://localhost:3123/auth/google`
+   - URL: `http://localhost:5001/auth/google`
    - Body (JSON):
      ```json
      {
@@ -533,7 +533,7 @@ curl -X POST http://localhost:3123/auth/logout \
 
 2. **GET /auth/me**
    - Method: GET
-   - URL: `http://localhost:3123/auth/me`
+   - URL: `http://localhost:5001/auth/me`
    - Headers:
      - Key: `Authorization`
      - Value: `Bearer YOUR_JWT_TOKEN`

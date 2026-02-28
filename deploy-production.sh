@@ -101,7 +101,7 @@ deploy_service() {
     docker run -d \
         --name vault-service \
         --restart unless-stopped \
-        -p 3123:3123 \
+        -p 5001:5001 \
         -e NODE_ENV=production \
         -e VAULT_DB_URI="${VAULT_DB_URI}" \
         -e VAULT_DB_NAME="${VAULT_DB_NAME:-vault}" \
@@ -137,7 +137,7 @@ monitor_startup() {
     # Final health check
     if docker logs vault-service 2>&1 | grep -q "Database connection established successfully"; then
         echo "🎉 MongoDB Atlas connection successful!"
-        echo "🌐 Service is available at http://localhost:3123"
+        echo "🌐 Service is available at http://localhost:5001"
     else
         echo "❌ MongoDB Atlas connection failed"
         echo "📝 Full logs:"
@@ -167,7 +167,7 @@ main() {
     
     echo ""
     echo "🎉 Deployment completed successfully!"
-    echo "🌐 Vault Service is running at http://localhost:3123"
+    echo "🌐 Vault Service is running at http://localhost:5001"
     echo "📝 Monitor logs with: docker logs -f vault-service"
 }
 

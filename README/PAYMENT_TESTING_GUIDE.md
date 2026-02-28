@@ -52,8 +52,8 @@ PAYU_MERCHANT_KEY=your_merchant_key
 PAYU_MERCHANT_SALT=your_merchant_salt
 PAYU_ENVIRONMENT=sandbox  # Use 'sandbox' for testing
 PAYU_ENABLE_RECURRING=true
-PAYU_SUCCESS_URL=http://localhost:3123/v/payments/callback
-PAYU_FAILURE_URL=http://localhost:3123/v/payments/callback
+PAYU_SUCCESS_URL=http://localhost:5001/v/payments/callback
+PAYU_FAILURE_URL=http://localhost:5001/v/payments/callback
 ```
 
 ### PayU Sandbox Test Credentials:
@@ -72,7 +72,7 @@ npm run dev
 ### Verify Server Started:
 ```
 ✅ Database connected ✅
-Vault service running on port 3123
+Vault service running on port 5001
 ```
 
 ## Step 4: Test Payment Flow
@@ -81,7 +81,7 @@ Vault service running on port 3123
 
 #### Get Pricing Plans:
 ```bash
-curl http://localhost:3123/v/pricing/plans?currency=INR
+curl http://localhost:5001/v/pricing/plans?currency=INR
 ```
 
 **Expected Response:**
@@ -101,14 +101,14 @@ curl http://localhost:3123/v/pricing/plans?currency=INR
 
 #### Get Pricing Config:
 ```bash
-curl http://localhost:3123/v/pricing/config?currency=INR
+curl http://localhost:5001/v/pricing/config?currency=INR
 ```
 
 ### 4.2 Authenticate User (Required for Payment)
 
 #### Google Sign-In:
 ```bash
-curl -X POST http://localhost:3123/v/auth/google \
+curl -X POST http://localhost:5001/v/auth/google \
   -H "Content-Type: application/json" \
   -d '{
     "credential": "YOUR_GOOGLE_ID_TOKEN"
@@ -121,7 +121,7 @@ curl -X POST http://localhost:3123/v/auth/google \
 
 #### Request:
 ```bash
-curl -X POST http://localhost:3123/v/payments/create-order \
+curl -X POST http://localhost:5001/v/payments/create-order \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
@@ -169,7 +169,7 @@ curl -X POST http://localhost:3123/v/payments/create-order \
 
 #### Check Payment Status:
 ```bash
-curl http://localhost:3123/v/payments/status?orderId=ORD_1234567890_abc123 \
+curl http://localhost:5001/v/payments/status?orderId=ORD_1234567890_abc123 \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -188,7 +188,7 @@ curl http://localhost:3123/v/payments/status?orderId=ORD_1234567890_abc123 \
 
 #### Get User Subscription:
 ```bash
-curl http://localhost:3123/v/subscriptions/me \
+curl http://localhost:5001/v/subscriptions/me \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -214,7 +214,7 @@ PayU will send a POST request to `/v/payments/callback` after payment.
 
 #### Manual Test (Using curl):
 ```bash
-curl -X POST http://localhost:3123/v/payments/callback \
+curl -X POST http://localhost:5001/v/payments/callback \
   -H "Content-Type: application/json" \
   -d '{
     "orderId": "ORD_1234567890_abc123",
@@ -238,7 +238,7 @@ curl -X POST http://localhost:3123/v/payments/callback \
 
 Ensure `config/backend.ts` points to your backend:
 ```typescript
-return 'http://localhost:3123/v';  // or your server IP
+return 'http://localhost:5001/v';  // or your server IP
 ```
 
 ### 6.2 Test in Mobile App
@@ -254,7 +254,7 @@ return 'http://localhost:3123/v';  // or your server IP
 
 ### 7.1 Test Invalid Plan
 ```bash
-curl -X POST http://localhost:3123/v/payments/create-order \
+curl -X POST http://localhost:5001/v/payments/create-order \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
     "planId": "invalid_plan",
@@ -267,7 +267,7 @@ curl -X POST http://localhost:3123/v/payments/create-order \
 ### 7.2 Test Expired Order
 Wait 30+ minutes, then check status:
 ```bash
-curl http://localhost:3123/v/payments/status?orderId=EXPIRED_ORDER_ID \
+curl http://localhost:5001/v/payments/status?orderId=EXPIRED_ORDER_ID \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 **Expected:** Order should be expired

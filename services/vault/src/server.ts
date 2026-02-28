@@ -62,7 +62,9 @@ if (!envLoaded) {
 }
 
 const app = express();
-const PORT = process.env.PORT || 3123;
+const PORT = process.env.PORT || 5001;
+// Bind host: use 127.0.0.1 for local dev if you get "Connection reset by peer" with 0.0.0.0 (e.g. macOS)
+const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
 
 // Add CORS and JSON parsing middleware
 app.use(express.json());
@@ -138,12 +140,13 @@ export const startServer = async () => {
     logger.info('✅ SMTP is configured. Email sending is enabled.');
   }
 
-  app.listen(Number(PORT), '0.0.0.0', () => {
+  app.listen(Number(PORT), BIND_HOST, () => {
     logger.info('#'.repeat(50));
-    logger.info(`Vault service running on port ${PORT}`);
+    logger.info(`Vault service running on port ${PORT} (bind: ${BIND_HOST})`);
     logger.info(`Internal access: http://localhost:${PORT}`);
-    logger.info(`External access: http://0.0.0.0:${PORT}`);
-    logger.info(`Docker access: http://64.227.135.126:${PORT}`);
+    if (BIND_HOST === '0.0.0.0') {
+      logger.info(`External access: http://0.0.0.0:${PORT}`);
+    }
     logger.info('#'.repeat(50));
   });
 };

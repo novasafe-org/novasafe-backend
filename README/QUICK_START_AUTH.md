@@ -22,7 +22,7 @@ Get your Google OAuth authentication up and running in 5 minutes!
 Create `.env` file in `services/vault/`:
 
 ```bash
-PORT=3123
+PORT=5001
 GOOGLE_CLIENT_ID=paste-your-client-id-here.apps.googleusercontent.com
 JWT_SECRET=generate-a-random-secret-at-least-32-characters-long
 VAULT_DB_NAME=vault
@@ -43,7 +43,7 @@ pnpm install
 pnpm dev
 ```
 
-Server will run on `http://localhost:3123`
+Server will run on `http://localhost:5001`
 
 ---
 
@@ -80,7 +80,7 @@ import { GoogleLogin } from '@react-oauth/google';
 
 function Login() {
   const handleLogin = async (credentialResponse) => {
-    const response = await fetch('http://localhost:3123/auth/google', {
+    const response = await fetch('http://localhost:5001/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ credential: credentialResponse.credential })
@@ -105,7 +105,7 @@ function Login() {
 ```tsx
 const token = localStorage.getItem('authToken');
 
-const response = await fetch('http://localhost:3123/v/getAll', {
+const response = await fetch('http://localhost:5001/v/getAll', {
   headers: {
     'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json'

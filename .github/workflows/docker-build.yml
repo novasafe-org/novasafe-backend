@@ -1,14 +1,20 @@
+# Build and push Backend image, then deploy only the backend service.
+# Image: ghcr.io/<org>/novasafe-backend:latest
+# Deployment: updates service "backend" in the shared docker-compose at DEPLOY_PATH.
+
 name: Build & Deploy Backend
 
 on:
   push:
     branches:
+      - main
       - master
     paths:
       - 'services/vault/**'
       - 'common/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
       - 'Dockerfile'
       - '.github/workflows/docker-build.yml'
 
@@ -34,15 +40,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+      # Dynamic tag creation (branch, sha) - disabled for now; using only latest
+      # - name: Extract metadata
+      #   id: meta
+      #   uses: docker/metadata-action@v5
+      #   with:
+      #     images: ghcr.io/${{ github.repository }}
+      #     tags: |
+      #       type=ref,event=branch
+      #       type=sha,prefix={{branch}}-
+      #       type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build & Push Docker image
         uses: docker/build-push-action@v5
@@ -50,8 +57,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ghcr.io/${{ github.repository }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -76,7 +82,7 @@ jobs:
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy Backend to Server
+      - name: Deploy Backend to server
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -85,66 +91,37 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
+          COMPOSE_SERVICE: backend
         run: |
           sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} bash << EOF
             set -e
-
-            echo "🚀 Starting backend deployment..."
-
+            echo "🚀 Deploying ${COMPOSE_SERVICE}..."
             cd ${DEPLOY_PATH}
-            echo "📁 Current directory: \$(pwd)"
-
             if [ ! -f docker-compose.yml ]; then
-              echo "❌ docker-compose.yml not found"
+              echo "❌ docker-compose.yml not found in DEPLOY_PATH"
               exit 1
             fi
-
-            if [ ! -f .env ]; then
-              echo "ℹ️ .env not found, creating empty one"
-              touch .env
-            fi
-
-            echo "🔐 Logging in to GHCR..."
-            echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin || true
-
-            echo "🔍 Detecting Docker Compose..."
             if docker compose version >/dev/null 2>&1; then
               DOCKER_COMPOSE_CMD="docker compose"
-              echo "✓ Using docker compose (V2)"
-            elif command -v docker-compose >/dev/null 2>&1; then
-              DOCKER_COMPOSE_CMD="docker-compose"
-              echo "✓ Using docker-compose (V1)"
             else
-              echo "❌ Docker Compose not found"
+              DOCKER_COMPOSE_CMD="docker-compose"
+            fi
+            if ! \$DOCKER_COMPOSE_CMD config --services 2>/dev/null | grep -q "^${COMPOSE_SERVICE}\$"; then
+              echo "❌ Service '${COMPOSE_SERVICE}' not found in docker-compose.yml. Ensure the server uses the compose from novasafe-deployment with services: landing, auth, app, backend."
+              \$DOCKER_COMPOSE_CMD config --services 2>/dev/null || true
               exit 1
             fi
-
-            echo "🛑 Stopping backend service..."
-            \$DOCKER_COMPOSE_CMD stop backend || true
-
-            echo "🧹 Removing backend container..."
-            \$DOCKER_COMPOSE_CMD rm -f backend || true
-
-            echo "🗑 Removing old backend image..."
+            [ -f .env ] || touch .env
+            echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin || true
+            \$DOCKER_COMPOSE_CMD stop ${COMPOSE_SERVICE} || true
+            \$DOCKER_COMPOSE_CMD rm -f ${COMPOSE_SERVICE} || true
             docker image rm ghcr.io/${GITHUB_REPO}:latest || true
-
-            echo "⬇️ Pulling fresh backend image..."
-            \$DOCKER_COMPOSE_CMD pull backend
-
-            echo "🚀 Starting backend with fresh container..."
-            \$DOCKER_COMPOSE_CMD up -d --no-deps backend
-
+            \$DOCKER_COMPOSE_CMD pull ${COMPOSE_SERVICE}
+            \$DOCKER_COMPOSE_CMD up -d --no-deps ${COMPOSE_SERVICE}
             echo "⏳ Waiting for backend to initialize..."
             sleep 10
-
-            echo "📦 Running containers:"
-            docker ps
-
-            echo "📄 Backend logs (last 50 lines):"
-            docker logs backend --tail 50 || true
-
-            echo "🩺 Health check..."
-            curl -f http://localhost:3123/health || echo "⚠️ Health check failed (may still be warming up)"
-
-            echo "✅ Backend deployment completed successfully!"
+            echo "✅ ${COMPOSE_SERVICE} deployment completed!"
+            docker ps --filter name=${COMPOSE_SERVICE}
+            docker logs \$(docker ps -q -f name=vault-backend) --tail 30 || true
+            curl -f http://localhost:5001/health || echo "⚠️ Health check failed (may still be warming up)"
           EOF

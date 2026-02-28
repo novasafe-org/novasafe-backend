@@ -67,12 +67,12 @@ RUN pnpm install --prod --ignore-workspace
 ENV NODE_OPTIONS="--openssl-legacy-provider"
 ENV NODE_ENV=production
 
-# Expose the correct port (backend runs on 3123, but container uses 3000 internally)
-EXPOSE 3123
+# Expose the correct port (backend runs on 5001)
+EXPOSE 5001
 
-# Health check (backend runs on port 3000 internally)
+# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:3123/health || exit 1
+  CMD curl -f http://localhost:5001/health || exit 1
 
 # Run the application from the correct path
 CMD ["node", "dist/src/index.js"]

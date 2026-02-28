@@ -52,7 +52,7 @@ export default router;
  * ```typescript
  * const token = localStorage.getItem('authToken');
  * 
- * const response = await fetch('http://localhost:3123/v/getAll', {
+ * const response = await fetch('http://localhost:5001/v/getAll', {
  *   headers: {
  *     'Authorization': `Bearer ${token}`,
  *     'Content-Type': 'application/json'

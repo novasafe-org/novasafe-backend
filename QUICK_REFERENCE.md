@@ -8,7 +8,7 @@ All commands run from **root directory**: `pnpm run start:<service-name>`
 # Always from root directory
 cd /Users/pavankumar.tidke/Projects/vault-backend
 
-pnpm run start:vault           # Start vault service (Port: 3123)
+pnpm run start:vault           # Start vault service (Port: 5001)
 pnpm run start:gateway         # Start gateway service (Port: 3000)
 pnpm run start:auth            # Start auth service (Port: 3124)
 pnpm run start:notification    # Start notification service (Port: 3125)
@@ -61,7 +61,7 @@ pnpm run clean          # Clean all node_modules
 ```
 
 ## **Service URLs** 🌐
-- **Vault**: http://localhost:3123
+- **Vault**: http://localhost:5001
 - **Gateway**: http://localhost:3000  
 - **Auth**: http://localhost:3124
 - **Notification**: http://localhost:3125

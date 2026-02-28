@@ -85,7 +85,7 @@ services:
     image: ghcr.io/YOUR_USERNAME/novasafe-backend:latest
     container_name: vault-backend
     ports:
-      - "3123:3000"
+      - "5001:3000"
     env_file:
       - .env
     restart: always
@@ -217,14 +217,14 @@ docker logs vault-backend
 ### 3. Test Health Endpoint
 
 ```bash
-curl http://localhost:3123/health
+curl http://localhost:5001/health
 # Should return: {"status":"ok",...}
 ```
 
 ### 4. Test API Endpoint
 
 ```bash
-curl http://localhost:3123/v/auth/me
+curl http://localhost:5001/v/auth/me
 # Should return authentication required error (not 404)
 ```
 

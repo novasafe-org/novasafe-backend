@@ -16,19 +16,24 @@ interface RedirectUrlConfig {
 
 /**
  * Get redirect URL configuration from environment variables
+ * APP_ORIGIN: when set (e.g. http://localhost:8080), all redirects go to this origin + VAULT_PATH (for local dev: auth → app)
  */
-const getRedirectConfig = (): RedirectUrlConfig => {
+const getRedirectConfig = (): RedirectUrlConfig & { appOrigin?: string } => {
+  const vaultPath = process.env.VAULT_PATH || '/vault';
+  const appOrigin = process.env.APP_ORIGIN?.replace(/\/$/, ''); // e.g. http://localhost:8080
   return {
     baseDomain: process.env.BASE_DOMAIN || 'novasafe.io',
     individualSubdomain: process.env.INDIVIDUAL_SUBDOMAIN || 'app',
-    vaultPath: process.env.VAULT_PATH || '/vault',
+    vaultPath,
     protocol: (process.env.PROTOCOL as 'http' | 'https') || 'https',
+    appOrigin,
   };
 };
 
 /**
  * Generate redirect URL based on plan and company
- * 
+ * When APP_ORIGIN is set (local dev), returns APP_ORIGIN + vaultPath so auth app redirects to main app.
+ *
  * @param planId - User's plan ID ('individual', 'family', 'team', 'business')
  * @param companyName - Company name (for team/business plans)
  * @returns Full redirect URL
@@ -38,6 +43,11 @@ export const getRedirectUrl = (planId: string, companyName?: string | null): str
   const plan = (planId || 'individual').toLowerCase();
   const protocol = config.protocol || 'https';
 
+  // Local dev: single app origin (auth and app run on different ports)
+  if (config.appOrigin) {
+    return `${config.appOrigin}${config.vaultPath}`;
+  }
+
   // Individual or Family plan
   if (plan === 'individual' || plan === 'family') {
     return `${protocol}://${config.individualSubdomain}.${config.baseDomain}${config.vaultPath}`;
@@ -46,21 +56,16 @@ export const getRedirectUrl = (planId: string, companyName?: string | null): str
   // Team or Business plan
   if (plan === 'team' || plan === 'business') {
     if (!companyName) {
-      // Fallback to individual if no company name
       return `${protocol}://${config.individualSubdomain}.${config.baseDomain}${config.vaultPath}`;
     }
-
-    // Normalize company name for subdomain (lowercase, replace spaces/special chars)
     const normalizedCompany = companyName
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');
-
     return `${protocol}://${normalizedCompany}.${config.baseDomain}${config.vaultPath}`;
   }
 
-  // Default to individual
   return `${protocol}://${config.individualSubdomain}.${config.baseDomain}${config.vaultPath}`;
 };
 

@@ -31,8 +31,8 @@ output/
 └── attachments/
     └── <USER_ID>/
         └── <ITEM_ID>/
-            ├── 1711231231-uuid-1.pdf.gz
-            ├── 1711231232-uuid-2.jpg
+            ├── 1711250011-uuid-1.pdf.gz
+            ├── 1711250012-uuid-2.jpg
             └── ...
 ```
 
@@ -153,7 +153,7 @@ Modified `addItem()` function:
   "attachments": [
     {
       "originalName": "document.pdf",
-      "storedName": "1711231231-9f3e1c2a-4b5c-6d7e-8f9a-0b1c2d3e4f5a.pdf.gz",
+      "storedName": "1711250011-9f3e1c2a-4b5c-6d7e-8f9a-0b1c2d3e4f5a.pdf.gz",
       "mimeType": "application/pdf",
       "fileSize": 1234567,
       "compressedSize": 987654,

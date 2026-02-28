@@ -42,7 +42,7 @@ const router = express.Router();
  * FRONTEND USAGE:
  * ```javascript
  * // After getting Google credential from @react-oauth/google
- * const response = await fetch('http://localhost:3123/v/auth/google', {
+ * const response = await fetch('http://localhost:5001/v/auth/google', {
  *   method: 'POST',
  *   headers: { 'Content-Type': 'application/json' },
  *   body: JSON.stringify({ credential: googleCredential })
@@ -105,7 +105,7 @@ router.post('/email', emailLogin);
  * FRONTEND USAGE:
  * ```javascript
  * const token = localStorage.getItem('authToken');
- * const response = await fetch('http://localhost:3123/v/auth/me', {
+ * const response = await fetch('http://localhost:5001/v/auth/me', {
  *   headers: { 
  *     'Authorization': `Bearer ${token}` 
  *   }
@@ -134,7 +134,7 @@ router.get('/me', authMiddleware, getCurrentUser);
  * FRONTEND USAGE:
  * ```javascript
  * const token = localStorage.getItem('authToken');
- * await fetch('http://localhost:3123/v/auth/logout', {
+ * await fetch('http://localhost:5001/v/auth/logout', {
  *   method: 'POST',
  *   headers: { 
  *     'Authorization': `Bearer ${token}` 

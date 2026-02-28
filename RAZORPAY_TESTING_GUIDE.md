@@ -16,14 +16,14 @@ RAZORPAY_ENVIRONMENT=sandbox
 RAZORPAY_WEBHOOK_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Backend URL (Update with your actual backend URL)
-BACKEND_URL=http://localhost:3123
+BACKEND_URL=http://localhost:5001
 # or for production:
 # BACKEND_URL=https://your-backend-domain.com
 
 # Callback URLs (Razorpay will redirect here after payment)
-RAZORPAY_SUCCESS_URL=http://localhost:3123/v/payments/success
-RAZORPAY_FAILURE_URL=http://localhost:3123/v/payments/failure
-RAZORPAY_WEBHOOK_URL=http://localhost:3123/v/payments/webhook/razorpay
+RAZORPAY_SUCCESS_URL=http://localhost:5001/v/payments/success
+RAZORPAY_FAILURE_URL=http://localhost:5001/v/payments/failure
+RAZORPAY_WEBHOOK_URL=http://localhost:5001/v/payments/webhook/razorpay
 
 # For production, use ngrok or your public URL:
 # RAZORPAY_WEBHOOK_URL=https://your-backend-domain.com/v/payments/webhook/razorpay
@@ -59,7 +59,7 @@ cd ios && pod install && cd ..
 
 1. **Go to Razorpay Dashboard > Settings > Webhooks**
 2. **Add Webhook URL**: `http://your-backend-url/v/payments/webhook/razorpay`
-   - For local testing, use **ngrok**: `ngrok http 3123`
+   - For local testing, use **ngrok**: `ngrok http 5001`
    - Copy the ngrok URL: `https://xxxxx.ngrok.io/v/payments/webhook/razorpay`
 3. **Select Events**:
    - `payment.captured`
@@ -80,7 +80,7 @@ cd D:\1\Codec\Projects\vault-backend\services\vault
 npm run dev
 ```
 
-Verify server is running on `http://localhost:3123`
+Verify server is running on `http://localhost:5001`
 
 ### Step 2: Test Backend Endpoints
 
@@ -88,7 +88,7 @@ Verify server is running on `http://localhost:3123`
 
 ```bash
 # Replace YOUR_AUTH_TOKEN with actual JWT token
-curl -X POST http://localhost:3123/v/payments/create-order \
+curl -X POST http://localhost:5001/v/payments/create-order \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
   -d '{
@@ -120,7 +120,7 @@ curl -X POST http://localhost:3123/v/payments/create-order \
 #### Test 2: Verify Payment Status
 
 ```bash
-curl -X GET "http://localhost:3123/v/payments/status?orderId=ORD_1234567890_abc123" \
+curl -X GET "http://localhost:5001/v/payments/status?orderId=ORD_1234567890_abc123" \
   -H "Authorization: Bearer YOUR_AUTH_TOKEN"
 ```
 
@@ -157,7 +157,7 @@ Razorpay provides test cards for testing:
 
 1. **Use ngrok** to expose your local backend:
    ```bash
-   ngrok http 3123
+   ngrok http 5001
    ```
 
 2. **Update webhook URL** in Razorpay Dashboard with ngrok URL
@@ -270,7 +270,7 @@ Before going live:
 
 ```bash
 # Test payment order creation (replace tokens)
-curl -X POST http://localhost:3123/v/payments/create-order \
+curl -X POST http://localhost:5001/v/payments/create-order \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"planId":"pro","period":"yearly","currency":"INR","country":"IN"}' | jq

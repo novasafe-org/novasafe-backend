@@ -25,7 +25,7 @@ The environment file includes these variables:
 
 | Variable | Default Value | Description |
 |----------|---------------|-------------|
-| `base_url` | `http://localhost:3123` | API base URL |
+| `base_url` | `http://localhost:5001` | API base URL |
 | `auth_token` | (empty) | JWT token (auto-set after login) |
 | `user_id` | (empty) | User ID (auto-set after login) |
 | `item_id` | (empty) | Item ID (auto-set after creating item) |

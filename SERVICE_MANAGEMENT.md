@@ -4,7 +4,7 @@
 All commands run from **root directory** with pattern: `pnpm run start:<service-name>`
 
 ## 📋 **Available Services**
-- **vault** - Core vault service (Port: 3123)
+- **vault** - Core vault service (Port: 5001)
 - **gateway** - API Gateway (Port: 3000)
 - **auth** - Authentication service (Port: 3124)
 - **notification** - Notification service (Port: 3125)
@@ -144,7 +144,7 @@ Each service manages its own dependencies in its respective `package.json`:
 ## 🌐 **Service URLs**
 
 When running locally:
-- **Vault Service**: http://localhost:3123
+- **Vault Service**: http://localhost:5001
 - **Gateway Service**: http://localhost:3000
 - **Auth Service**: http://localhost:3124
 - **Notification Service**: http://localhost:3125

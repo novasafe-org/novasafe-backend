@@ -171,7 +171,7 @@ Create a `.env` file in `services/vault/`:
 
 ```env
 # Server Configuration
-PORT=3123
+PORT=5001
 
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
@@ -235,7 +235,7 @@ import { GoogleLogin } from '@react-oauth/google';
 
 function Login() {
   const handleSuccess = async (credentialResponse) => {
-    const response = await fetch('http://localhost:3123/auth/google', {
+    const response = await fetch('http://localhost:5001/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -267,7 +267,7 @@ function Login() {
 const fetchVaultItems = async () => {
   const token = localStorage.getItem('authToken');
 
-  const response = await fetch('http://localhost:3123/v/items', {
+  const response = await fetch('http://localhost:5001/v/items', {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
@@ -359,12 +359,12 @@ pnpm dev
 
 ```bash
 # After getting Google credential from frontend
-curl -X POST http://localhost:3123/auth/google \
+curl -X POST http://localhost:5001/auth/google \
   -H "Content-Type: application/json" \
   -d '{"credential":"YOUR_GOOGLE_CREDENTIAL"}'
 
 # Get current user
-curl -X GET http://localhost:3123/auth/me \
+curl -X GET http://localhost:5001/auth/me \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 

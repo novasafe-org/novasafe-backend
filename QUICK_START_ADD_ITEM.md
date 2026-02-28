@@ -18,7 +18,7 @@ node validate-request.js sample-add-item-request.json
 ### 2. Send Request with cURL
 
 ```bash
-curl -X POST http://localhost:3123/v/addItem \
+curl -X POST http://localhost:5001/v/addItem \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer YOUR_JWT_TOKEN' \
   -d @sample-add-item-request.json
@@ -132,7 +132,7 @@ node validate-request.js item1.json
 node validate-request.js item2.json
 
 # Send each
-curl -X POST http://localhost:3123/v/addItem \
+curl -X POST http://localhost:5001/v/addItem \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer YOUR_JWT_TOKEN' \
   -d @item1.json

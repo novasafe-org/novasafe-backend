@@ -66,7 +66,7 @@ ENV NODE_ENV=production
 ENV DEBUG=mongodb:*
 
 # Expose the correct port
-EXPOSE 3123
+EXPOSE 5001
 
 # Run the application from the correct path
 CMD ["node", "dist/src/index.js"]

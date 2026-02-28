@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "novasafe-api-collection-2024",
 		"name": "NovaSafe API Collection",
-		"description": "Complete API collection for NovaSafe - Secure Digital Vault Application\n\n**Base URL:** `http://localhost:3123` (Development)\n**API Version:** 1.0\n**Authentication:** JWT Bearer Token (except login endpoints)\n\n## Setup Instructions:\n1. Import this collection into Postman\n2. Create an environment with the following variables:\n   - `base_url`: http://localhost:3123\n   - `auth_token`: (will be set automatically after login)\n   - `user_id`: (will be set automatically after login)\n   - `item_id`: (for testing item operations)\n   - `folder_id`: (for testing folder operations)\n   - `share_id`: (for testing share operations)\n3. Run the \"Google Sign-In\" request first to get your auth token\n4. The token will be automatically saved to the environment variable",
+		"description": "Complete API collection for NovaSafe - Secure Digital Vault Application\n\n**Base URL:** `http://localhost:5001` (Development)\n**API Version:** 1.0\n**Authentication:** JWT Bearer Token (except login endpoints)\n\n## Setup Instructions:\n1. Import this collection into Postman\n2. Create an environment with the following variables:\n   - `base_url`: http://localhost:5001\n   - `auth_token`: (will be set automatically after login)\n   - `user_id`: (will be set automatically after login)\n   - `item_id`: (for testing item operations)\n   - `folder_id`: (for testing folder operations)\n   - `share_id`: (for testing share operations)\n3. Run the \"Google Sign-In\" request first to get your auth token\n4. The token will be automatically saved to the environment variable",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -3114,7 +3114,7 @@
 	"variable": [
 		{
 			"key": "base_url",
-			"value": "http://localhost:3123",
+			"value": "http://localhost:5001",
 			"type": "string"
 		},
 		{

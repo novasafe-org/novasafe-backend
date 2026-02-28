@@ -9,7 +9,7 @@
   - Builds TypeScript code
   - Production-optimized image
   - Health check support
-  - Port 3000 (internal), mapped to 3123 (external)
+  - Port 3000 (internal), mapped to 5001 (external)
 
 ### 2. GitHub Workflow
 - **Location**: `.github/workflows/docker-build.yml`
@@ -22,7 +22,7 @@
 - **Location**: `docker-compose.yml`
 - **Image**: `ghcr.io/pavankumar-tidke/novasafe-backend:latest`
 - **Container**: `vault-backend`
-- **Port**: `3123:3000`
+- **Port**: `5001:3000`
 
 ### 4. .dockerignore
 - Excludes unnecessary files from Docker build
@@ -120,7 +120,7 @@ docker ps
 docker logs vault-backend
 # Check for errors
 
-curl http://localhost:3123/health
+curl http://localhost:5001/health
 # Should return: {"status":"ok",...}
 ```
 

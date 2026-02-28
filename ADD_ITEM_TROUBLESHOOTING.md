@@ -83,7 +83,7 @@
 ## Testing with cURL
 
 ```bash
-curl -X POST http://localhost:3123/v/addItem \
+curl -X POST http://localhost:5001/v/addItem \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer YOUR_JWT_TOKEN' \
   -d '{
@@ -102,7 +102,7 @@ curl -X POST http://localhost:3123/v/addItem \
 ## Testing with Postman
 
 1. Set method to `POST`
-2. URL: `http://localhost:3123/v/addItem`
+2. URL: `http://localhost:5001/v/addItem`
 3. Headers:
    - `Content-Type: application/json`
    - `Authorization: Bearer YOUR_JWT_TOKEN`

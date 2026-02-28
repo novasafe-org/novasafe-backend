@@ -7,7 +7,7 @@
 - Builds TypeScript code
 - Optimized production image
 - Health check support
-- Port: 3000 (internal) → 3123 (external)
+- Port: 3000 (internal) → 5001 (external)
 
 ### 2. **GitHub Workflow** 
 - Location: `.github/workflows/docker-build.yml`
@@ -19,7 +19,7 @@
 - Updated to use GHCR image
 - Container name: `vault-backend`
 - Health check configured
-- Port mapping: `3123:3000`
+- Port mapping: `5001:3000`
 
 ### 4. **.dockerignore**
 - Excludes unnecessary files
@@ -105,7 +105,7 @@ docker ps | grep vault-backend
 docker logs vault-backend
 
 # Test health endpoint
-curl http://localhost:3123/health
+curl http://localhost:5001/health
 # Should return: {"status":"ok",...}
 ```
 
@@ -132,7 +132,7 @@ curl http://localhost:3123/health
 | Feature | Frontend | Backend |
 |---------|----------|---------|
 | **Dockerfile** | Nginx-based | Node.js-based |
-| **Port** | 80 (nginx) | 3000 (internal) → 3123 (external) |
+| **Port** | 80 (nginx) | 3000 (internal) → 5001 (external) |
 | **Health Check** | Nginx default | `/health` endpoint |
 | **Build** | Static files | TypeScript compilation |
 | **Deploy Path** | `DEPLOY_PATH` | `DEPLOY_PATH_BACKEND` |
@@ -184,12 +184,12 @@ RAZORPAY_KEY_SECRET=...
 - Check logs: `docker logs vault-backend`
 - Verify .env file exists and has all variables
 - Check database connection
-- Verify port 3123 is available
+- Verify port 5001 is available
 
 ## 📚 Next Steps
 
 1. ✅ Test build locally: `docker build -t test-backend .`
-2. ✅ Test image: `docker run -p 3123:3000 test-backend`
+2. ✅ Test image: `docker run -p 5001:3000 test-backend`
 3. ✅ Push to master and watch GitHub Actions
 4. ✅ Verify deployment on server
 5. ✅ Set up monitoring and alerts

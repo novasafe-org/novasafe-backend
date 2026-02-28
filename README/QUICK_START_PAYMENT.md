@@ -57,19 +57,19 @@ npm run dev
 **Verify:** Server should start without errors and show:
 ```
 ✅ Database connected ✅
-Vault service running on port 3123
+Vault service running on port 5001
 ```
 
 ## Step 5: Test Payment Flow
 
 ### 5.1 Get Pricing Plans (No Auth)
 ```bash
-curl http://localhost:3123/v/pricing/plans?currency=INR
+curl http://localhost:5001/v/pricing/plans?currency=INR
 ```
 
 ### 5.2 Authenticate (Get JWT Token)
 ```bash
-curl -X POST http://localhost:3123/v/auth/google \
+curl -X POST http://localhost:5001/v/auth/google \
   -H "Content-Type: application/json" \
   -d '{"credential": "YOUR_GOOGLE_ID_TOKEN"}'
 ```
@@ -78,7 +78,7 @@ curl -X POST http://localhost:3123/v/auth/google \
 
 ### 5.3 Create Payment Order
 ```bash
-curl -X POST http://localhost:3123/v/payments/create-order \
+curl -X POST http://localhost:5001/v/payments/create-order \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
@@ -100,13 +100,13 @@ curl -X POST http://localhost:3123/v/payments/create-order \
 
 ### 5.5 Check Payment Status
 ```bash
-curl "http://localhost:3123/v/payments/status?orderId=ORD_XXX" \
+curl "http://localhost:5001/v/payments/status?orderId=ORD_XXX" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
 ### 5.6 Verify Subscription
 ```bash
-curl http://localhost:3123/v/subscriptions/me \
+curl http://localhost:5001/v/subscriptions/me \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -114,7 +114,7 @@ curl http://localhost:3123/v/subscriptions/me \
 
 1. **Update backend URL** in `NovaSafe/config/backend.ts`:
    ```typescript
-   return 'http://YOUR_IP:3123/v';  // Your server IP
+   return 'http://YOUR_IP:5001/v';  // Your server IP
    ```
 
 2. **Open app** → Navigate to Pricing screen
@@ -134,7 +134,7 @@ curl http://localhost:3123/v/subscriptions/me \
 - Verify merchant credentials are correct
 
 ### Payment callback not working
-- For local testing, use ngrok: `ngrok http 3123`
+- For local testing, use ngrok: `ngrok http 5001`
 - Update PayU webhook URL to ngrok URL
 - Or manually test callback endpoint
 

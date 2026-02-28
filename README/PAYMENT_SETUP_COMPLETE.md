@@ -56,8 +56,8 @@ PAYU_BASE_URL=https://secure.payu.in
 PAYU_API_URL=https://secure.payu.in/api/v2
 PAYU_ENVIRONMENT=sandbox
 PAYU_ENABLE_RECURRING=true
-PAYU_SUCCESS_URL=http://YOUR_IP:3123/v/payments/callback
-PAYU_FAILURE_URL=http://YOUR_IP:3123/v/payments/callback
+PAYU_SUCCESS_URL=http://YOUR_IP:5001/v/payments/callback
+PAYU_FAILURE_URL=http://YOUR_IP:5001/v/payments/callback
 PAYU_PAYMENT_TIMEOUT=1800
 PAYU_ORDER_EXPIRY_MINUTES=30
 ```
@@ -98,7 +98,7 @@ Verify server starts without errors.
 ### Test 1: Get Pricing Plans (No Auth Required)
 
 ```bash
-curl http://localhost:3123/v/pricing/plans?currency=INR
+curl http://localhost:5001/v/pricing/plans?currency=INR
 ```
 
 **Expected:** List of pricing plans
@@ -106,7 +106,7 @@ curl http://localhost:3123/v/pricing/plans?currency=INR
 ### Test 2: Authenticate User
 
 ```bash
-curl -X POST http://localhost:3123/v/auth/google \
+curl -X POST http://localhost:5001/v/auth/google \
   -H "Content-Type: application/json" \
   -d '{"credential": "YOUR_GOOGLE_ID_TOKEN"}'
 ```
@@ -116,7 +116,7 @@ curl -X POST http://localhost:3123/v/auth/google \
 ### Test 3: Create Payment Order
 
 ```bash
-curl -X POST http://localhost:3123/v/payments/create-order \
+curl -X POST http://localhost:5001/v/payments/create-order \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
@@ -155,7 +155,7 @@ curl -X POST http://localhost:3123/v/payments/create-order \
 ### Test 5: Check Payment Status
 
 ```bash
-curl "http://localhost:3123/v/payments/status?orderId=ORD_1234567890_abc123" \
+curl "http://localhost:5001/v/payments/status?orderId=ORD_1234567890_abc123" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -164,7 +164,7 @@ curl "http://localhost:3123/v/payments/status?orderId=ORD_1234567890_abc123" \
 ### Test 6: Verify Subscription Created
 
 ```bash
-curl http://localhost:3123/v/subscriptions/me \
+curl http://localhost:5001/v/subscriptions/me \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -176,7 +176,7 @@ curl http://localhost:3123/v/subscriptions/me \
 
 In `NovaSafe/config/backend.ts`:
 ```typescript
-return 'http://YOUR_SERVER_IP:3123/v';
+return 'http://YOUR_SERVER_IP:5001/v';
 ```
 
 ### Test Flow:
@@ -226,7 +226,7 @@ return 'http://YOUR_SERVER_IP:3123/v';
 **Solution:**
 - For local testing: Use ngrok to expose localhost
   ```bash
-  ngrok http 3123
+  ngrok http 5001
   ```
 - Update PayU webhook URL to ngrok URL
 - Or manually test callback endpoint
