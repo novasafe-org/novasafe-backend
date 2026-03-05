@@ -75,6 +75,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y sshpass
 
+      - name: Validate SSH secrets
+        run: |
+          if [ -z "${{ secrets.SSH_USER }}" ] || [ -z "${{ secrets.SSH_HOST }}" ] || [ -z "${{ secrets.SSH_PASSWORD }}" ]; then
+            echo "::error::Missing required secrets. Ensure SSH_USER, SSH_HOST, and SSH_PASSWORD are set in repository/organization secrets."
+            exit 1
+          fi
+          echo "SSH_USER and SSH_HOST are set (SSH_PASSWORD is secret)."
+
       - name: Add server to known hosts
         run: |
           mkdir -p ~/.ssh
@@ -86,14 +94,14 @@ jobs:
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH_BACKEND || secrets.DEPLOY_PATH }}
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
           COMPOSE_SERVICE: backend
         run: |
-          sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} bash << EOF
+          sshpass -e ssh -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} bash << EOF
             set -e
             echo "🚀 Deploying ${COMPOSE_SERVICE}..."
             cd ${DEPLOY_PATH}
