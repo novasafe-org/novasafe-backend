@@ -3,6 +3,7 @@
  * 
  * Handles account-related endpoints:
  * - Get account details (profile, company info, trial status)
+ * When X-Workspace-Id is present, returns workspace-scoped plan, company name, and trial.
  */
 
 import { Request, Response } from 'express';
@@ -15,6 +16,7 @@ import { loadRBACContext } from '../middlewares/rbac';
 import { addUserPermissionsToResponse } from '../utils/responseHelper';
 
 const collection = DBCONFIG.vault.collections;
+const isObjectIdString = (s: string) => /^[a-fA-F0-9]{24}$/.test(s);
 
 /**
  * Get current user's account details
@@ -37,10 +39,10 @@ export const getAccountDetails = async (req: Request, res: Response): Promise<vo
 
     const userId = userPayload.id;
 
-    // Load RBAC context to get user permissions
-    await loadRBACContext(req, res, () => {});
+    // RBAC context set by route middleware (loadRBACContext); ensure it exists
     if (!req.rbacContext) {
-      return; // Error response already sent by loadRBACContext
+      await loadRBACContext(req, res, () => {});
+      if (!req.rbacContext) return;
     }
 
     const db = new Database('vault');
@@ -68,17 +70,41 @@ export const getAccountDetails = async (req: Request, res: Response): Promise<vo
       ? Math.ceil((trialEndDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
       : 0;
 
-    // Determine if admin console should be shown
-    // Show for: family, team, business plans
-    // Don't show for: individual plan
-    const planId = user.planId || 'individual';
-    const shouldShowAdminConsole = planId !== 'individual';
-    
-    // Also check if user has admin role (for additional admin features)
-    const userRole = (user as any).role || 'user';
-    const isAdmin = userRole === 'admin' || userRole === 'super-admin';
+    // Resolve plan and company from current workspace when X-Workspace-Id is set
+    let planId = user.planId || 'individual';
+    let companyName: string | undefined = user.companyName;
+    let companyDomain: string | undefined = user.companyDomain;
+    let trialEndDateResolved = trialEndDate;
+    let workspaceDisplayName: string | undefined;
+    const orgId = req.rbacContext?.organizationId;
+    if (orgId && isObjectIdString(orgId)) {
+      const { getWorkspaceById } = await import('../services/workspaceService');
+      const { getSubscriptionByWorkspaceId } = await import('../services/subscriptionService');
+      const workspace = await getWorkspaceById(orgId);
+      if (workspace) {
+        companyName = workspace.name;
+        planId = workspace.type as string;
+        const sub = await getSubscriptionByWorkspaceId(orgId);
+        if (sub) {
+          planId = (sub.planId as string) || planId;
+          const end = sub.trialEndsAt || sub.trialEnd || sub.currentPeriodEnd;
+          if (end) trialEndDateResolved = new Date(end);
+        }
+      }
+      const membership = await db.findOne(collection.organizationMembers || 'organizationMembers', {
+        userId: new ObjectId(userId),
+        $or: [{ workspaceId: new ObjectId(orgId) }, { organizationId: orgId }],
+        status: 'active',
+      }) as { displayName?: string } | null;
+      const dn = membership?.displayName;
+      if (membership && dn != null && String(dn).trim() !== '') workspaceDisplayName = String(dn).trim();
+    }
+    const isTrialActiveResolved = now < trialEndDateResolved;
+    const daysRemainingResolved = isTrialActiveResolved
+      ? Math.ceil((trialEndDateResolved.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
 
-    // Get user permissions from RBAC context
+    const shouldShowAdminConsole = planId !== 'individual';
     const userPermissions = req.rbacContext ? {
       id: req.rbacContext.userId,
       email: user.email,
@@ -91,20 +117,20 @@ export const getAccountDetails = async (req: Request, res: Response): Promise<vo
       permissions: [] as any[],
     };
 
-    // Build response
+    const baseUserName = user.name || user.email?.split('@')[0] || 'User';
     const accountData = {
       success: true,
       user: {
         id: user._id?.toString() || userId,
-        name: user.name || user.email?.split('@')[0] || 'User',
+        name: workspaceDisplayName ?? baseUserName,
         email: user.email,
         avatar: user.picture,
         role: userPermissions.role,
         permissions: userPermissions.permissions,
-        companyName: user.companyName,
-        companyDomain: user.companyDomain,
+        companyName: companyName ?? user.companyName,
+        companyDomain: companyDomain ?? user.companyDomain,
         phoneNumber: user.phoneNumber,
-        planId: user.planId || 'individual',
+        planId: planId || 'individual',
         signupMethod: user.signupMethod || 'email',
         createdAt: user.createdAt 
           ? (user.createdAt instanceof Date 
@@ -116,16 +142,16 @@ export const getAccountDetails = async (req: Request, res: Response): Promise<vo
         emailVerified: user.emailVerified || false,
         onboardingCompleted: user.onboardingCompleted || false,
       },
-      company: user.companyName ? {
-        name: user.companyName,
-        domain: user.companyDomain,
+      company: (companyName ?? user.companyName) ? {
+        name: companyName ?? user.companyName ?? '',
+        domain: companyDomain ?? user.companyDomain,
         phoneNumber: user.phoneNumber,
       } : null,
       trial: {
-        isActive: isTrialActive,
-        daysRemaining,
+        isActive: isTrialActiveResolved,
+        daysRemaining: daysRemainingResolved,
         startDate: createdAt.toISOString(),
-        endDate: trialEndDate.toISOString(),
+        endDate: trialEndDateResolved.toISOString(),
       },
       isAdminConsole: shouldShowAdminConsole,
     };
@@ -145,3 +171,60 @@ export const getAccountDetails = async (req: Request, res: Response): Promise<vo
   }
 };
 
+/**
+ * Update workspace-scoped display name for the current user in the current workspace.
+ * Only applies when X-Workspace-Id is set (team/business workspace).
+ * @route PATCH /v/account
+ */
+export const updateAccountDisplayName = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userPayload = req.user;
+    if (!userPayload?.id) {
+      res.status(401).json({ success: false, message: 'Unauthorized' });
+      return;
+    }
+    if (!req.rbacContext) {
+      await loadRBACContext(req, res, () => {});
+      if (!req.rbacContext) return;
+    }
+    const orgId = req.rbacContext.organizationId;
+    if (!orgId || !isObjectIdString(orgId)) {
+      res.status(400).json({
+        success: false,
+        message: 'Workspace context required to update display name',
+      });
+      return;
+    }
+    const displayName = typeof req.body?.displayName === 'string' ? req.body.displayName.trim() : '';
+    const db = new Database('vault');
+    const coll = collection.organizationMembers || 'organizationMembers';
+    const result = await db.updateOne(
+      coll,
+      {
+        userId: new ObjectId(userPayload.id),
+        $or: [{ workspaceId: new ObjectId(orgId) }, { organizationId: orgId }],
+        status: 'active',
+      },
+      { $set: { displayName, updatedAt: new Date() } }
+    );
+    if (result.matchedCount === 0) {
+      res.status(404).json({
+        success: false,
+        message: 'Membership not found in this workspace',
+      });
+      return;
+    }
+    res.status(200).json({
+      success: true,
+      message: 'Display name updated',
+      displayName: displayName || null,
+    });
+  } catch (error: any) {
+    logger.error(`Update display name error: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update display name',
+      error: error.message,
+    });
+  }
+};

@@ -26,8 +26,8 @@ const router = Router();
 router.get(
   '/',
   authMiddleware,
-  adminAuthMiddleware,
   loadRBACContext,
+  adminAuthMiddleware,
   requirePermission(Permission.LOGS_READ),
   getActivityLogs
 );
@@ -42,8 +42,8 @@ router.get(
 router.get(
   '/export',
   authMiddleware,
-  adminAuthMiddleware,
   loadRBACContext,
+  adminAuthMiddleware,
   requirePermission(Permission.LOGS_EXPORT),
   exportActivityLogs
 );
@@ -58,8 +58,8 @@ router.get(
 router.get(
   '/:id',
   authMiddleware,
-  adminAuthMiddleware,
   loadRBACContext,
+  adminAuthMiddleware,
   requirePermission(Permission.LOGS_READ),
   getActivityLogById
 );

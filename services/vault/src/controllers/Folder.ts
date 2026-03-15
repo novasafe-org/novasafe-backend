@@ -7,6 +7,7 @@ import logger from '../logger';
 import { IFolder } from '../models/Folder';
 
 const collection = DBCONFIG.vault.collections;
+const isObjectIdString = (s: string) => /^[a-fA-F0-9]{24}$/.test(s);
 
 /**
  * Create Folder Controller
@@ -36,15 +37,18 @@ export const createFolder = async (req: Request, res: Response) => {
       return;
     }
 
-    // Create new folder with userId from authenticated user
-    const newFolder: IFolder = {
+    const workspaceId = req.rbacContext?.organizationId && isObjectIdString(req.rbacContext.organizationId)
+      ? req.rbacContext.organizationId
+      : undefined;
+    const newFolder: any = {
       userId: req.user.id,
       name: req.body.name.trim(),
       description: req.body.description?.trim() || undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      accessCount: 0
+      accessCount: 0,
     };
+    if (workspaceId) newFolder.workspaceId = workspaceId;
 
     // Save to database
     const db = new Database('vault');
@@ -107,20 +111,54 @@ export const getFolders = async (req: Request, res: Response) => {
       return;
     }
 
-    // Fetch all folders belonging to this user
     const db = new Database('vault');
-    const folders = await db.findMany(collection.folders, {
-      userId: req.user.id
-    });
+    const workspaceId = req.rbacContext?.organizationId && isObjectIdString(req.rbacContext.organizationId)
+      ? req.rbacContext.organizationId
+      : null;
+    let folderFilter: any;
+    if (workspaceId) {
+      const { getDefaultWorkspaceIdForUser, getWorkspaceById } = await import('../services/workspaceService');
+      const defaultWsId = await getDefaultWorkspaceIdForUser(req.user.id);
+      const isDefaultWorkspace = defaultWsId === workspaceId;
+      const workspace = await getWorkspaceById(workspaceId);
+      const isPersonalWorkspace = workspace?.type === 'individual';
+      const userMatch = { $or: [{ userId: req.user.id }, { userId: new ObjectId(req.user.id) }] };
+      // When in a workspace: only that workspace's folders. If this is the user's default workspace, also include legacy (no workspaceId) folders owned by the user.
+      folderFilter = isDefaultWorkspace
+        ? { $or: [{ workspaceId }, { userId: req.user.id, workspaceId: { $exists: false } }, { userId: req.user.id, workspaceId: null }] }
+        : { workspaceId };
+      // Personal workspace: only show folders owned by the current user (so another user's personal vault is never visible)
+      if (isPersonalWorkspace) {
+        folderFilter = isDefaultWorkspace
+          ? { $and: [userMatch, { $or: [{ workspaceId }, { workspaceId: { $exists: false } }, { workspaceId: null }] }] }
+          : { workspaceId, $and: [userMatch] };
+      }
+    } else {
+      folderFilter = { userId: req.user.id, $or: [{ workspaceId: { $exists: false } }, { workspaceId: null }] };
+    }
+    const folders = await db.findMany(collection.folders, folderFilter);
 
-    // Get item count for each folder
+    // Get item count for each folder (workspace: count by workspaceId+folderId; personal: by userId+folderId)
     const foldersWithCounts = await Promise.all(
       folders.map(async (folder: any) => {
-        const itemCount = await db.findMany(collection.vaultItems, {
-          userId: req.user!.id,
-          folderId: folder._id.toString(),
-          deleted: { $ne: true }
-        });
+        const folderIdMatch = { $or: [{ folderId: folder._id }, { folderId: folder._id.toString() }] };
+        const itemCountFilter: any =
+          workspaceId
+            ? {
+                deleted: { $ne: true },
+                $and: [
+                  { $or: [{ workspaceId: new ObjectId(workspaceId) }, { workspaceId }] },
+                  folderIdMatch,
+                ],
+              }
+            : {
+                deleted: { $ne: true },
+                $and: [
+                  { $or: [{ userId: new ObjectId(req.user!.id) }, { userId: req.user!.id }] },
+                  folderIdMatch,
+                ],
+              };
+        const itemCount = await db.findMany(collection.vaultItems, itemCountFilter);
         return {
           id: folder._id.toString(),
           name: folder.name,
@@ -165,23 +203,53 @@ export const getFrequentFolders = async (req: Request, res: Response) => {
       return;
     }
 
-    // Fetch folders sorted by accessCount (descending)
     const db = new Database('vault');
+    const workspaceId = req.rbacContext?.organizationId && isObjectIdString(req.rbacContext.organizationId)
+      ? req.rbacContext.organizationId
+      : null;
+    const { getDefaultWorkspaceIdForUser, getWorkspaceById } = await import('../services/workspaceService');
+    const defaultWsId = workspaceId ? await getDefaultWorkspaceIdForUser(req.user.id) : null;
+    const isDefaultWorkspace = !!(workspaceId && defaultWsId === workspaceId);
+    let frequentFilter: any = workspaceId
+      ? (isDefaultWorkspace
+          ? { $or: [{ workspaceId }, { userId: req.user.id, workspaceId: { $exists: false } }, { userId: req.user.id, workspaceId: null }] }
+          : { workspaceId })
+      : { userId: req.user.id, $or: [{ workspaceId: { $exists: false } }, { workspaceId: null }] };
+    const workspace = workspaceId ? await getWorkspaceById(workspaceId) : null;
+    if (workspace?.type === 'individual') {
+      const userMatch = { $or: [{ userId: req.user.id }, { userId: new ObjectId(req.user.id) }] };
+      frequentFilter = isDefaultWorkspace
+        ? { $and: [userMatch, { $or: [{ workspaceId }, { workspaceId: { $exists: false } }, { workspaceId: null }] }] }
+        : { workspaceId, $and: [userMatch] };
+    }
     const folders = await db.getDb()
       .collection(collection.folders)
-      .find({ userId: req.user.id })
+      .find(frequentFilter)
       .sort({ accessCount: -1, updatedAt: -1 })
       .limit(4)
       .toArray();
 
-    // Get item count for each folder
+    // Get item count for each folder (workspace: by workspaceId+folderId; personal: by userId+folderId)
     const foldersWithCounts = await Promise.all(
       folders.map(async (folder: any) => {
-        const itemCount = await db.findMany(collection.vaultItems, {
-          userId: req.user!.id,
-          folderId: folder._id.toString(),
-          deleted: { $ne: true }
-        });
+        const folderIdMatch = { $or: [{ folderId: folder._id }, { folderId: folder._id.toString() }] };
+        const itemCountFilter: any =
+          workspaceId
+            ? {
+                deleted: { $ne: true },
+                $and: [
+                  { $or: [{ workspaceId: new ObjectId(workspaceId) }, { workspaceId }] },
+                  folderIdMatch,
+                ],
+              }
+            : {
+                deleted: { $ne: true },
+                $and: [
+                  { $or: [{ userId: new ObjectId(req.user!.id) }, { userId: req.user!.id }] },
+                  folderIdMatch,
+                ],
+              };
+        const itemCount = await db.findMany(collection.vaultItems, itemCountFilter);
         return {
           id: folder._id.toString(),
           name: folder.name,
@@ -239,12 +307,16 @@ export const getFolderById = async (req: Request, res: Response) => {
     }
 
     const db = new Database('vault');
-
-    // First, try to find folder owned by user
-    let folder = await db.findOne(collection.folders, {
-      _id: new ObjectId(id),
-      userId: req.user.id
-    });
+    const workspaceId = req.rbacContext?.organizationId && isObjectIdString(req.rbacContext.organizationId)
+      ? req.rbacContext.organizationId
+      : null;
+    const folderQuery: any = { _id: new ObjectId(id) };
+    if (workspaceId) {
+      folderQuery.workspaceId = workspaceId;
+    } else {
+      folderQuery.userId = req.user.id;
+    }
+    let folder = await db.findOne(collection.folders, folderQuery);
 
     let isShared = false;
     
@@ -284,35 +356,42 @@ export const getFolderById = async (req: Request, res: Response) => {
     }
 
     // Get all items in this folder
-    // For shared folders, get items owned by the sharer, not the recipient
-    // Handle both ObjectId and string formats for folderId and userId (backward compatibility)
+    // For shared folders: items owned by the sharer. For workspace folders: all items in workspace in this folder. Otherwise: own items.
     const itemsQuery: any = {
       $or: [
-        { folderId: new ObjectId(id) },  // Match ObjectId format (new items)
-        { folderId: id }                 // Match string format (legacy items)
+        { folderId: new ObjectId(id) },
+        { folderId: id }
       ],
       deleted: { $ne: true }
     };
 
     if (isShared) {
-      // For shared folders, get items from the original owner
-      // Handle both ObjectId and string formats for userId
       itemsQuery.$and = [
         {
           $or: [
-            { userId: new ObjectId(folder.userId) },  // Match ObjectId format
-            { userId: folder.userId?.toString() || folder.userId }  // Match string format
+            { userId: new ObjectId(folder.userId) },
+            { userId: folder.userId?.toString() || folder.userId }
           ]
         }
       ];
+    } else if (workspaceId) {
+      itemsQuery.$and = [
+        { $or: [{ workspaceId: new ObjectId(workspaceId) }, { workspaceId }] }
+      ];
+      // Personal (individual) workspace: only show items belonging to the current user
+      const { getWorkspaceById } = await import('../services/workspaceService');
+      const workspace = await getWorkspaceById(workspaceId);
+      if (workspace?.type === 'individual') {
+        itemsQuery.$and.push({
+          $or: [{ userId: new ObjectId(req.user.id) }, { userId: req.user.id }]
+        });
+      }
     } else {
-      // For own folders, get own items
-      // Handle both ObjectId and string formats for userId
       itemsQuery.$and = [
         {
           $or: [
-            { userId: new ObjectId(req.user.id) },  // Match ObjectId format (new items)
-            { userId: req.user.id }                 // Match string format (legacy items)
+            { userId: new ObjectId(req.user.id) },
+            { userId: req.user.id }
           ]
         }
       ];
@@ -437,13 +516,14 @@ export const updateFolder = async (req: Request, res: Response) => {
       updateData.description = req.body.description?.trim() || null;
     }
 
-    // Update only if folder belongs to this user
-    const result = await db.updateOne(
-      collection.folders,
-      { _id: new ObjectId(id), userId: req.user.id },
-      { $set: updateData }
-    );
-
+    const workspaceIdUpdate = req.rbacContext?.organizationId && isObjectIdString(req.rbacContext.organizationId) ? req.rbacContext.organizationId : null;
+    const updateFilter: any = { _id: new ObjectId(id) };
+    if (workspaceIdUpdate) {
+      updateFilter.workspaceId = workspaceIdUpdate;
+    } else {
+      updateFilter.userId = req.user.id;
+    }
+    const result = await db.updateOne(collection.folders, updateFilter, { $set: updateData });
     if (result.matchedCount === 0) {
       res.status(404).json({
         message: 'Folder not found',
@@ -451,12 +531,7 @@ export const updateFolder = async (req: Request, res: Response) => {
       });
       return;
     }
-
-    // Fetch updated folder
-    const updatedFolder = await db.findOne(collection.folders, {
-      _id: new ObjectId(id),
-      userId: req.user.id
-    });
+    const updatedFolder = await db.findOne(collection.folders, updateFilter);
 
     logger.info(`Folder ${id} updated by user ${req.user.email}`);
 
@@ -533,13 +608,14 @@ export const deleteFolder = async (req: Request, res: Response) => {
     }
 
     const db = new Database('vault');
-
-    // Check if folder exists and belongs to user
-    const folder = await db.findOne(collection.folders, {
-      _id: new ObjectId(id),
-      userId: req.user.id
-    });
-
+    const workspaceIdDel = req.rbacContext?.organizationId && isObjectIdString(req.rbacContext.organizationId) ? req.rbacContext.organizationId : null;
+    const deleteFilter: any = { _id: new ObjectId(id) };
+    if (workspaceIdDel) {
+      deleteFilter.workspaceId = workspaceIdDel;
+    } else {
+      deleteFilter.userId = req.user.id;
+    }
+    const folder = await db.findOne(collection.folders, deleteFilter);
     if (!folder) {
       res.status(404).json({
         message: 'Folder not found',
@@ -547,8 +623,6 @@ export const deleteFolder = async (req: Request, res: Response) => {
       });
       return;
     }
-
-    // Delete all items associated with this folder (hard delete)
     // Handle both ObjectId and string formats for folderId
     const deleteItemsResult = await db.getDb().collection(collection.vaultItems).deleteMany({
       userId: req.user.id,
@@ -559,11 +633,7 @@ export const deleteFolder = async (req: Request, res: Response) => {
       deleted: { $ne: true }
     });
 
-    // Delete the folder (hard delete, not soft delete)
-    await db.getDb().collection(collection.folders).deleteOne({
-      _id: new ObjectId(id),
-      userId: req.user.id
-    });
+    await db.getDb().collection(collection.folders).deleteOne(deleteFilter);
 
     logger.info(`Folder ${id} deleted by user ${req.user.email}. ${deleteItemsResult.deletedCount} items deleted.`);
 

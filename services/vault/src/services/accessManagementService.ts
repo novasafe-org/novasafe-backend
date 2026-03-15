@@ -24,6 +24,31 @@ import { logActivity } from '../utils/activityLogHelper';
 import { sendInvitationEmail } from './emailService';
 
 const collection = DBCONFIG.vault.collections;
+const isObjectIdString = (s: string) => /^[a-fA-F0-9]{24}$/.test(s);
+
+/**
+ * Verify user is admin/owner for the organization (workspace id or legacy companyName).
+ * Returns the user and role for use in logging. Throws if not authorized.
+ */
+async function verifyAdminForOrganization(
+  userId: string,
+  organizationId: string
+): Promise<{ user: IUser; role: string }> {
+  const db = new Database('vault');
+  const user = await db.findOne(collection.vaultUsers, { _id: new ObjectId(userId) }) as IUser | null;
+  if (!user) throw new Error('User not found');
+  if (isObjectIdString(organizationId)) {
+    const { getUserRole } = await import('./rbacService');
+    const { UserRole } = await import('../constants/rbac.constants');
+    const role = await getUserRole(userId, organizationId);
+    if (role !== UserRole.OWNER && role !== UserRole.ADMIN) throw new Error('Only workspace owners or admins can perform this action');
+    return { user, role };
+  }
+  if ((user as any).companyName !== organizationId) throw new Error('Admin user not found');
+  const role = ((user as any).role || '').toLowerCase();
+  if (role !== 'admin' && role !== 'super-admin') throw new Error('Only admins can perform this action');
+  return { user, role: role === 'admin' || role === 'super-admin' ? 'admin' : 'member' };
+}
 
 /**
  * Generate a secure invitation token
@@ -33,7 +58,8 @@ const generateInvitationToken = (): string => {
 };
 
 /**
- * Get all users in an organization
+ * Get all users in a workspace/organization.
+ * When organizationId is a workspace id, uses Membership; else legacy companyName.
  */
 export const getOrganizationUsers = async (
   organizationId: string,
@@ -41,30 +67,28 @@ export const getOrganizationUsers = async (
 ): Promise<IUser[]> => {
   try {
     const db = new Database('vault');
-    
-    // Verify user is admin and belongs to organization
+    if (isObjectIdString(organizationId)) {
+      const { getUserRole } = await import('./rbacService');
+      const role = await getUserRole(userId, organizationId);
+      if (role !== 'owner' && role !== 'admin') throw new Error('Only workspace owners or admins can view users');
+      const { getOrganizationMembers } = await import('./rbacService');
+      const members = await getOrganizationMembers(organizationId);
+      const userIds = members.map((m: any) => m.userId).filter(Boolean);
+      if (userIds.length === 0) return [];
+      const users = await db.findMany(collection.vaultUsers, {
+        _id: { $in: userIds.map((id: any) => new ObjectId(id.toString?.() ?? id)) },
+      });
+      return users as IUser[];
+    }
     const adminUser = await db.findOne(collection.vaultUsers, {
       _id: new ObjectId(userId),
       companyName: organizationId,
     }) as IUser | null;
-
-    if (!adminUser) {
-      throw new Error('User not found or not authorized');
-    }
-
+    if (!adminUser) throw new Error('User not found or not authorized');
     const userRole = ((adminUser as any).role || '').toLowerCase();
-    if (userRole !== 'admin' && userRole !== 'super-admin') {
-      throw new Error('Only admins can view organization users');
-    }
-
-    // Get all users in the organization
-    const dbInstance = db.getDb();
-    const users = await dbInstance
-      .collection(collection.vaultUsers)
-      .find({ companyName: organizationId })
-      .toArray() as IUser[];
-
-    return users;
+    if (userRole !== 'admin' && userRole !== 'super-admin') throw new Error('Only admins can view organization users');
+    const users = await db.findMany(collection.vaultUsers, { companyName: organizationId });
+    return users as IUser[];
   } catch (error: any) {
     logger.error({ error: error.message, organizationId, userId }, 'Failed to get organization users');
     throw error;
@@ -82,73 +106,63 @@ export const updateUserRole = async (
 ): Promise<void> => {
   try {
     const db = new Database('vault');
+    const { user: adminUser, role: adminRole } = await verifyAdminForOrganization(userId, organizationId);
 
-    // Verify admin user
-    const adminUser = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(userId),
-      companyName: organizationId,
-    }) as IUser | null;
+    let targetUser: IUser | null;
+    let oldRole: string;
 
-    if (!adminUser) {
-      throw new Error('Admin user not found');
-    }
-
-    const adminRole = ((adminUser as any).role || '').toLowerCase();
-    if (adminRole !== 'admin' && adminRole !== 'super-admin') {
-      throw new Error('Only admins can update user roles');
-    }
-
-    // Get target user
-    const targetUser = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(targetUserId),
-      companyName: organizationId,
-    }) as IUser | null;
-
-    if (!targetUser) {
-      throw new Error('Target user not found');
-    }
-
-    // Prevent self-demotion if only one admin
-    if (userId === targetUserId && newRole !== 'admin') {
-      const dbInstance = db.getDb();
-      const adminCount = await dbInstance
-        .collection(collection.vaultUsers)
-        .countDocuments({
+    if (isObjectIdString(organizationId)) {
+      const { getOrganizationMembers } = await import('./rbacService');
+      const members = await getOrganizationMembers(organizationId);
+      const targetMember = members.find((m: any) => (m.userId?.toString?.() ?? m.userId) === targetUserId);
+      if (!targetMember) throw new Error('Target user not found');
+      oldRole = (targetMember as any).role || 'member';
+      if (userId === targetUserId && newRole !== 'admin' && (oldRole === 'owner' || oldRole === 'admin')) {
+        const adminCount = members.filter((m: any) => ['owner', 'admin'].includes((m as any).role)).length;
+        if (adminCount <= 1) throw new Error('Cannot remove the last admin from organization');
+      }
+      const memColl = collection.organizationMembers || 'organizationMembers';
+      await db.updateOne(
+        memColl,
+        { userId: new ObjectId(targetUserId), $or: [{ workspaceId: new ObjectId(organizationId) }, { organizationId }] },
+        { $set: { role: newRole, updatedAt: new Date() } }
+      );
+      targetUser = await db.findOne(collection.vaultUsers, { _id: new ObjectId(targetUserId) }) as IUser | null;
+    } else {
+      targetUser = await db.findOne(collection.vaultUsers, {
+        _id: new ObjectId(targetUserId),
+        companyName: organizationId,
+      }) as IUser | null;
+      if (!targetUser) throw new Error('Target user not found');
+      oldRole = (targetUser as any).role || 'member';
+      if (userId === targetUserId && newRole !== 'admin') {
+        const dbInstance = db.getDb();
+        const adminCount = await dbInstance.collection(collection.vaultUsers).countDocuments({
           companyName: organizationId,
           role: { $in: ['admin', 'super-admin'] },
         });
-
-      if (adminCount <= 1) {
-        throw new Error('Cannot remove the last admin from organization');
+        if (adminCount <= 1) throw new Error('Cannot remove the last admin from organization');
       }
+      await db.updateOne(
+        collection.vaultUsers,
+        { _id: new ObjectId(targetUserId) },
+        { $set: { role: newRole, updatedAt: new Date() } }
+      );
     }
 
-    // Update role
-    await db.updateOne(
-      collection.vaultUsers,
-      { _id: new ObjectId(targetUserId) },
-      {
-        $set: {
-          role: newRole,
-          updatedAt: new Date(),
-        },
-      }
-    );
-
-    // Log activity
     await activityLogService.logEvent({
       organizationId,
       actorUserId: userId,
       actorEmail: adminUser.email,
-      actorRole: adminRole === 'admin' || adminRole === 'super-admin' ? 'admin' : 'member',
+      actorRole: (adminRole === 'owner' || adminRole === 'admin' ? 'admin' : 'member') as any,
       targetType: 'user',
       targetId: targetUserId,
       action: 'ROLE_CHANGED',
-      description: `User role changed from ${(targetUser as any).role || 'member'} to ${newRole}`,
+      description: `User role changed from ${oldRole} to ${newRole}`,
       metadata: {
-        oldRole: (targetUser as any).role || 'member',
+        oldRole,
         newRole,
-        targetUserEmail: targetUser.email,
+        targetUserEmail: targetUser?.email,
       },
       severity: 'warning',
     });
@@ -171,77 +185,58 @@ export const updateUserStatus = async (
 ): Promise<void> => {
   try {
     const db = new Database('vault');
+    const { user: adminUser, role: adminRole } = await verifyAdminForOrganization(userId, organizationId);
 
-    // Verify admin user
-    const adminUser = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(userId),
-      companyName: organizationId,
-    }) as IUser | null;
-
-    if (!adminUser) {
-      throw new Error('Admin user not found');
-    }
-
-    const adminRole = ((adminUser as any).role || '').toLowerCase();
-    if (adminRole !== 'admin' && adminRole !== 'super-admin') {
-      throw new Error('Only admins can update user status');
-    }
-
-    // Get target user
-    const targetUser = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(targetUserId),
-      companyName: organizationId,
-    }) as IUser | null;
-
-    if (!targetUser) {
-      throw new Error('Target user not found');
-    }
-
-    // Prevent suspending self
     if (userId === targetUserId) {
       throw new Error('Cannot suspend your own account');
     }
 
-    // Update status (store in a custom field or use accountLockedUntil for suspended)
-    if (status === 'suspended') {
-      // Set account lock far in the future (effectively suspended)
+    let targetUser: IUser | null;
+    if (isObjectIdString(organizationId)) {
+      const { getOrganizationMembers } = await import('./rbacService');
+      const members = await getOrganizationMembers(organizationId);
+      const targetMember = members.find((m: any) => (m.userId?.toString?.() ?? m.userId) === targetUserId);
+      if (!targetMember) throw new Error('Target user not found');
+      const memColl = collection.organizationMembers || 'organizationMembers';
       await db.updateOne(
-        collection.vaultUsers,
-        { _id: new ObjectId(targetUserId) },
-        {
-          $set: {
-            accountLockedUntil: new Date('2099-12-31'),
-            updatedAt: new Date(),
-          },
-        }
+        memColl,
+        { userId: new ObjectId(targetUserId), $or: [{ workspaceId: new ObjectId(organizationId) }, { organizationId }] },
+        { $set: { status, updatedAt: new Date() } }
       );
+      targetUser = await db.findOne(collection.vaultUsers, { _id: new ObjectId(targetUserId) }) as IUser | null;
     } else {
-      // Clear account lock (activate)
-      await db.updateOne(
-        collection.vaultUsers,
-        { _id: new ObjectId(targetUserId) },
-        {
-          $set: {
-            accountLockedUntil: null,
-            updatedAt: new Date(),
-          },
-        }
-      );
+      targetUser = await db.findOne(collection.vaultUsers, {
+        _id: new ObjectId(targetUserId),
+        companyName: organizationId,
+      }) as IUser | null;
+      if (!targetUser) throw new Error('Target user not found');
+      if (status === 'suspended') {
+        await db.updateOne(
+          collection.vaultUsers,
+          { _id: new ObjectId(targetUserId) },
+          { $set: { accountLockedUntil: new Date('2099-12-31'), updatedAt: new Date() } }
+        );
+      } else {
+        await db.updateOne(
+          collection.vaultUsers,
+          { _id: new ObjectId(targetUserId) },
+          { $set: { accountLockedUntil: null, updatedAt: new Date() } }
+        );
+      }
     }
 
-    // Log activity
     await activityLogService.logEvent({
       organizationId,
       actorUserId: userId,
       actorEmail: adminUser.email,
-      actorRole: adminRole === 'admin' || adminRole === 'super-admin' ? 'admin' : 'member',
+      actorRole: (adminRole === 'owner' || adminRole === 'admin' ? 'admin' : 'member') as any,
       targetType: 'user',
       targetId: targetUserId,
       action: status === 'suspended' ? 'MEMBER_REMOVED' : 'MEMBER_ADDED',
       description: `User ${status === 'suspended' ? 'suspended' : 'activated'}`,
       metadata: {
         status,
-        targetUserEmail: targetUser.email,
+        targetUserEmail: targetUser?.email,
       },
       severity: status === 'suspended' ? 'warning' : 'info',
     });
@@ -299,29 +294,31 @@ export const createInvitation = async (
   try {
     const db = new Database('vault');
 
-    // Verify admin user
-    const adminUser = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(userId),
-      companyName: organizationId,
-    }) as IUser | null;
-
-    if (!adminUser) {
-      throw new Error('Admin user not found');
+    let adminUser = await db.findOne(collection.vaultUsers, { _id: new ObjectId(userId) }) as IUser | null;
+    if (!adminUser) throw new Error('User not found');
+    const isWorkspaceId = isObjectIdString(organizationId);
+    let actorRoleForLog: string;
+    if (isWorkspaceId) {
+      const { getUserRole } = await import('./rbacService');
+      const { UserRole } = await import('../constants/rbac.constants');
+      const role = await getUserRole(userId, organizationId);
+      if (role !== UserRole.OWNER && role !== UserRole.ADMIN) throw new Error('Only workspace owners or admins can create invitations');
+      actorRoleForLog = role;
+    } else {
+      if ((adminUser as any).companyName !== organizationId) throw new Error('Admin user not found');
+      const adminRole = ((adminUser as any).role || '').toLowerCase();
+      if (adminRole !== 'admin' && adminRole !== 'super-admin') throw new Error('Only admins can create invitations');
+      actorRoleForLog = adminRole === 'admin' || adminRole === 'super-admin' ? 'admin' : 'member';
     }
 
-    const adminRole = ((adminUser as any).role || '').toLowerCase();
-    if (adminRole !== 'admin' && adminRole !== 'super-admin') {
-      throw new Error('Only admins can create invitations');
-    }
-
-    // Check if user already exists
     const existingUser = await db.findOne(collection.vaultUsers, {
       email: email.toLowerCase().trim(),
-      companyName: organizationId,
     });
-
     if (existingUser) {
-      throw new Error('User already exists in organization');
+      const { getOrganizationMembers } = await import('./rbacService');
+      const members = await getOrganizationMembers(organizationId);
+      const alreadyMember = members.some((m: any) => m.userId?.toString?.() === existingUser._id?.toString());
+      if (alreadyMember) throw new Error('User is already a member of this workspace');
     }
 
     // Check for existing pending invitation
@@ -335,23 +332,22 @@ export const createInvitation = async (
       throw new Error('Pending invitation already exists for this email');
     }
 
-    // Create invitation
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
-
-    // If no vaults specified, grant access to all vaults (empty array means all)
-    const invitation: Omit<IInvitation, '_id'> = {
+    expiresAt.setDate(expiresAt.getDate() + 7);
+    const invitationData: any = {
       email: email.toLowerCase().trim(),
       role,
       organizationId,
       invitedBy: new ObjectId(userId),
-      vaultIds: vaultIds && vaultIds.length > 0 ? vaultIds.map(id => new ObjectId(id)) : [],
+      vaultIds: vaultIds && vaultIds.length > 0 ? vaultIds.map((id: string) => new ObjectId(id)) : [],
       status: 'pending',
       token: generateInvitationToken(),
       expiresAt,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+    if (isObjectIdString(organizationId)) invitationData.workspaceId = new ObjectId(organizationId);
+    const invitation = invitationData as Omit<IInvitation, '_id'>;
 
     const result = await db.insertOne(collection.invitations, invitation);
 
@@ -399,7 +395,7 @@ export const createInvitation = async (
       organizationId,
       actorUserId: userId,
       actorEmail: adminUser.email,
-      actorRole: adminRole === 'admin' || adminRole === 'super-admin' ? 'admin' : 'member',
+      actorRole: (actorRoleForLog === 'owner' || actorRoleForLog === 'admin' ? 'admin' : 'member') as any,
       targetType: 'invitation' as const,
       targetId: result.insertedId.toString(),
       action: 'INVITATION_SENT',
@@ -430,28 +426,12 @@ export const getOrganizationInvitations = async (
 ): Promise<IInvitation[]> => {
   try {
     const db = new Database('vault');
+    await verifyAdminForOrganization(userId, organizationId);
 
-    // Verify admin user
-    const adminUser = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(userId),
-      companyName: organizationId,
-    }) as IUser | null;
-
-    if (!adminUser) {
-      throw new Error('Admin user not found');
-    }
-
-    const adminRole = ((adminUser as any).role || '').toLowerCase();
-    if (adminRole !== 'admin' && adminRole !== 'super-admin') {
-      throw new Error('Only admins can view invitations');
-    }
-
-    // Get all invitations
-    const dbInstance = db.getDb();
-    const invitations = await dbInstance
-      .collection(collection.invitations)
-      .find({ organizationId })
-      .toArray() as IInvitation[];
+    const invitationFilter: any = isObjectIdString(organizationId)
+      ? { $or: [{ workspaceId: new ObjectId(organizationId) }, { organizationId }] }
+      : { organizationId };
+    const invitations = await db.findMany(collection.invitations, invitationFilter) as IInvitation[];
 
     // Check for expired invitations
     const now = new Date();
@@ -489,27 +469,15 @@ export const resendInvitation = async (
 ): Promise<IInvitation> => {
   try {
     const db = new Database('vault');
+    const { user: adminUser, role: adminRole } = await verifyAdminForOrganization(userId, organizationId);
 
-    // Verify admin user
-    const adminUser = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(userId),
-      companyName: organizationId,
-    }) as IUser | null;
-
-    if (!adminUser) {
-      throw new Error('Admin user not found');
+    const invQuery: any = { _id: new ObjectId(invitationId) };
+    if (isObjectIdString(organizationId)) {
+      invQuery.$or = [{ workspaceId: new ObjectId(organizationId) }, { organizationId }];
+    } else {
+      invQuery.organizationId = organizationId;
     }
-
-    const adminRole = ((adminUser as any).role || '').toLowerCase();
-    if (adminRole !== 'admin' && adminRole !== 'super-admin') {
-      throw new Error('Only admins can resend invitations');
-    }
-
-    // Get invitation
-    const invitation = await db.findOne(collection.invitations, {
-      _id: new ObjectId(invitationId),
-      organizationId,
-    }) as IInvitation | null;
+    const invitation = await db.findOne(collection.invitations, invQuery) as IInvitation | null;
 
     if (!invitation) {
       throw new Error('Invitation not found');
@@ -584,7 +552,7 @@ export const resendInvitation = async (
       organizationId,
       actorUserId: userId,
       actorEmail: adminUser.email,
-      actorRole: adminRole === 'admin' || adminRole === 'super-admin' ? 'admin' : 'member',
+      actorRole: (adminRole === 'owner' || adminRole === 'admin' ? 'admin' : 'member') as any,
       targetType: 'invitation' as const,
       targetId: invitationId,
       action: 'INVITATION_SENT',
@@ -615,27 +583,15 @@ export const revokeInvitation = async (
 ): Promise<void> => {
   try {
     const db = new Database('vault');
+    const { user: adminUser, role: adminRole } = await verifyAdminForOrganization(userId, organizationId);
 
-    // Verify admin user
-    const adminUser = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(userId),
-      companyName: organizationId,
-    }) as IUser | null;
-
-    if (!adminUser) {
-      throw new Error('Admin user not found');
+    const invQuery: any = { _id: new ObjectId(invitationId) };
+    if (isObjectIdString(organizationId)) {
+      invQuery.$or = [{ workspaceId: new ObjectId(organizationId) }, { organizationId }];
+    } else {
+      invQuery.organizationId = organizationId;
     }
-
-    const adminRole = ((adminUser as any).role || '').toLowerCase();
-    if (adminRole !== 'admin' && adminRole !== 'super-admin') {
-      throw new Error('Only admins can revoke invitations');
-    }
-
-    // Get invitation
-    const invitation = await db.findOne(collection.invitations, {
-      _id: new ObjectId(invitationId),
-      organizationId,
-    }) as IInvitation | null;
+    const invitation = await db.findOne(collection.invitations, invQuery) as IInvitation | null;
 
     if (!invitation) {
       throw new Error('Invitation not found');
@@ -664,7 +620,7 @@ export const revokeInvitation = async (
       organizationId,
       actorUserId: userId,
       actorEmail: adminUser.email,
-      actorRole: adminRole === 'admin' || adminRole === 'super-admin' ? 'admin' : 'member',
+      actorRole: (adminRole === 'owner' || adminRole === 'admin' ? 'admin' : 'member') as any,
       targetType: 'invitation' as const,
       targetId: invitationId,
       action: 'ACCESS_REVOKED',
@@ -691,32 +647,20 @@ export const getSharedVaults = async (
 ): Promise<any[]> => {
   try {
     const db = new Database('vault');
+    await verifyAdminForOrganization(userId, organizationId);
 
-    // Verify admin user
-    const adminUser = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(userId),
-      companyName: organizationId,
-    }) as IUser | null;
-
-    if (!adminUser) {
-      throw new Error('Admin user not found');
+    let orgUserIds: ObjectId[];
+    if (isObjectIdString(organizationId)) {
+      const { getOrganizationMembers } = await import('./rbacService');
+      const members = await getOrganizationMembers(organizationId);
+      orgUserIds = members.map((m: any) => m.userId).filter(Boolean).map((id: any) => new ObjectId(id.toString?.() ?? id));
+    } else {
+      const orgUsers = await db.findMany(collection.vaultUsers, { companyName: organizationId }) as IUser[];
+      orgUserIds = orgUsers.map(u => u._id as ObjectId);
     }
+    if (orgUserIds.length === 0) return [];
 
-    const adminRole = ((adminUser as any).role || '').toLowerCase();
-    if (adminRole !== 'admin' && adminRole !== 'super-admin') {
-      throw new Error('Only admins can view shared vaults');
-    }
-
-    // Get all users in organization
     const dbInstance = db.getDb();
-    const orgUsers = await dbInstance
-      .collection(collection.vaultUsers)
-      .find({ companyName: organizationId })
-      .toArray() as IUser[];
-
-    const orgUserIds = orgUsers.map(u => u._id);
-
-    // Get all shares for organization users
     const shares = await dbInstance
       .collection(collection.shares)
       .find({
@@ -783,23 +727,8 @@ export const stopSharingVault = async (
 ): Promise<void> => {
   try {
     const db = new Database('vault');
+    const { user: adminUser, role: adminRole } = await verifyAdminForOrganization(userId, organizationId);
 
-    // Verify admin user
-    const adminUser = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(userId),
-      companyName: organizationId,
-    }) as IUser | null;
-
-    if (!adminUser) {
-      throw new Error('Admin user not found');
-    }
-
-    const adminRole = ((adminUser as any).role || '').toLowerCase();
-    if (adminRole !== 'admin' && adminRole !== 'super-admin') {
-      throw new Error('Only admins can stop sharing vaults');
-    }
-
-    // Verify vault exists and belongs to organization
     const folder = await db.findOne(collection.folders, {
       _id: new ObjectId(vaultId),
     }) as IFolder | null;
@@ -808,12 +737,10 @@ export const stopSharingVault = async (
       throw new Error('Vault not found');
     }
 
-    // Get folder owner
-    const folderOwner = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(folder.userId),
-    }) as IUser | null;
-
-    if (!folderOwner || folderOwner.companyName !== organizationId) {
+    const belongsToOrg = isObjectIdString(organizationId)
+      ? (folder as any).workspaceId?.toString() === organizationId
+      : (await db.findOne(collection.vaultUsers, { _id: new ObjectId(folder.userId) }) as IUser | null)?.companyName === organizationId;
+    if (!belongsToOrg) {
       throw new Error('Vault does not belong to organization');
     }
 
@@ -839,7 +766,7 @@ export const stopSharingVault = async (
       organizationId,
       actorUserId: userId,
       actorEmail: adminUser.email,
-      actorRole: adminRole === 'admin' || adminRole === 'super-admin' ? 'admin' : 'member',
+      actorRole: (adminRole === 'owner' || adminRole === 'admin' ? 'admin' : 'member') as any,
       targetType: 'vault',
       targetId: vaultId,
       action: 'ACCESS_REVOKED',
@@ -866,28 +793,12 @@ export const getAccessRequests = async (
 ): Promise<IAccessRequest[]> => {
   try {
     const db = new Database('vault');
+    await verifyAdminForOrganization(userId, organizationId);
 
-    // Verify admin user
-    const adminUser = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(userId),
-      companyName: organizationId,
-    }) as IUser | null;
-
-    if (!adminUser) {
-      throw new Error('Admin user not found');
-    }
-
-    const adminRole = ((adminUser as any).role || '').toLowerCase();
-    if (adminRole !== 'admin' && adminRole !== 'super-admin') {
-      throw new Error('Only admins can view access requests');
-    }
-
-    // Get all access requests
-    const dbInstance = db.getDb();
-    const requests = await dbInstance
-      .collection(collection.accessRequests)
-      .find({ organizationId })
-      .toArray() as IAccessRequest[];
+    const requestFilter: any = isObjectIdString(organizationId)
+      ? { $or: [{ workspaceId: new ObjectId(organizationId) }, { organizationId }] }
+      : { organizationId };
+    const requests = await db.findMany(collection.accessRequests, requestFilter) as IAccessRequest[];
 
     return requests;
   } catch (error: any) {
@@ -906,27 +817,15 @@ export const approveAccessRequest = async (
 ): Promise<void> => {
   try {
     const db = new Database('vault');
+    const { user: adminUser, role: adminRole } = await verifyAdminForOrganization(userId, organizationId);
 
-    // Verify admin user
-    const adminUser = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(userId),
-      companyName: organizationId,
-    }) as IUser | null;
-
-    if (!adminUser) {
-      throw new Error('Admin user not found');
+    const requestQuery: any = { _id: new ObjectId(requestId) };
+    if (isObjectIdString(organizationId)) {
+      requestQuery.$or = [{ workspaceId: new ObjectId(organizationId) }, { organizationId }];
+    } else {
+      requestQuery.organizationId = organizationId;
     }
-
-    const adminRole = ((adminUser as any).role || '').toLowerCase();
-    if (adminRole !== 'admin' && adminRole !== 'super-admin') {
-      throw new Error('Only admins can approve access requests');
-    }
-
-    // Get request
-    const request = await db.findOne(collection.accessRequests, {
-      _id: new ObjectId(requestId),
-      organizationId,
-    }) as IAccessRequest | null;
+    const request = await db.findOne(collection.accessRequests, requestQuery) as IAccessRequest | null;
 
     if (!request) {
       throw new Error('Access request not found');
@@ -958,7 +857,7 @@ export const approveAccessRequest = async (
       organizationId,
       actorUserId: userId,
       actorEmail: adminUser.email,
-      actorRole: adminRole === 'admin' || adminRole === 'super-admin' ? 'admin' : 'member',
+      actorRole: (adminRole === 'owner' || adminRole === 'admin' ? 'admin' : 'member') as any,
       targetType: request.scope === 'vault' ? 'vault' : 'item',
       targetId: request.resourceId.toString(),
       action: 'ACCESS_GRANTED',
@@ -988,27 +887,15 @@ export const rejectAccessRequest = async (
 ): Promise<void> => {
   try {
     const db = new Database('vault');
+    const { user: adminUser, role: adminRole } = await verifyAdminForOrganization(userId, organizationId);
 
-    // Verify admin user
-    const adminUser = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(userId),
-      companyName: organizationId,
-    }) as IUser | null;
-
-    if (!adminUser) {
-      throw new Error('Admin user not found');
+    const requestQuery: any = { _id: new ObjectId(requestId) };
+    if (isObjectIdString(organizationId)) {
+      requestQuery.$or = [{ workspaceId: new ObjectId(organizationId) }, { organizationId }];
+    } else {
+      requestQuery.organizationId = organizationId;
     }
-
-    const adminRole = ((adminUser as any).role || '').toLowerCase();
-    if (adminRole !== 'admin' && adminRole !== 'super-admin') {
-      throw new Error('Only admins can reject access requests');
-    }
-
-    // Get request
-    const request = await db.findOne(collection.accessRequests, {
-      _id: new ObjectId(requestId),
-      organizationId,
-    }) as IAccessRequest | null;
+    const request = await db.findOne(collection.accessRequests, requestQuery) as IAccessRequest | null;
 
     if (!request) {
       throw new Error('Access request not found');
@@ -1038,7 +925,7 @@ export const rejectAccessRequest = async (
       organizationId,
       actorUserId: userId,
       actorEmail: adminUser.email,
-      actorRole: adminRole === 'admin' || adminRole === 'super-admin' ? 'admin' : 'member',
+      actorRole: (adminRole === 'owner' || adminRole === 'admin' ? 'admin' : 'member') as any,
       targetType: request.scope === 'vault' ? 'vault' : 'item',
       targetId: request.resourceId.toString(),
       action: 'ACCESS_REVOKED',
@@ -1128,11 +1015,7 @@ export const acceptInvitation = async (
     }) as IUser | null;
 
     if (existingUser) {
-      // If user exists, verify they're accepting the right invitation
-      if (existingUser.companyName !== invitation.organizationId) {
-        throw new Error('Email already exists with a different organization');
-      }
-      // User already exists in this organization - update invitation status
+      // Same email can belong to multiple workspaces; add them to this workspace
       await db.updateOne(
         collection.invitations,
         { _id: invitation._id },
@@ -1161,12 +1044,18 @@ export const acceptInvitation = async (
         (existingUser as any).role = invitation.role;
       }
 
-      // Create membership record
       const { upsertMembership } = await import('./rbacService');
+      const workspaceOrOrgId = (invitation as any).workspaceId?.toString?.() ?? invitation.organizationId;
+      const forceWorkspaceId = !!(invitation as any).workspaceId;
+      const displayNameForWorkspace = (userData.name ?? '').trim();
+      logger.info({ userId: existingUser._id, workspaceOrOrgId, displayName: displayNameForWorkspace }, 'Accept invite (existing user): saving workspace display name to membership');
       await upsertMembership(
         existingUser._id!.toString(),
-        invitation.organizationId,
-        invitation.role as any
+        workspaceOrOrgId,
+        invitation.role as any,
+        'active',
+        forceWorkspaceId,
+        displayNameForWorkspace || undefined
       );
 
       // Log activity
@@ -1204,18 +1093,16 @@ export const acceptInvitation = async (
       throw new Error('Organization not found');
     }
 
-    // Create user with invited role and organization
+    // Create user (no companyName; membership links them to workspace)
     const newUser: any = {
       email: invitation.email.toLowerCase().trim(),
       name: userData.name,
       signupMethod: userData.signupMethod,
       passwordHash,
-      emailVerified: userData.signupMethod === 'google', // Google emails are pre-verified
+      emailVerified: userData.signupMethod === 'google',
       emailVerifiedAt: userData.signupMethod === 'google' ? new Date() : null,
       onboardingCompleted: false,
-      planId: adminUser.planId, // Use the same plan as the organization
-      companyName: invitation.organizationId, // Set organization
-      role: invitation.role, // Set invited role
+      planId: adminUser.planId,
       googleId: userData.googleId,
       picture: userData.picture,
       totpEnabled: false,
@@ -1245,12 +1132,18 @@ export const acceptInvitation = async (
       }
     );
 
-    // Create membership record
     const { upsertMembership } = await import('./rbacService');
+    const workspaceOrOrgId = (invitation as any).workspaceId?.toString?.() ?? invitation.organizationId;
+    const forceWorkspaceId = !!(invitation as any).workspaceId;
+    const displayNameForWorkspace = (userData.name ?? '').trim();
+    logger.info({ userId: result.insertedId, workspaceOrOrgId, displayName: displayNameForWorkspace }, 'Accept invite (new user): saving workspace display name to membership');
     await upsertMembership(
       result.insertedId.toString(),
-      invitation.organizationId,
-      invitation.role as any
+      workspaceOrOrgId,
+      invitation.role as any,
+      'active',
+      forceWorkspaceId,
+      displayNameForWorkspace || undefined
     );
 
     // Log activity

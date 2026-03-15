@@ -160,8 +160,10 @@ SMTP_USER=your-email@gmail.com
 SMTP_PASSWORD=your-app-password
 SMTP_FROM=your-email@gmail.com
 
-# Frontend URL
-FRONTEND_URL=https://novasafe.io
+# Frontend URLs
+FRONTEND_URL=https://app.novasafe.io
+# Auth/start app for invitation and onboarding links
+AUTH_APP_URL=https://start.novasafe.io
 
 # Payment (Razorpay/PayU)
 RAZORPAY_KEY_ID=your-key-id

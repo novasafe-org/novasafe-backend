@@ -17,6 +17,7 @@ import subscriptionRoute from './routes/subscriptionRoute';
 import onboardingRoute from './routes/onboardingRoute';
 import accountRoute from './routes/accountRoute';
 import billingRoute from './routes/billingRoute';
+import workspaceRoute from './routes/workspaceRoute';
 import activityLogRoutes from './routes/admin/activityLogRoutes';
 import accessManagementRoutes from './routes/admin/accessManagementRoutes';
 import invitationRoute from './routes/invitationRoute';
@@ -71,7 +72,7 @@ app.use(express.json());
 app.use((req: Request, res: Response, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Workspace-Id');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -96,6 +97,7 @@ app.use('/v/subscriptions', subscriptionRoute);
 app.use('/v/geo', geoRoute);
 app.use('/v/onboarding', onboardingRoute);
 app.use('/v/account', accountRoute);
+app.use('/v/workspaces', workspaceRoute);
 app.use('/v/billing', billingRoute);
 app.use('/v/admin/activity-logs', activityLogRoutes);
 app.use('/v/admin/access', accessManagementRoutes);
@@ -130,7 +132,8 @@ export const startServer = async () => {
     smtpUser: process.env.SMTP_USER ? '***configured***' : 'NOT SET',
     smtpPassword: process.env.SMTP_PASSWORD ? '***configured***' : 'NOT SET',
     smtpFrom: process.env.SMTP_FROM || process.env.SMTP_USER || 'NOT SET',
-    frontendUrl: process.env.FRONTEND_URL || 'NOT SET (default: http://localhost:8080)',
+    frontendUrl: process.env.FRONTEND_URL || 'NOT SET (default: http://localhost:3063)',
+    authAppUrl: process.env.AUTH_APP_URL || process.env.START_URL || 'NOT SET (default: http://localhost:3061, prod: https://start.novasafe.io)',
   }, 'SMTP Configuration Status at Startup');
 
   if (!smtpConfigured) {

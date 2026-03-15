@@ -27,10 +27,10 @@ import {
 
 const router = Router();
 
-// All routes require authentication and admin access
+// All routes: auth, then RBAC context (workspace), then admin check
 router.use(authMiddleware);
-router.use(adminAuthMiddleware);
 router.use(loadRBACContext);
+router.use(adminAuthMiddleware);
 
 // User management routes
 router.get('/users', requirePermission(Permission.USERS_VIEW), getUsersController);

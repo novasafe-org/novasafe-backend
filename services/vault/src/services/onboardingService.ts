@@ -202,7 +202,7 @@ export const createAccount = async (userData: {
   companyDomain?: string;
   googleId?: string;
   picture?: string;
-}): Promise<{ userId: string; user: IUser }> => {
+}): Promise<{ userId: string; user: IUser; workspaceId?: string }> => {
   try {
     const db = new Database('vault');
     
@@ -258,17 +258,30 @@ export const createAccount = async (userData: {
     
     // Insert user into database
     const result = await db.insertOne(collection.vaultUsers, newUser);
-    
+    const userId = result.insertedId.toString();
     const user: IUser = {
       ...newUser,
       _id: result.insertedId,
     };
-    
-    logger.info(`New account created: ${userData.email}, userId: ${result.insertedId}`);
-    
+
+    // Create default workspace and membership (one user identity, workspace owns plan/billing)
+    const { createWorkspace } = await import('./workspaceService');
+    const { upsertMembership } = await import('./rbacService');
+    const { UserRole } = await import('../constants/rbac.constants');
+    const workspaceType = (['individual', 'family', 'team', 'business'].includes(planId) ? planId : 'individual') as 'individual' | 'family' | 'team' | 'business';
+    const workspaceName = userData.companyName || 'Personal';
+    const workspace = await createWorkspace({
+      name: workspaceName,
+      type: workspaceType,
+      ownerUserId: userId,
+    });
+    await upsertMembership(userId, workspace._id!.toString(), UserRole.OWNER as any, 'active', true);
+
+    logger.info(`New account created: ${userData.email}, userId: ${userId}, workspaceId: ${workspace._id}`);
     return {
-      userId: result.insertedId.toString(),
+      userId,
       user,
+      workspaceId: workspace._id!.toString(),
     };
   } catch (error: any) {
     logger.error(`Error creating account: ${error.message}`);
@@ -363,53 +376,48 @@ export const completeOnboarding = async (userId: string): Promise<void> => {
       }
     );
 
-    // Automatically create a 30-day free trial subscription
-    // Trial starts from account creation, no payment method required initially
-    const { createSubscription } = await import('./subscriptionService');
+    // Resolve user's default workspace (created at signup or via lazy migration)
+    const { getDefaultWorkspaceIdForUser } = await import('./workspaceService');
+    const workspaceId = await getDefaultWorkspaceIdForUser(userId);
+
+    // Create 30-day free trial subscription for the workspace
+    const { createSubscription, getSubscriptionByWorkspaceId } = await import('./subscriptionService');
     const planId = (user.planId || 'individual') as any;
     const trialDays = 30;
-
-    // Check if subscription already exists
-    const existingSubscription = await db.findOne(collection.subscriptions, {
-      userId: new ObjectId(userId),
-      status: { $in: ['active', 'trialing'] },
-    });
-
+    const existingSubscription = await getSubscriptionByWorkspaceId(workspaceId);
     if (!existingSubscription) {
       await createSubscription({
         userId,
+        workspaceId,
         planId,
-        billingPeriod: 'monthly', // Default to monthly, can be changed later
+        billingPeriod: 'monthly',
         trialDays,
-        provider: 'razorpay', // Will be set up when payment method is added
-        paymentMethodAdded: false, // No payment method yet
+        provider: 'razorpay',
+        paymentMethodAdded: false,
       });
-
-      logger.info(`30-day free trial subscription created for userId: ${userId}, plan: ${planId}`);
+      logger.info(`30-day free trial subscription created for workspaceId: ${workspaceId}, plan: ${planId}`);
     }
 
-    // Create default "Personal" folder for the user
+    // Create default "Personal" folder in the workspace
     try {
       const existingPersonalFolder = await db.findOne(collection.folders, {
-        userId: new ObjectId(userId),
+        $or: [{ workspaceId }, { userId: new ObjectId(userId) }],
         name: 'Personal',
       });
-
       if (!existingPersonalFolder) {
         const personalFolder: any = {
           userId: new ObjectId(userId),
+          workspaceId,
           name: 'Personal',
           description: 'Default safe for your personal items',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           accessCount: 0,
         };
-
         const folderResult = await db.insertOne(collection.folders, personalFolder);
-        logger.info(`Personal folder created for userId: ${userId}, folderId: ${folderResult.insertedId}`);
+        logger.info(`Personal folder created for workspaceId: ${workspaceId}, folderId: ${folderResult.insertedId}`);
       }
     } catch (folderError: any) {
-      // Don't fail onboarding if folder creation fails, just log it
       logger.warn(`Failed to create Personal folder during onboarding: ${folderError.message}`);
     }
     

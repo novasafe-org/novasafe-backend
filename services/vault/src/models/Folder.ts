@@ -13,6 +13,11 @@ export interface IFolder {
   _id?: any;
 
   /**
+   * Workspace ID (preferred). Vault data is scoped by workspace.
+   */
+  workspaceId?: string;
+
+  /**
    * User's MongoDB ObjectId who owns this folder
    * References the User collection
    */

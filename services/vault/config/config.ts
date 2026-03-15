@@ -35,6 +35,7 @@ export const DBCONFIG: Record<string, DBConfigGeneric<Record<string, string>>> =
       accessRequests: 'accessRequests',
       activityLogs: 'activityLogs',
       organizationMembers: 'organizationMembers',
+      workspaces: 'workspaces',
       // Secrets Manager collections
       secrets: 'secrets',
       secretVersions: 'secretVersions',

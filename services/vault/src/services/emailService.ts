@@ -150,8 +150,16 @@ export const sendInvitationEmail = async (
   }
 
   const config = getEmailConfig();
-  const acceptUrl = `${process.env.FRONTEND_URL || 'http://localhost:8080'}/accept-invitation?token=${invitationToken}`;
+  // Invitation acceptance is part of auth/onboarding flow: use auth app URL (start.novasafe.io in prod, localhost:3061 in dev)
+  const authAppUrl = (process.env.AUTH_APP_URL || process.env.START_URL || 'http://localhost:3061').replace(/\/$/, '');
+  const acceptUrl = `${authAppUrl}/accept-invitation?token=${invitationToken}`;
   const expiresInDays = Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+  // Print invite URL to terminal for testing when email is blocked (e.g. VPN)
+  console.log('\n========== INVITATION ACCEPT URL (use for testing if email is not delivered) ==========');
+  console.log(acceptUrl);
+  console.log('========================================================================================\n');
+  logger.info({ acceptUrl, email }, 'Invitation accept URL logged above for testing');
 
   const mailOptions = {
     from: `"NovaSafe" <${config.from}>`,

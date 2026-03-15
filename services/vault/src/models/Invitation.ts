@@ -27,8 +27,12 @@ export interface IInvitation {
   role: 'admin' | 'member' | 'viewer';
 
   /**
-   * Organization identifier (companyName from User model)
-   * Used to group users by organization
+   * Workspace ID (preferred). References Workspace collection.
+   */
+  workspaceId?: ObjectId | string;
+
+  /**
+   * Organization identifier (legacy: companyName; or same as workspaceId when workspace-based)
    */
   organizationId: string;
 

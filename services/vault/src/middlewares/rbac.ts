@@ -10,15 +10,9 @@
 
 import { Request, Response, NextFunction } from 'express';
 import './auth'; // Ensure Request type extension
-import { ObjectId } from 'mongodb';
 import { UserRole, Permission } from '../constants/rbac.constants';
-import { getUserRole, getUserPermissions, userHasPermission, userHasAnyPermission } from '../services/rbacService';
+import { getUserRole, getUserPermissions } from '../services/rbacService';
 import logger from '../logger';
-import Database from '../../database/connection';
-import { DBCONFIG } from '../../config/config';
-import { IUser } from '../models/User';
-
-const collection = DBCONFIG.vault.collections;
 
 /**
  * Extended Request interface with RBAC context
@@ -37,43 +31,38 @@ declare global {
 }
 
 /**
- * Get organization ID from request
+ * Get current workspace/organization ID from request (for RBAC and data scoping).
  * Priority:
- * 1. From req.body.organizationId
- * 2. From req.params.organizationId
- * 3. From req.query.organizationId
- * 4. From user's companyName (for Team/Business plans)
- * 5. From user's _id (for Individual/Family plans)
+ * 1. From req body/params/query/header: workspace_id or organizationId (workspace switching)
+ * 2. User's default workspace (first membership; lazy-creates workspace for legacy users)
+ *
+ * IMPORTANT: If the client sends an explicit workspace ID, we verify the user belongs to it
+ * (member or owner). Otherwise we fall back to the user's default workspace. This ensures
+ * e.g. a user's "Personal" workspace is never exposed to another user.
  */
 const getOrganizationId = async (req: Request): Promise<string> => {
-  // Check body, params, query
-  const orgId = req.body?.organizationId || req.params?.organizationId || req.query?.organizationId;
-  if (orgId) {
-    return orgId as string;
-  }
-
-  // Get user from database
   const userId = req.user?.id;
-  if (!userId) {
-    throw new Error('User not authenticated');
+  if (!userId) throw new Error('User not authenticated');
+
+  const explicitWorkspaceId =
+    req.body?.workspace_id ||
+    req.params?.workspace_id ||
+    req.query?.workspace_id ||
+    (req.headers['x-workspace-id'] as string) ||
+    req.body?.organizationId ||
+    req.params?.organizationId ||
+    req.query?.organizationId;
+
+  if (explicitWorkspaceId) {
+    const { userBelongsToWorkspace, getDefaultWorkspaceIdForUser } = await import('../services/workspaceService');
+    const belongs = await userBelongsToWorkspace(userId, String(explicitWorkspaceId).trim());
+    if (belongs) return String(explicitWorkspaceId).trim();
+    logger.warn({ userId, requestedWorkspaceId: explicitWorkspaceId }, 'Workspace access denied: user not a member, using default workspace');
+    return getDefaultWorkspaceIdForUser(userId);
   }
 
-  const db = new Database('vault');
-  const user = await db.findOne(collection.vaultUsers, {
-    _id: new ObjectId(userId),
-  }) as IUser | null;
-
-  if (!user) {
-    throw new Error('User not found');
-  }
-
-  // For Team/Business plans, use companyName
-  if (user.companyName) {
-    return user.companyName;
-  }
-
-  // For Individual/Family plans, use userId as organizationId
-  return userId;
+  const { getDefaultWorkspaceIdForUser } = await import('../services/workspaceService');
+  return getDefaultWorkspaceIdForUser(userId);
 };
 
 /**

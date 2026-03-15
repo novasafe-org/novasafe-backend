@@ -17,6 +17,7 @@ import { promisify } from 'util';
 import sharp from 'sharp';
 
 const collection = DBCONFIG.vault.collections;
+const isObjectIdString = (s: string) => /^[a-fA-F0-9]{24}$/.test(s);
 
 /**
  * Add Vault Item Controller
@@ -59,11 +60,13 @@ export const addItem = async (req: Request, res: Response) => {
       logger.info(`Received ${files.length} file(s) for upload`);
     }
 
-    // Prepare item according to IVaultItem interface
+    const workspaceId = req.rbacContext?.organizationId && isObjectIdString(req.rbacContext.organizationId)
+      ? req.rbacContext.organizationId
+      : undefined;
     const newItem: any = {
-      userId: new ObjectId(req.user.id),  // Link item to user (convert to ObjectId)
-      encrypted_data: req.body.encrypted_data,  // Base64 encoded ciphertext
-      iv: req.body.iv,  // Base64 encoded IV
+      userId: new ObjectId(req.user.id),
+      encrypted_data: req.body.encrypted_data,
+      iv: req.body.iv,
       category: req.body.category,
       field_count: req.body.field_count || 0,
       attachment_count: files ? files.length : (req.body.attachment_count || 0),
@@ -73,6 +76,7 @@ export const addItem = async (req: Request, res: Response) => {
       accessCount: 0,
       lastAccessedAt: null,
     };
+    if (workspaceId) newItem.workspaceId = new ObjectId(workspaceId);
 
     // Optional fields
     if (req.body.title !== undefined) {
@@ -250,24 +254,27 @@ export const getItem = async (req: Request, res: Response) => {
     }
 
     const db = new Database('vault');
-    
-    // First, try to find item owned by user
-    // Query with ObjectId conversion to match how items are stored
-    let item = await db.findOne(collection.vaultItems, {
-      $or: [
-        { _id: new ObjectId(id) },
-        { id: id }
-      ],
-      $and: [
-        {
-          $or: [
-            { userId: new ObjectId(req.user.id) },  // Match ObjectId format (new items)
-            { userId: req.user.id }  // Match string format (legacy items)
-          ]
-        },
-        { deleted: { $ne: true } }
-      ]
-    });
+    const workspaceIdItem = req.rbacContext?.organizationId && isObjectIdString(req.rbacContext.organizationId) ? req.rbacContext.organizationId : null;
+    let item = null;
+    if (workspaceIdItem) {
+      // In a workspace: allow access if item belongs to this workspace (so members can view/edit items created by others)
+      item = await db.findOne(collection.vaultItems, {
+        $and: [
+          { $or: [{ _id: new ObjectId(id) }, { id }] },
+          { deleted: { $ne: true } },
+          { $or: [{ workspaceId: new ObjectId(workspaceIdItem) }, { workspaceId: workspaceIdItem }] },
+        ],
+      });
+    }
+    if (!item) {
+      item = await db.findOne(collection.vaultItems, {
+        $and: [
+          { $or: [{ _id: new ObjectId(id) }, { id }] },
+          { deleted: { $ne: true } },
+          { $or: [{ userId: new ObjectId(req.user.id) }, { userId: req.user.id }] },
+        ],
+      });
+    }
 
     // If not found, check if it's shared with user
     if (!item) {
@@ -295,6 +302,17 @@ export const getItem = async (req: Request, res: Response) => {
         message: 'Item not found or you don\'t have permission to access it'
       });
       return;
+    }
+
+    // Personal workspace: only the owning user may access items in it
+    if (workspaceIdItem && item.workspaceId) {
+      const { getWorkspaceById } = await import('../services/workspaceService');
+      const ws = await getWorkspaceById(item.workspaceId.toString?.() || item.workspaceId);
+      const itemUserId = item.userId?.toString?.() || item.userId;
+      if (ws?.type === 'individual' && itemUserId !== req.user.id) {
+        res.status(404).json({ message: 'Item not found or you don\'t have permission to access it' });
+        return;
+      }
     }
 
     // Format item with id instead of _id
@@ -464,26 +482,35 @@ export const updateItem = async (req: Request, res: Response) => {
       updateData.attachment_count = req.body.attachment_count;
     }
     
-    // Update only if item belongs to this user
-    // Query with ObjectId conversion to match how items are stored
-    const result = await db.updateOne(
-      collection.vaultItems, 
-      { 
-        $or: [
-          { _id: new ObjectId(id) },
-          { id: id }
-        ],
-        $and: [
-          {
-            $or: [
-              { userId: new ObjectId(req.user.id) },  // Match ObjectId format (new items)
-              { userId: req.user.id }  // Match string format (legacy items)
-            ]
+    const workspaceIdUp = req.rbacContext?.organizationId && isObjectIdString(req.rbacContext.organizationId) ? req.rbacContext.organizationId : null;
+    const updateItemFilter: any =
+      workspaceIdUp
+        ? {
+            $and: [
+              { $or: [{ _id: new ObjectId(id) }, { id }] },
+              { $or: [{ workspaceId: new ObjectId(workspaceIdUp) }, { workspaceId: workspaceIdUp }] },
+            ],
           }
-        ]
-      },
-      { $set: updateData }
-    );
+        : {
+            $and: [
+              { $or: [{ _id: new ObjectId(id) }, { id }] },
+              { $or: [{ userId: new ObjectId(req.user.id) }, { userId: req.user.id }] },
+            ],
+          };
+    // Personal workspace: only the item owner may update
+    if (workspaceIdUp) {
+      const existing = await db.findOne(collection.vaultItems, updateItemFilter);
+      if (existing) {
+        const { getWorkspaceById } = await import('../services/workspaceService');
+        const ws = await getWorkspaceById(workspaceIdUp);
+        const itemUserId = existing.userId?.toString?.() || existing.userId;
+        if (ws?.type === 'individual' && itemUserId !== req.user.id) {
+          res.status(403).json({ message: 'You do not have permission to update this item', error: 'Forbidden' });
+          return;
+        }
+      }
+    }
+    const result = await db.updateOne(collection.vaultItems, updateItemFilter, { $set: updateData });
 
     if (result.matchedCount === 0) {
       res.status(404).json({ 
@@ -514,22 +541,7 @@ export const updateItem = async (req: Request, res: Response) => {
       logger.warn(`Failed to log item update: ${logError.message}`);
     }
 
-    // Fetch updated item to return
-    // Query with ObjectId conversion to match how items are stored
-    const updatedItem = await db.findOne(collection.vaultItems, {
-      $or: [
-        { _id: new ObjectId(id) },
-        { id: id }
-      ],
-      $and: [
-        {
-          $or: [
-            { userId: new ObjectId(req.user.id) },  // Match ObjectId format (new items)
-            { userId: req.user.id }  // Match string format (legacy items)
-          ]
-        }
-      ]
-    });
+    const updatedItem = await db.findOne(collection.vaultItems, updateItemFilter);
 
     // Format item with id instead of _id
     const formattedItem = updatedItem ? {
@@ -598,30 +610,38 @@ export const deleteItem = async (req: Request, res: Response) => {
     // Query with ObjectId conversion to match how items are stored
     const db = new Database('vault');
     
-    // First, check if item exists and belongs to user
-    const item = await db.findOne(collection.vaultItems, {
-      $or: [
-        { _id: new ObjectId(id) },
-        { id: id }
-      ],
-      $and: [
-        {
-          $or: [
-            { userId: new ObjectId(req.user.id) },  // Match ObjectId format (new items)
-            { userId: req.user.id }  // Match string format (legacy items)
-          ]
-        }
-      ]
-    });
-
+    const workspaceIdDelItem = req.rbacContext?.organizationId && isObjectIdString(req.rbacContext.organizationId) ? req.rbacContext.organizationId : null;
+    const deleteItemFilter: any =
+      workspaceIdDelItem
+        ? {
+            $and: [
+              { $or: [{ _id: new ObjectId(id) }, { id }] },
+              { $or: [{ workspaceId: new ObjectId(workspaceIdDelItem) }, { workspaceId: workspaceIdDelItem }] },
+            ],
+          }
+        : {
+            $and: [
+              { $or: [{ _id: new ObjectId(id) }, { id }] },
+              { $or: [{ userId: new ObjectId(req.user.id) }, { userId: req.user.id }] },
+            ],
+          };
+    const item = await db.findOne(collection.vaultItems, deleteItemFilter);
     if (!item) {
-      res.status(404).json({ 
+      res.status(404).json({
         message: 'Item not found or you don\'t have permission to delete it'
       });
       return;
     }
-
-    // Delete associated files from disk
+    // Personal workspace: only the item owner may delete
+    if (workspaceIdDelItem) {
+      const { getWorkspaceById } = await import('../services/workspaceService');
+      const ws = await getWorkspaceById(workspaceIdDelItem);
+      const itemUserId = item.userId?.toString?.() || item.userId;
+      if (ws?.type === 'individual' && itemUserId !== req.user.id) {
+        res.status(403).json({ message: 'You do not have permission to delete this item', error: 'Forbidden' });
+        return;
+      }
+    }
     try {
       await deleteItemFiles(req.user.id, id);
       logger.info(`Deleted files for item ${id}`);
@@ -630,26 +650,7 @@ export const deleteItem = async (req: Request, res: Response) => {
       logger.error(`Failed to delete files for item ${id}: ${error.message}`);
     }
 
-    // Soft delete: Set deleted_at timestamp, but keep deleted = false
-    // The scheduler will permanently delete after 30 days
-    const result = await db.updateOne(
-      collection.vaultItems,
-      { 
-        $or: [
-          { _id: new ObjectId(id) },
-          { id: id }
-        ],
-        $and: [
-          {
-            $or: [
-              { userId: new ObjectId(req.user.id) },  // Match ObjectId format (new items)
-              { userId: req.user.id }  // Match string format (legacy items)
-            ]
-          }
-        ]
-      },
-      { $set: { deleted: false, deleted_at: new Date() } }
-    );
+    const result = await db.updateOne(collection.vaultItems, deleteItemFilter, { $set: { deleted: false, deleted_at: new Date() } });
 
     logger.info(`Item ${id} deleted by user ${req.user.email}`);
 
@@ -735,16 +736,27 @@ export const getItems = async (req: Request, res: Response) => {
       logger.warn(`Failed to create welcome item: ${welcomeError.message}`);
     }
 
-    // Fetch data - ONLY items belonging to this user
-    // Query with ObjectId conversion to match how items are stored
-    const items = await db.findMany(collection.vaultItems, { 
-      $or: [
-        { userId: new ObjectId(userId) },  // Match ObjectId format (new items)
-        { userId: userId }  // Match string format (legacy items)
-      ],
-      deleted: { $ne: true },  // Exclude permanently deleted items
-      deleted_at: null  // Exclude soft-deleted items (in trash)
-    });
+    const workspaceId = req.rbacContext?.organizationId && isObjectIdString(req.rbacContext.organizationId)
+      ? req.rbacContext.organizationId
+      : null;
+    const itemsQuery: any = {
+      deleted: { $ne: true },
+      deleted_at: null,
+    };
+    if (workspaceId) {
+      itemsQuery.$and = [
+        { $or: [{ workspaceId: new ObjectId(workspaceId) }, { workspaceId }] },
+      ];
+      // Personal (individual) workspace: only the owning user may see its items; never expose to other users.
+      const { getWorkspaceById } = await import('../services/workspaceService');
+      const workspace = await getWorkspaceById(workspaceId);
+      if (workspace?.type === 'individual') {
+        itemsQuery.$and.push({ $or: [{ userId: new ObjectId(userId) }, { userId }] });
+      }
+    } else {
+      itemsQuery.$or = [{ userId: new ObjectId(userId) }, { userId }];
+    }
+    const items = await db.findMany(collection.vaultItems, itemsQuery);
 
     logger.info(`Fetched ${items.length} items for user ${req.user.email}`);
 

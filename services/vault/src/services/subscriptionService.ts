@@ -15,6 +15,7 @@ const collection = DBCONFIG.vault.collections;
 
 export interface CreateSubscriptionParams {
   userId: string | ObjectId;
+  workspaceId?: string | ObjectId;
   planId: PlanId;
   billingPeriod: BillingPeriod;
   paymentOrderId?: string | ObjectId;
@@ -92,7 +93,7 @@ export const createSubscription = async (
       status = 'trialing';
     }
 
-    const subscription: Omit<ISubscription, '_id'> = {
+    const subscription: any = {
       userId: new ObjectId(params.userId),
       planId: params.planId,
       status,
@@ -118,6 +119,7 @@ export const createSubscription = async (
       createdAt: now,
       updatedAt: now,
     };
+    if (params.workspaceId) subscription.workspaceId = new ObjectId(params.workspaceId);
 
     const result = await db.insertOne(collection.subscriptions, subscription);
 
@@ -134,18 +136,40 @@ export const createSubscription = async (
 };
 
 /**
- * Get active subscription for a user
+ * Get active subscription for a workspace (preferred).
+ */
+export const getSubscriptionByWorkspaceId = async (
+  workspaceId: string | ObjectId
+): Promise<ISubscription | null> => {
+  try {
+    const db = new Database('vault');
+    const subscription = await db.findOne(collection.subscriptions, {
+      workspaceId: new ObjectId(workspaceId),
+      status: { $in: ['active', 'trialing'] },
+    }) as ISubscription | null;
+    return subscription;
+  } catch (error: any) {
+    logger.error(error, 'Error fetching workspace subscription');
+    throw error;
+  }
+};
+
+/**
+ * Get active subscription for a user (default workspace or legacy by userId).
  */
 export const getUserSubscription = async (
   userId: string | ObjectId
 ): Promise<ISubscription | null> => {
   try {
+    const { getDefaultWorkspaceIdForUser } = await import('./workspaceService');
+    const workspaceId = await getDefaultWorkspaceIdForUser(userId.toString());
+    const byWorkspace = await getSubscriptionByWorkspaceId(workspaceId);
+    if (byWorkspace) return byWorkspace;
     const db = new Database('vault');
     const subscription = await db.findOne(collection.subscriptions, {
       userId: new ObjectId(userId),
       status: { $in: ['active', 'trialing'] },
     }) as ISubscription | null;
-
     return subscription;
   } catch (error: any) {
     logger.error(error, 'Error fetching user subscription');

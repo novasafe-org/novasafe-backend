@@ -27,8 +27,14 @@ export interface ISubscription {
   _id?: ObjectId;
 
   /**
-   * User's MongoDB ObjectId who owns this subscription
-   * References the User collection
+   * Workspace ID that owns this subscription (preferred).
+   * Billing is per-workspace; one subscription per workspace.
+   */
+  workspaceId?: ObjectId | string;
+
+  /**
+   * User's MongoDB ObjectId who owns this subscription (legacy).
+   * References the User collection. When workspaceId is set, this may be the workspace owner.
    */
   userId: ObjectId | string;
 

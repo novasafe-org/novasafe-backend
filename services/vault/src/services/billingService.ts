@@ -148,9 +148,11 @@ export const startTrial = async (
     const trialEndsAt = new Date();
     trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
 
-    // Create subscription record in database
+    const { getDefaultWorkspaceIdForUser } = await import('./workspaceService');
+    const workspaceId = await getDefaultWorkspaceIdForUser(params.userId.toString());
     const subscription = await createSubscription({
       userId,
+      workspaceId,
       planId: params.planId as any,
       billingPeriod: params.billingCycle,
       paymentOrderId: orderResult.insertedId.toString(),
@@ -159,7 +161,7 @@ export const startTrial = async (
       providerSubscriptionId: subscriptionResponse.subscriptionId,
       providerCustomerId: subscriptionResponse.providerMetadata?.razorpayCustomerId || null,
       providerCustomerToken: subscriptionResponse.customerToken,
-      paymentMethodAdded: false, // Will be set to true after checkout completes
+      paymentMethodAdded: false,
     });
 
     // Update subscription with trial end date

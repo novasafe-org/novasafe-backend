@@ -330,35 +330,33 @@ export const processPaymentCallback = async (
       { $set: updateData }
     );
 
-    // Create or update subscription
     let subscriptionId: string | null = null;
+    const { getDefaultWorkspaceIdForUser } = await import('./workspaceService');
+    const workspaceId = await getDefaultWorkspaceIdForUser(paymentOrder.userId.toString());
 
     if (paymentOrder.paymentType === 'recurring') {
-      // Check if user already has an active subscription
       const existingSubscription = await getUserSubscription(paymentOrder.userId.toString());
-
       if (existingSubscription) {
-        // Renew existing subscription
         const renewed = await renewSubscription(
           existingSubscription._id!.toString(),
           paymentOrder._id!.toString()
         );
         subscriptionId = renewed?._id?.toString() || null;
       } else {
-        // Create new subscription
         const subscription = await createSubscription({
           userId: paymentOrder.userId.toString(),
+          workspaceId,
           planId: paymentOrder.planId as any,
           billingPeriod: paymentOrder.billingPeriod,
           paymentOrderId: paymentOrder._id!.toString(),
-          trialDays: 0, // No trial for paid plans
+          trialDays: 0,
         });
         subscriptionId = subscription._id?.toString() || null;
       }
     } else {
-      // One-time payment - create subscription
       const subscription = await createSubscription({
         userId: paymentOrder.userId.toString(),
+        workspaceId,
         planId: paymentOrder.planId as any,
         billingPeriod: 'one_time',
         paymentOrderId: paymentOrder._id!.toString(),

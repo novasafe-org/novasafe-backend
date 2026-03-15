@@ -25,9 +25,14 @@ export interface IMembership {
   userId: ObjectId | string;
 
   /**
-   * Organization identifier
-   * For Team/Business: companyName from User model
-   * For Individual/Family: userId or email domain
+   * Workspace ID (preferred). References Workspace collection.
+   * When set, this membership is for that workspace.
+   */
+  workspaceId?: ObjectId | string;
+
+  /**
+   * Organization identifier (legacy).
+   * For new data: same as workspaceId (string). For legacy: companyName from User.
    */
   organizationId: string;
 
@@ -44,6 +49,18 @@ export interface IMembership {
    * 'suspended': User's access has been suspended
    */
   status: MembershipStatus;
+
+  /**
+   * Email that was invited (for invited status, before user signs up).
+   * Optional; used when invitation is pending.
+   */
+  invitedEmail?: string;
+
+  /**
+   * Display name for this user in this workspace (optional).
+   * When set, shown in UI instead of global user.name when in this workspace.
+   */
+  displayName?: string;
 
   /**
    * Timestamp when membership was created

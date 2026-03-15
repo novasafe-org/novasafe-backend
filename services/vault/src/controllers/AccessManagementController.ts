@@ -23,6 +23,9 @@ import {
   getInvitationByToken,
   acceptInvitation,
 } from '../services/accessManagementService';
+import { getWorkspaceById } from '../services/workspaceService';
+
+const isObjectIdString = (s: string) => /^[a-fA-F0-9]{24}$/.test(s);
 import { logActivity } from '../utils/activityLogHelper';
 import { addUserPermissionsToResponse } from '../utils/responseHelper';
 import logger from '../logger';
@@ -632,7 +635,13 @@ export const getInvitationByTokenController = async (req: Request, res: Response
       return;
     }
 
-    // Return invitation details (without sensitive info)
+    let organizationName: string = invitation.organizationId;
+    const workspaceId = (invitation as any).workspaceId?.toString?.() ?? invitation.organizationId;
+    if (isObjectIdString(workspaceId)) {
+      const workspace = await getWorkspaceById(workspaceId);
+      if (workspace?.name) organizationName = workspace.name;
+    }
+
     res.status(200).json({
       success: true,
       message: 'Invitation found',
@@ -640,6 +649,7 @@ export const getInvitationByTokenController = async (req: Request, res: Response
         email: invitation.email,
         role: invitation.role,
         organizationId: invitation.organizationId,
+        organizationName,
         expiresAt: invitation.expiresAt,
       },
     });
@@ -659,7 +669,8 @@ export const getInvitationByTokenController = async (req: Request, res: Response
  */
 export const acceptInvitationController = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { token: invitationToken, name, password, signupMethod, googleId, picture } = req.body;
+    const { token: invitationToken, password, signupMethod, googleId, picture } = req.body;
+    const name = (req.body.name ?? req.body.fullName ?? '').trim();
 
     if (!invitationToken) {
       res.status(400).json({

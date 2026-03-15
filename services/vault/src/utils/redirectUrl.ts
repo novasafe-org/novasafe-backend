@@ -16,11 +16,11 @@ interface RedirectUrlConfig {
 
 /**
  * Get redirect URL configuration from environment variables
- * APP_ORIGIN: when set (e.g. http://localhost:8080), all redirects go to this origin + VAULT_PATH (for local dev: auth → app)
+ * APP_ORIGIN: when set (e.g. http://localhost:3063), all redirects go to this origin + VAULT_PATH (for local dev: auth → app)
  */
 const getRedirectConfig = (): RedirectUrlConfig & { appOrigin?: string } => {
   const vaultPath = process.env.VAULT_PATH || '/vault';
-  const appOrigin = process.env.APP_ORIGIN?.replace(/\/$/, ''); // e.g. http://localhost:8080
+  const appOrigin = process.env.APP_ORIGIN?.replace(/\/$/, ''); // e.g. http://localhost:3063
   return {
     baseDomain: process.env.BASE_DOMAIN || 'novasafe.io',
     individualSubdomain: process.env.INDIVIDUAL_SUBDOMAIN || 'app',

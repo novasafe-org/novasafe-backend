@@ -13,7 +13,9 @@ import { IMembership } from '../models/Membership';
 import { UserRole, Permission, getPermissionsForRole, roleHasPermission } from '../constants/rbac.constants';
 import logger from '../logger';
 
+
 const collection = DBCONFIG.vault.collections;
+const isObjectIdString = (s: string) => /^[a-fA-F0-9]{24}$/.test(s);
 
 /**
  * Get user's role in an organization
@@ -25,50 +27,49 @@ const collection = DBCONFIG.vault.collections;
  */
 export const getUserRole = async (
   userId: string,
-  organizationId: string
+  organizationIdOrWorkspaceId: string
 ): Promise<UserRole> => {
   try {
     const db = new Database('vault');
 
-    // First, check Membership collection
-    const membership = await db.findOne(collection.organizationMembers || 'organizationMembers', {
-      userId: new ObjectId(userId),
-      organizationId,
-      status: 'active',
-    }) as IMembership | null;
+    const byWorkspaceId = isObjectIdString(organizationIdOrWorkspaceId);
 
-    if (membership && membership.role) {
-      return membership.role as UserRole;
-    }
+    if (byWorkspaceId) {
+      const membership = await db.findOne(collection.organizationMembers || 'organizationMembers', {
+        userId: new ObjectId(userId),
+        $or: [
+          { workspaceId: new ObjectId(organizationIdOrWorkspaceId) },
+          { organizationId: organizationIdOrWorkspaceId },
+        ],
+        status: 'active',
+      }) as IMembership | null;
+      if (membership?.role) return membership.role as UserRole;
 
-    // Fallback: Check User.role field (legacy support)
-    const user = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(userId),
-      companyName: organizationId,
-    }) as IUser | null;
+      const { getWorkspaceById } = await import('./workspaceService');
+      const workspace = await getWorkspaceById(organizationIdOrWorkspaceId);
+      if (workspace && workspace.ownerUserId?.toString() === userId) return UserRole.OWNER;
+    } else {
+      const membership = await db.findOne(collection.organizationMembers || 'organizationMembers', {
+        userId: new ObjectId(userId),
+        organizationId: organizationIdOrWorkspaceId,
+        status: 'active',
+      }) as IMembership | null;
+      if (membership?.role) return membership.role as UserRole;
 
-    if (user && (user as any).role) {
-      const role = ((user as any).role || '').toLowerCase();
-      if (['owner', 'admin', 'member', 'viewer'].includes(role)) {
-        return role as UserRole;
+      const user = await db.findOne(collection.vaultUsers, {
+        _id: new ObjectId(userId),
+        companyName: organizationIdOrWorkspaceId,
+      }) as IUser | null;
+      if (user && (user as any).role) {
+        const role = ((user as any).role || '').toLowerCase();
+        if (['owner', 'admin', 'member', 'viewer'].includes(role)) return role as UserRole;
       }
+      if (organizationIdOrWorkspaceId === userId) return UserRole.OWNER;
     }
 
-    // For Individual/Family plans, check if user is the owner
-    const userCheck = await db.findOne(collection.vaultUsers, {
-      _id: new ObjectId(userId),
-    }) as IUser | null;
-
-    if (userCheck && userCheck.companyName === organizationId) {
-      // User created the organization, they are the owner
-      return UserRole.OWNER;
-    }
-
-    // Default to member for Individual/Family plans
     return UserRole.MEMBER;
   } catch (error: any) {
-    logger.error({ error: error.message, userId, organizationId }, 'Failed to get user role');
-    // Default to most restrictive role on error
+    logger.error({ error: error.message, userId, organizationIdOrWorkspaceId }, 'Failed to get user role');
     return UserRole.VIEWER;
   }
 };
@@ -141,81 +142,95 @@ export const userHasAllPermissions = async (
 };
 
 /**
- * Create or update membership
+ * Create or update membership.
+ * When organizationIdOrWorkspaceId is a 24-char hex string, it is stored as workspaceId and organizationId (workspace-based).
+ * displayName: optional workspace-scoped display name (e.g. from invite onboarding).
  */
 export const upsertMembership = async (
   userId: string,
-  organizationId: string,
+  organizationIdOrWorkspaceId: string,
   role: UserRole,
-  status: 'active' | 'invited' | 'suspended' = 'active'
+  status: 'active' | 'invited' | 'suspended' = 'active',
+  forceWorkspaceId = false,
+  displayName?: string
 ): Promise<IMembership> => {
   try {
     const db = new Database('vault');
+    const useWorkspaceId = forceWorkspaceId || isObjectIdString(organizationIdOrWorkspaceId);
 
-    const membershipData: Omit<IMembership, '_id'> = {
+    const membershipData: any = {
       userId: new ObjectId(userId),
-      organizationId,
+      organizationId: organizationIdOrWorkspaceId,
       role,
       status,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+    if (useWorkspaceId) {
+      membershipData.workspaceId = new ObjectId(organizationIdOrWorkspaceId);
+    }
+    const displayNameTrimmed = displayName != null ? String(displayName).trim() : '';
+    if (displayNameTrimmed !== '') {
+      membershipData.displayName = displayNameTrimmed;
+    }
 
-    // Check if membership exists
-    const existing = await db.findOne(collection.organizationMembers || 'organizationMembers', {
+    const query: any = {
       userId: new ObjectId(userId),
-      organizationId,
-    }) as IMembership | null;
+      ...(useWorkspaceId
+        ? { $or: [{ workspaceId: new ObjectId(organizationIdOrWorkspaceId) }, { organizationId: organizationIdOrWorkspaceId }] }
+        : { organizationId: organizationIdOrWorkspaceId }),
+    };
+    const existing = await db.findOne(collection.organizationMembers || 'organizationMembers', query) as IMembership | null;
 
     if (existing) {
-      // Update existing membership
+      const updateSet: any = {
+        role,
+        status,
+        updatedAt: new Date(),
+        ...(useWorkspaceId ? { workspaceId: new ObjectId(organizationIdOrWorkspaceId), organizationId: organizationIdOrWorkspaceId } : {}),
+      };
+      if (displayNameTrimmed !== '') {
+        updateSet.displayName = displayNameTrimmed;
+      }
       await db.updateOne(
         collection.organizationMembers || 'organizationMembers',
         { _id: existing._id },
-        {
-          $set: {
-            role,
-            status,
-            updatedAt: new Date(),
-          },
-        }
+        { $set: updateSet }
       );
-
-      return {
-        ...existing,
-        ...membershipData,
-        _id: existing._id,
-      };
-    } else {
-      // Create new membership
-      const result = await db.insertOne(collection.organizationMembers || 'organizationMembers', membershipData);
-      return {
-        ...membershipData,
-        _id: result.insertedId,
-      };
+      logger.info({ membershipId: existing._id, displayName: displayNameTrimmed || '(unchanged)' }, 'Membership updated with workspace display name');
+      return { ...existing, ...membershipData, _id: existing._id } as IMembership;
     }
+    const result = await db.insertOne(collection.organizationMembers || 'organizationMembers', membershipData);
+    logger.info({ membershipId: result.insertedId, displayName: displayNameTrimmed || '(none)' }, 'Membership created with workspace display name');
+    return { ...membershipData, _id: result.insertedId } as IMembership;
   } catch (error: any) {
-    logger.error({ error: error.message, userId, organizationId, role }, 'Failed to upsert membership');
+    logger.error({ error: error.message, userId, organizationIdOrWorkspaceId, role }, 'Failed to upsert membership');
     throw error;
   }
 };
 
 /**
- * Get all members of an organization
+ * Get all members of a workspace/organization (by workspace ID or legacy organizationId).
  */
 export const getOrganizationMembers = async (
-  organizationId: string
+  organizationIdOrWorkspaceId: string
 ): Promise<IMembership[]> => {
   try {
     const db = new Database('vault');
+    const isWsId = isObjectIdString(organizationIdOrWorkspaceId);
+    const filter: any = {
+      status: 'active',
+      ...(isWsId
+        ? { $or: [{ workspaceId: new ObjectId(organizationIdOrWorkspaceId) }, { organizationId: organizationIdOrWorkspaceId }] }
+        : { organizationId: organizationIdOrWorkspaceId }),
+    };
     const members = await db.getDb()
       .collection(collection.organizationMembers || 'organizationMembers')
-      .find({ organizationId, status: 'active' })
+      .find(filter)
       .toArray();
-    
     return members as IMembership[];
   } catch (error: any) {
-    logger.error({ error: error.message, organizationId }, 'Failed to get organization members');
+    logger.error({ error: error.message, organizationIdOrWorkspaceId }, 'Failed to get organization members');
     return [];
   }
 };

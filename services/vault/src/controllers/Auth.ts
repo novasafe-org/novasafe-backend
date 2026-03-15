@@ -1003,7 +1003,7 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
       );
 
       // Generate reset URL
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3063';
       const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
 
       // For testing: Log the reset link (email sending disabled on Mac)

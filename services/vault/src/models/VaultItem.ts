@@ -15,6 +15,11 @@ export interface IVaultItem {
   _id?: ObjectId;
 
   /**
+   * Workspace ID (preferred). Vault data is scoped by workspace.
+   */
+  workspaceId?: ObjectId | string;
+
+  /**
    * User's MongoDB ObjectId who owns this item
    * References the User collection
    */

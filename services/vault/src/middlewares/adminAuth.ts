@@ -113,12 +113,38 @@ export const adminAuthMiddleware = async (
       return;
     }
 
-    // Check organization - must have companyName for teams/business
-    if (!user.companyName) {
-      logger.warn(
-        { userId, planId, hasCompanyName: false },
-        'User attempted to access activity logs but does not have companyName set'
-      );
+    // Resolve organization/workspace id: prefer RBAC context (workspace id), else legacy companyName
+    let organizationId: string;
+    const rbacOrgId = (req as any).rbacContext?.organizationId;
+    const isWorkspaceId = rbacOrgId && /^[a-fA-F0-9]{24}$/.test(rbacOrgId);
+    if (isWorkspaceId) {
+      const { getWorkspaceById } = await import('../services/workspaceService');
+      const ws = await getWorkspaceById(rbacOrgId);
+      if (!ws || !ACTIVITY_LOG_SUPPORTED_PLANS.includes(ws.type as any)) {
+        res.status(403).json({
+          success: false,
+          message: 'Forbidden',
+          error: 'This workspace does not support admin features',
+          userMessage: 'Activity logs are only available for Team and Business workspaces',
+        });
+        return;
+      }
+      const rbacRole = (req as any).rbacContext?.role;
+      if (rbacRole !== 'owner' && rbacRole !== 'admin') {
+        res.status(403).json({
+          success: false,
+          message: 'Forbidden',
+          error: 'Only workspace owners or admins can access this',
+          userMessage: 'You must be an administrator in this workspace',
+        });
+        return;
+      }
+      organizationId = rbacOrgId;
+      userRole = rbacRole;
+    } else if (user.companyName) {
+      organizationId = user.companyName;
+    } else {
+      logger.warn({ userId, planId, hasCompanyName: false }, 'Admin access: no organization/workspace');
       res.status(403).json({
         success: false,
         message: 'Forbidden',
@@ -128,18 +154,17 @@ export const adminAuthMiddleware = async (
       return;
     }
 
-    logger.info(
-      { userId, planId, userRole, organizationId: user.companyName },
-      'Admin access granted for activity logs'
-    );
+    logger.info({ userId, planId, userRole, organizationId }, 'Admin access granted');
 
-    // Attach admin context to request
+    const effectivePlanId = isWorkspaceId
+      ? (await (await import('../services/workspaceService')).getWorkspaceById(organizationId))?.type || planId
+      : planId;
     (req as any).adminContext = {
-      userId: userId,
+      userId,
       userEmail: user.email,
-      userRole: userRole,
-      organizationId: user.companyName, // Use companyName as organizationId
-      planId: planId,
+      userRole,
+      organizationId,
+      planId: effectivePlanId,
     };
 
     next();

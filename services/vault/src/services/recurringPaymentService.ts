@@ -6,7 +6,7 @@
  */
 
 import { getPaymentProvider } from './payment/paymentRouter';
-import { getUserSubscription } from './subscriptionService';
+import { getSubscriptionById } from './subscriptionService';
 import { createPaymentOrder, getPaymentOrderByOrderId } from './paymentService';
 import logger from '../logger';
 import type { ISubscription } from '../models/Subscription';
@@ -20,8 +20,7 @@ export async function chargeRecurringSubscription(
   subscriptionId: string
 ): Promise<{ success: boolean; paymentOrderId?: string; error?: string }> {
   try {
-    // Get subscription
-    const subscription = await getUserSubscription(subscriptionId);
+    const subscription = await getSubscriptionById(subscriptionId);
     if (!subscription) {
       throw new Error('Subscription not found');
     }
