@@ -370,7 +370,7 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Return current user information including 2FA status
+    // Return current user information including 2FA status and plan/company for redirect (company subdomain)
     res.status(200).json({
       user: {
         id: user._id?.toString() || user.googleId,
@@ -379,6 +379,8 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
         email: user.email,
         picture: user.picture,
         createdAt: user.createdAt,
+        planId: user.planId,
+        companyName: user.companyName,
       },
       requires2FA: user.totpEnabled || false, // Include 2FA requirement status
     });
