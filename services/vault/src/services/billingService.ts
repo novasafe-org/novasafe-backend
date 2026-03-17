@@ -13,7 +13,7 @@
 
 import { ObjectId } from 'mongodb';
 import Database from '../../database/connection';
-import { DBCONFIG } from '../../config/config';
+import { DBCONFIG, getTrialEndDate, getTrialDurationLabel } from '../../config/config';
 import { ISubscription, SubscriptionStatus, BillingPeriod } from '../models/Subscription';
 import { IPaymentOrder } from '../models/PaymentOrder';
 import { getPaymentProvider } from './payment/paymentRouter';
@@ -52,6 +52,7 @@ export interface SubscriptionDetails {
   billingCycle: BillingPeriod;
   status: SubscriptionStatus;
   trialEndsAt: Date | null;
+  currentPeriodStart: Date;
   currentPeriodEnd: Date;
   paymentMethodAdded: boolean;
   paymentMethod?: {
@@ -74,7 +75,8 @@ export const startTrial = async (
     const db = new Database('vault');
     const userId = new ObjectId(params.userId);
     const currency = params.currency || 'INR';
-    const trialDays = 30;
+    const now = new Date();
+    const trialEndsAt = getTrialEndDate(now);
 
     // Check if user already has an active subscription
     const existingSubscription = await getUserSubscription(userId);
@@ -95,7 +97,6 @@ export const startTrial = async (
 
     // Create a payment order for tracking (status: pending, will be updated when subscription is created)
     const orderId = `TRIAL_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const now = new Date();
 
     const paymentOrder: Omit<IPaymentOrder, '_id'> = {
       userId,
@@ -134,19 +135,16 @@ export const startTrial = async (
     const orderResult = await db.insertOne(collection.paymentOrders, paymentOrder);
     const paymentOrderWithId = { ...paymentOrder, _id: orderResult.insertedId } as IPaymentOrder;
 
-    // Create Razorpay subscription with trial
+    // Create Razorpay subscription with trial (duration from config: TRIAL_DAYS or TRIAL_MINUTES)
+    const { getTrialDurationSeconds } = await import('../../config/config');
     const subscriptionResponse = await razorpayProvider.createRecurringSubscription({
       paymentOrder: paymentOrderWithId,
       userEmail: params.userEmail,
       userFirstName: params.userName,
       userPhone: params.userPhone,
       billingCycle: params.billingCycle,
-      trialDays,
+      trialDurationSeconds: getTrialDurationSeconds(),
     });
-
-    // Calculate trial end date
-    const trialEndsAt = new Date();
-    trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
 
     const { getDefaultWorkspaceIdForUser } = await import('./workspaceService');
     const workspaceId = await getDefaultWorkspaceIdForUser(params.userId.toString());
@@ -156,7 +154,7 @@ export const startTrial = async (
       planId: params.planId as any,
       billingPeriod: params.billingCycle,
       paymentOrderId: orderResult.insertedId.toString(),
-      trialDays,
+      trialEndDate: trialEndsAt,
       provider: 'razorpay',
       providerSubscriptionId: subscriptionResponse.subscriptionId,
       providerCustomerId: subscriptionResponse.providerMetadata?.razorpayCustomerId || null,
@@ -184,7 +182,7 @@ export const startTrial = async (
       }
     );
 
-    logger.info(`Started ${trialDays}-day trial for user ${userId}, subscription: ${subscriptionResponse.subscriptionId}`);
+    logger.info(`Started ${getTrialDurationLabel()} trial for user ${userId}, subscription: ${subscriptionResponse.subscriptionId}`);
 
     // Log trial started (non-blocking)
     try {
@@ -198,11 +196,11 @@ export const startTrial = async (
           targetType: 'subscription',
           targetId: subscription._id?.toString() || null,
           action: 'TRIAL_STARTED',
-          description: `Started ${trialDays}-day free trial for ${params.planId} plan (${params.billingCycle})`,
+          description: `Started ${getTrialDurationLabel()} free trial for ${params.planId} plan (${params.billingCycle})`,
           metadata: {
             planId: params.planId,
             billingCycle: params.billingCycle,
-            trialDays,
+            trialDuration: getTrialDurationLabel(),
             currency,
           },
         });
@@ -508,6 +506,7 @@ export const getSubscriptionDetails = async (
       billingCycle: subscription.billingPeriod,
       status: subscription.status,
       trialEndsAt: subscription.trialEnd || subscription.trialEndsAt || null,
+      currentPeriodStart: subscription.currentPeriodStart,
       currentPeriodEnd: subscription.currentPeriodEnd,
       paymentMethodAdded: subscription.paymentMethodAdded || false,
       paymentMethod,
@@ -560,11 +559,11 @@ export const addPaymentMethodToTrial = async (
       throw new Error('User not found');
     }
 
-    // Calculate remaining trial days
+    // Calculate remaining trial days (from subscription end; fallback to config default)
     const now = new Date();
     const trialEnd = subscription.trialEnd || subscription.trialEndsAt;
-    let remainingTrialDays = 30;
-    
+    const { getTrialDays } = await import('../../config/config');
+    let remainingTrialDays = Math.max(1, Math.ceil(getTrialDays()));
     if (trialEnd) {
       const diff = trialEnd.getTime() - now.getTime();
       remainingTrialDays = Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));

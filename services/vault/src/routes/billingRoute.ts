@@ -17,6 +17,11 @@ import {
   cancelSubscriptionController,
   restoreSubscriptionController,
 } from '../controllers/BillingController';
+import {
+  listInvoicesController,
+  getInvoiceController,
+  downloadInvoiceController,
+} from '../controllers/InvoiceController';
 
 const router = express.Router();
 
@@ -141,6 +146,27 @@ router.post('/cancel-subscription', authMiddleware, loadRBACContext, requirePerm
  * }
  */
 router.post('/restore', authMiddleware, restoreSubscriptionController);
+
+/**
+ * @route   GET /v/billing/invoices
+ * @desc    List invoices for current workspace
+ * @access  Protected (billing:read), requires X-Workspace-Id
+ */
+router.get('/invoices', authMiddleware, loadRBACContext, requirePermission(Permission.BILLING_READ), listInvoicesController);
+
+/**
+ * @route   GET /v/billing/invoices/:id
+ * @desc    Get single invoice
+ * @access  Protected (billing:read)
+ */
+router.get('/invoices/:id', authMiddleware, loadRBACContext, requirePermission(Permission.BILLING_READ), getInvoiceController);
+
+/**
+ * @route   GET /v/billing/invoices/:id/file
+ * @desc    Download invoice PDF
+ * @access  Protected (billing:read)
+ */
+router.get('/invoices/:id/file', authMiddleware, loadRBACContext, requirePermission(Permission.BILLING_READ), downloadInvoiceController);
 
 export default router;
 

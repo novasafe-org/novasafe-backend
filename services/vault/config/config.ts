@@ -27,6 +27,7 @@ export const DBCONFIG: Record<string, DBConfigGeneric<Record<string, string>>> =
       // Payment collections
       subscriptions: 'subscriptions',
       paymentOrders: 'payment_orders',
+      invoices: 'invoices',
       coupons: 'coupons',
       // Onboarding collections
       otps: 'otps',
@@ -145,3 +146,16 @@ export const RAZORPAY_CONFIG = {
     );
   }
 };
+
+/**
+ * Trial period config (TRIAL_DAYS / TRIAL_MINUTES).
+ * Re-exported so services can import from config.
+ */
+export {
+  getTrialDurationMs,
+  getTrialDurationSeconds,
+  getTrialEndDate,
+  getTrialDays,
+  getTrialDurationLabel,
+  TRIAL_CONFIG,
+} from './trial.config';

@@ -11,7 +11,13 @@ import Database from '../../database/connection';
 import { DBCONFIG } from '../../config/config';
 import { IPaymentOrder, PaymentOrderStatus, PaymentType, Currency } from '../models/PaymentOrder';
 import { getPaymentProvider } from './payment/paymentRouter';
-import { createSubscription, getUserSubscription, renewSubscription } from './subscriptionService';
+import {
+  createSubscription,
+  getUserSubscription,
+  renewSubscription,
+  getSubscriptionByWorkspaceIdAnyStatus,
+  updateSubscription,
+} from './subscriptionService';
 import { validateCoupon, applyCouponDiscount } from './couponService';
 import { getPlanPrice, getTaxRate } from './pricingConfigService';
 import logger from '../logger';
@@ -266,6 +272,14 @@ export const processPaymentCallback = async (
       throw new Error('Payment order not found');
     }
 
+    // Idempotency: already completed (e.g. duplicate webhook or refresh)
+    if (paymentOrder.status === 'completed' && paymentOrder.subscriptionId) {
+      return {
+        success: true,
+        subscriptionId: paymentOrder.subscriptionId.toString(),
+      };
+    }
+
     // Get payment provider (use stored provider or detect from order)
     const { getPaymentProvider } = await import('./payment/paymentRouter');
     const paymentProvider = getPaymentProvider(
@@ -334,6 +348,9 @@ export const processPaymentCallback = async (
     const { getDefaultWorkspaceIdForUser } = await import('./workspaceService');
     const workspaceId = await getDefaultWorkspaceIdForUser(paymentOrder.userId.toString());
 
+    // Prefer updating existing workspace subscription (e.g. after trial expiry) to avoid duplicates
+    const existingByWorkspace = await getSubscriptionByWorkspaceIdAnyStatus(workspaceId);
+
     if (paymentOrder.paymentType === 'recurring') {
       const existingSubscription = await getUserSubscription(paymentOrder.userId.toString());
       if (existingSubscription) {
@@ -342,6 +359,22 @@ export const processPaymentCallback = async (
           paymentOrder._id!.toString()
         );
         subscriptionId = renewed?._id?.toString() || null;
+      } else if (existingByWorkspace) {
+        // Trial expired or no active sub: upgrade existing workspace subscription to active
+        const now = new Date();
+        const periodEnd = new Date(now);
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+        await updateSubscription(existingByWorkspace._id!.toString(), {
+          status: 'active',
+          planId: paymentOrder.planId as any,
+          billingPeriod: paymentOrder.billingPeriod,
+          currentPeriodStart: now,
+          currentPeriodEnd: periodEnd,
+          lastPaymentOrderId: paymentOrder._id,
+          trialEnd: null,
+          trialEndsAt: null,
+        });
+        subscriptionId = existingByWorkspace._id?.toString() || null;
       } else {
         const subscription = await createSubscription({
           userId: paymentOrder.userId.toString(),
@@ -354,15 +387,32 @@ export const processPaymentCallback = async (
         subscriptionId = subscription._id?.toString() || null;
       }
     } else {
-      const subscription = await createSubscription({
-        userId: paymentOrder.userId.toString(),
-        workspaceId,
-        planId: paymentOrder.planId as any,
-        billingPeriod: 'one_time',
-        paymentOrderId: paymentOrder._id!.toString(),
-        trialDays: 0,
-      });
-      subscriptionId = subscription._id?.toString() || null;
+      if (existingByWorkspace) {
+        const now = new Date();
+        const periodEnd = new Date(now);
+        periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+        await updateSubscription(existingByWorkspace._id!.toString(), {
+          status: 'active',
+          planId: paymentOrder.planId as any,
+          billingPeriod: 'one_time',
+          currentPeriodStart: now,
+          currentPeriodEnd: periodEnd,
+          lastPaymentOrderId: paymentOrder._id,
+          trialEnd: null,
+          trialEndsAt: null,
+        });
+        subscriptionId = existingByWorkspace._id?.toString() || null;
+      } else {
+        const subscription = await createSubscription({
+          userId: paymentOrder.userId.toString(),
+          workspaceId,
+          planId: paymentOrder.planId as any,
+          billingPeriod: 'one_time',
+          paymentOrderId: paymentOrder._id!.toString(),
+          trialDays: 0,
+        });
+        subscriptionId = subscription._id?.toString() || null;
+      }
     }
 
     // Update payment order with subscription ID
@@ -377,6 +427,34 @@ export const processPaymentCallback = async (
           },
         }
       );
+    }
+
+    // Create invoice (idempotent: skip if already exists for this payment)
+    try {
+      const { createInvoice } = await import('./invoiceService');
+      const razorpayOrderId = paymentOrder.providerPaymentId || providerResponse?.razorpay_order_id || null;
+      const razorpayPaymentId = verification.providerTransactionId || providerResponse?.razorpay_payment_id || null;
+      let customerEmail: string | undefined;
+      const userDoc = await db.findOne(collection.vaultUsers, { _id: paymentOrder.userId }) as { email?: string } | null;
+      if (userDoc?.email) customerEmail = userDoc.email;
+
+      await createInvoice({
+        workspaceId,
+        userId: paymentOrder.userId,
+        subscriptionId: subscriptionId ? new ObjectId(subscriptionId) : null,
+        paymentOrderId: paymentOrder._id!,
+        razorpayOrderId,
+        razorpayPaymentId,
+        planId: paymentOrder.planId,
+        billingCycle: paymentOrder.billingPeriod === 'one_time' ? 'monthly' : paymentOrder.billingPeriod,
+        amount: paymentOrder.amount,
+        currency: paymentOrder.currency,
+        taxAmount: paymentOrder.taxAmount ?? 0,
+        totalAmount: paymentOrder.totalAmount,
+        customerEmail,
+      });
+    } catch (invErr: any) {
+      logger.warn({ err: invErr?.message, orderId: params.orderId }, 'Invoice creation failed (non-fatal)');
     }
 
     logger.info(`Payment completed for order ${params.orderId}, subscription: ${subscriptionId}`);

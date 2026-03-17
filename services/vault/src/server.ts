@@ -151,5 +151,17 @@ export const startServer = async () => {
       logger.info(`External access: http://0.0.0.0:${PORT}`);
     }
     logger.info('#'.repeat(50));
+
+    // Run expired subscription check every hour (trial/period ended → status = expired)
+    const EXPIRED_CHECK_MS = 60 * 60 * 1000;
+    setInterval(async () => {
+      try {
+        const { checkExpiredSubscriptions } = await import('./services/subscriptionService');
+        const count = await checkExpiredSubscriptions();
+        if (count > 0) logger.info({ expiredCount: count }, 'Marked expired subscriptions');
+      } catch (err: any) {
+        logger.warn({ error: err?.message }, 'checkExpiredSubscriptions failed');
+      }
+    }, EXPIRED_CHECK_MS);
   });
 };

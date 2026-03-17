@@ -19,7 +19,10 @@ export interface CreateSubscriptionParams {
   planId: PlanId;
   billingPeriod: BillingPeriod;
   paymentOrderId?: string | ObjectId;
+  /** @deprecated Prefer trialEndDate from config (getTrialEndDate). */
   trialDays?: number;
+  /** When set, used as trial end; otherwise trialDays or config default is used. */
+  trialEndDate?: Date;
   isGrandfathered?: boolean;
   grandfatheredPlanId?: PlanId;
   provider?: 'razorpay' | 'payu' | 'paddle' | 'revenuecat';
@@ -33,9 +36,11 @@ export interface CreateSubscriptionParams {
 
 export interface UpdateSubscriptionParams {
   status?: SubscriptionStatus;
+  planId?: PlanId;
   billingPeriod?: BillingPeriod;
   currentPeriodStart?: Date;
   currentPeriodEnd?: Date;
+  lastPaymentOrderId?: ObjectId | string;
   cancelAtPeriodEnd?: boolean;
   canceledAt?: Date | null;
   expiresAt?: Date | null;
@@ -68,13 +73,23 @@ export const createSubscription = async (
     let trialStart: Date | null = null;
     let trialEnd: Date | null = null;
 
-    // Set trial period if applicable
-    const trialDays = params.trialDays || 0;
-    if (trialDays > 0) {
+    // Set trial period: explicit trialEndDate (e.g. from getTrialEndDate()) or trialDays
+    const explicitTrialEnd = params.trialEndDate;
+    const trialDaysParam = params.trialDays ?? 0;
+    const trialEndResolved = explicitTrialEnd
+      ? explicitTrialEnd
+      : trialDaysParam > 0
+        ? (() => {
+            const e = new Date(now);
+            e.setDate(e.getDate() + trialDaysParam);
+            return e;
+          })()
+        : null;
+
+    if (trialEndResolved) {
       trialStart = now;
-      trialEnd = new Date(now);
-      trialEnd.setDate(trialEnd.getDate() + trialDays);
-      currentPeriodEnd = new Date(trialEnd);
+      trialEnd = trialEndResolved;
+      currentPeriodEnd = new Date(trialEndResolved);
     } else {
       // Set billing period end
       if (params.billingPeriod === 'monthly') {
@@ -89,7 +104,7 @@ export const createSubscription = async (
 
     // Determine initial status
     let status: SubscriptionStatus = 'active';
-    if (trialDays > 0) {
+    if (trialEndResolved) {
       status = 'trialing';
     }
 
@@ -137,6 +152,7 @@ export const createSubscription = async (
 
 /**
  * Get active subscription for a workspace (preferred).
+ * Only returns subscriptions with status 'active' or 'trialing'.
  */
 export const getSubscriptionByWorkspaceId = async (
   workspaceId: string | ObjectId
@@ -152,6 +168,43 @@ export const getSubscriptionByWorkspaceId = async (
     logger.error(error, 'Error fetching workspace subscription');
     throw error;
   }
+};
+
+/**
+ * Get subscription for a workspace regardless of status.
+ * Used when upgrading after trial (update existing instead of creating duplicate).
+ */
+export const getSubscriptionByWorkspaceIdAnyStatus = async (
+  workspaceId: string | ObjectId
+): Promise<ISubscription | null> => {
+  try {
+    const db = new Database('vault');
+    const subscription = await db.findOne(collection.subscriptions, {
+      workspaceId: new ObjectId(workspaceId),
+    }) as ISubscription | null;
+    return subscription;
+  } catch (error: any) {
+    logger.error(error, 'Error fetching workspace subscription (any status)');
+    throw error;
+  }
+};
+
+/**
+ * Returns true if the workspace has an active subscription or a non-expired trial.
+ * Used by requireActiveSubscription middleware to enforce access control.
+ */
+export const hasActiveSubscriptionAccess = async (
+  workspaceId: string | ObjectId
+): Promise<boolean> => {
+  const subscription = await getSubscriptionByWorkspaceId(workspaceId);
+  if (!subscription) return false;
+  if (subscription.status === 'active') return true;
+  if (subscription.status === 'trialing') {
+    const trialEnd = subscription.trialEnd || subscription.trialEndsAt;
+    if (!trialEnd) return true; // no end date, allow
+    return new Date(trialEnd) >= new Date();
+  }
+  return false;
 };
 
 /**
@@ -309,7 +362,8 @@ export const renewSubscription = async (
 };
 
 /**
- * Check and update expired subscriptions
+ * Check and update expired subscriptions (trial ended or period ended).
+ * Run periodically (e.g. hourly) so status stays in sync; access is also enforced in real time by requireActiveSubscription.
  */
 export const checkExpiredSubscriptions = async (): Promise<number> => {
   try {
@@ -323,6 +377,8 @@ export const checkExpiredSubscriptions = async (): Promise<number> => {
         $or: [
           { currentPeriodEnd: { $lt: now } },
           { expiresAt: { $lt: now } },
+          { trialEnd: { $lt: now } },
+          { trialEndsAt: { $lt: now } },
         ],
       },
       {

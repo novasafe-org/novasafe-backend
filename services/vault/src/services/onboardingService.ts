@@ -10,7 +10,7 @@
 
 import { ObjectId } from 'mongodb';
 import Database from '../../database/connection';
-import { DBCONFIG } from '../../config/config';
+import { DBCONFIG, getTrialEndDate } from '../../config/config';
 import { IUser } from '../models/User';
 import { IOTP } from '../models/OTP';
 import logger from '../logger';
@@ -380,10 +380,11 @@ export const completeOnboarding = async (userId: string): Promise<void> => {
     const { getDefaultWorkspaceIdForUser } = await import('./workspaceService');
     const workspaceId = await getDefaultWorkspaceIdForUser(userId);
 
-    // Create 30-day free trial subscription for the workspace
+    // Create free trial subscription for the workspace (duration from TRIAL_DAYS / TRIAL_MINUTES config)
     const { createSubscription, getSubscriptionByWorkspaceId } = await import('./subscriptionService');
+    const { getTrialDurationLabel } = await import('../../config/config');
     const planId = (user.planId || 'individual') as any;
-    const trialDays = 30;
+    const trialEndDate = getTrialEndDate(new Date());
     const existingSubscription = await getSubscriptionByWorkspaceId(workspaceId);
     if (!existingSubscription) {
       await createSubscription({
@@ -391,11 +392,11 @@ export const completeOnboarding = async (userId: string): Promise<void> => {
         workspaceId,
         planId,
         billingPeriod: 'monthly',
-        trialDays,
+        trialEndDate,
         provider: 'razorpay',
         paymentMethodAdded: false,
       });
-      logger.info(`30-day free trial subscription created for workspaceId: ${workspaceId}, plan: ${planId}`);
+      logger.info(`${getTrialDurationLabel()} free trial subscription created for workspaceId: ${workspaceId}, plan: ${planId}`);
     }
 
     // Create default "Personal" folder in the workspace

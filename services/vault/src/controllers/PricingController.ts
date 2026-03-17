@@ -7,6 +7,7 @@
 
 import { Request, Response } from 'express';
 import logger from '../logger';
+import { getTrialDays, getTrialDurationLabel } from '../../config/config';
 
 // TODO: Move this to a pricing config service
 const PRICING_PLANS = {
@@ -189,10 +190,11 @@ export const getPricingConfig = async (req: Request, res: Response): Promise<voi
     const currencyKey = ['INR', 'USD', 'EUR', 'GBP'].includes(currency) ? currency : 'USD';
     const plans = PRICING_PLANS[currencyKey as keyof typeof PRICING_PLANS] || PRICING_PLANS.USD;
 
+    const trialDays = Math.max(1, Math.ceil(getTrialDays())); // at least 1 for display when using minutes
     const config = {
       plans,
-      trialDays: 7,
-      trialMessage: 'All plans include a 7-day free trial. Cancel anytime.',
+      trialDays,
+      trialMessage: `All plans include a free trial (${getTrialDurationLabel()}). Cancel anytime.`,
       currency: currencyKey,
       taxRate: currencyKey === 'INR' ? 18 : 0,
       taxLabel: currencyKey === 'INR' ? 'GST' : undefined,

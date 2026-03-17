@@ -8,7 +8,7 @@
 
 import { Request, Response } from 'express';
 import Database from '../../database/connection';
-import { DBCONFIG } from '../../config/config';
+import { DBCONFIG, getTrialEndDate } from '../../config/config';
 import { IUser } from '../models/User';
 import logger from '../logger';
 import { ObjectId } from 'mongodb';
@@ -59,10 +59,9 @@ export const getAccountDetails = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    // Calculate trial end date (30 days from account creation)
+    // Calculate trial end date from config (TRIAL_DAYS or TRIAL_MINUTES) from account creation
     const createdAt = new Date(user.createdAt);
-    const trialEndDate = new Date(createdAt);
-    trialEndDate.setDate(trialEndDate.getDate() + 30);
+    const trialEndDate = getTrialEndDate(createdAt);
     
     const now = new Date();
     const isTrialActive = now < trialEndDate;
@@ -76,6 +75,7 @@ export const getAccountDetails = async (req: Request, res: Response): Promise<vo
     let companyDomain: string | undefined = user.companyDomain;
     let trialEndDateResolved = trialEndDate;
     let workspaceDisplayName: string | undefined;
+    let subscriptionStatus: string | undefined;
     const orgId = req.rbacContext?.organizationId;
     if (orgId && isObjectIdString(orgId)) {
       const { getWorkspaceById } = await import('../services/workspaceService');
@@ -86,6 +86,7 @@ export const getAccountDetails = async (req: Request, res: Response): Promise<vo
         planId = workspace.type as string;
         const sub = await getSubscriptionByWorkspaceId(orgId);
         if (sub) {
+          subscriptionStatus = sub.status;
           planId = (sub.planId as string) || planId;
           const end = sub.trialEndsAt || sub.trialEnd || sub.currentPeriodEnd;
           if (end) trialEndDateResolved = new Date(end);
@@ -99,10 +100,14 @@ export const getAccountDetails = async (req: Request, res: Response): Promise<vo
       const dn = membership?.displayName;
       if (membership && dn != null && String(dn).trim() !== '') workspaceDisplayName = String(dn).trim();
     }
-    const isTrialActiveResolved = now < trialEndDateResolved;
-    const daysRemainingResolved = isTrialActiveResolved
+    let isTrialActiveResolved = now < trialEndDateResolved;
+    let daysRemainingResolved = isTrialActiveResolved
       ? Math.ceil((trialEndDateResolved.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
       : 0;
+    if (subscriptionStatus === 'active') {
+      isTrialActiveResolved = false;
+      daysRemainingResolved = 0;
+    }
 
     const shouldShowAdminConsole = planId !== 'individual';
     const userPermissions = req.rbacContext ? {

@@ -70,7 +70,10 @@ export interface CreateRecurringSubscriptionRequest {
   userFirstName: string;
   userPhone?: string;
   billingCycle: 'monthly' | 'yearly';
-  trialDays?: number; // Optional trial period in days
+  /** Trial period in days (used when trialDurationSeconds not set). */
+  trialDays?: number;
+  /** Trial period in seconds (for testing with minutes; overrides trialDays when set). */
+  trialDurationSeconds?: number;
 }
 
 /**

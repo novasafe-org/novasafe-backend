@@ -336,7 +336,11 @@ class RazorpayProvider implements IPaymentProvider {
         throw new Error('Razorpay configuration is incomplete');
       }
 
-      const { paymentOrder, billingCycle, userEmail, userFirstName, userPhone, trialDays = 30 } = request;
+      const { paymentOrder, billingCycle, userEmail, userFirstName, userPhone, trialDays, trialDurationSeconds } = request;
+
+      // Trial: prefer duration in seconds (for TRIAL_MINUTES testing), else days from config/caller
+      const trialSecs = trialDurationSeconds ?? (trialDays != null ? trialDays * 24 * 60 * 60 : 0);
+      const hasTrial = trialSecs > 0;
 
       // First, create or get Razorpay customer
       const customerId = await this.getOrCreateCustomer({
@@ -349,31 +353,30 @@ class RazorpayProvider implements IPaymentProvider {
       // Razorpay subscriptions require a plan_id - Plans API must be available
       const planId = await this.getOrCreatePlan(paymentOrder, billingCycle);
 
-      // Calculate trial period
-      const now = Math.floor(Date.now() / 1000); // Unix timestamp
-      const trialEnd = now + (trialDays * 24 * 60 * 60); // Trial end in seconds
+      // Calculate trial period (Unix seconds)
+      const now = Math.floor(Date.now() / 1000);
+      const trialEnd = now + trialSecs;
 
       // Create subscription
       // Razorpay doesn't support trial_end or charge_at fields in subscription creation
       // We'll handle the trial period in our application layer
       // For now, set start_at to trial end date so subscription starts after trial
-      // This prevents immediate charging during the trial period
       const subscriptionPayload: any = {
         plan_id: planId,
         customer_id: customerId, // Required: Link subscription to customer
         customer_notify: 1, // Notify customer
         total_count: billingCycle === 'monthly' ? 12 : 1, // Auto-renew
-        start_at: trialDays > 0 ? trialEnd : now, // Start after trial ends, or immediately if no trial
+        start_at: hasTrial ? trialEnd : now, // Start after trial ends, or immediately if no trial
         notes: {
           orderId: paymentOrder.orderId,
           userId: paymentOrder.userId.toString(),
           planId: paymentOrder.planId,
           cycle: billingCycle,
-          trialDays: trialDays > 0 ? trialDays.toString() : undefined, // Store trial info in notes
+          trialDurationSeconds: hasTrial ? trialSecs.toString() : undefined, // Store trial info in notes
         },
       };
 
-      logger.info(`Creating Razorpay subscription with ${trialDays}-day trial for order: ${paymentOrder.orderId}`);
+      logger.info(`Creating Razorpay subscription with ${hasTrial ? `${trialSecs}s trial` : 'no trial'} for order: ${paymentOrder.orderId}`);
 
       const response = await this.axiosInstance.post<RazorpaySubscriptionResponse>(
         '/v1/subscriptions',
@@ -394,7 +397,7 @@ class RazorpayProvider implements IPaymentProvider {
           razorpayCustomerId: customerId,
           razorpayPlanId: planId,
           status: subscription.status,
-          trialEnd: trialDays > 0 ? new Date(trialEnd * 1000).toISOString() : null,
+          trialEnd: hasTrial ? new Date(trialEnd * 1000).toISOString() : null,
           chargeAt: subscription.charge_at ? new Date(subscription.charge_at * 1000).toISOString() : null,
         },
       };
@@ -410,6 +413,7 @@ class RazorpayProvider implements IPaymentProvider {
           errorDetails,
           planId: request.paymentOrder.planId,
           billingCycle: request.billingCycle,
+          trialDurationSeconds: request.trialDurationSeconds,
           trialDays: request.trialDays,
         },
         'Error creating Razorpay recurring subscription'
