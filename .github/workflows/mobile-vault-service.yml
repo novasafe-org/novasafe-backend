@@ -86,7 +86,6 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-          SERVICE_NAME: ${{ secrets.MOBILE_VAULT_SERVICE_NAME }}
           CONTAINER_NAME: ${{ secrets.MOBILE_VAULT_CONTAINER_NAME }}
           MOBILE_VAULT_IMAGE: ${{ secrets.MOBILE_VAULT_IMAGE }}
         run: |
@@ -98,7 +97,7 @@ jobs:
             echo "============================================="
 
             DEPLOY_DIR="/opt/mobile-vault-backend"
-            SERVICE="\${SERVICE_NAME:-mobile_vault}"
+            SERVICE="mobile_vault"
             CONTAINER="\${CONTAINER_NAME:-mobile-vault-backend}"
             IMAGE="\${MOBILE_VAULT_IMAGE:-ghcr.io/novasafe-org/novasafe-mobile-vault:latest}"
 
@@ -128,7 +127,7 @@ jobs:
               echo "Available services:"
               \$DC config --services || true
               echo ""
-              echo "Set secret MOBILE_VAULT_SERVICE_NAME to your actual compose service name."
+              echo "Ensure docker-compose.yml defines the hardcoded service: mobile_vault"
               exit 1
             fi
 
