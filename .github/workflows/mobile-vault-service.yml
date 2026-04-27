@@ -1,6 +1,6 @@
 # Build and push Mobile Vault image, then deploy only the mobile vault service.
-# Image: ghcr.io/<org>/<repo>:mobile-vault-latest
-# Deployment: updates service "mobile-vault" in docker-compose at DEPLOY_PATH.
+# Image default: ghcr.io/novasafe-org/novasafe-mobile-vault:latest
+# Deployment: updates only the configured mobile vault compose service.
 
 name: Build & Deploy Mobile Vault
 
@@ -15,7 +15,7 @@ on:
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
-      - '.github/workflows/mobile-vault-deploy.yml'
+      - '.github/workflows/mobile-vault-service.yml'
 
 jobs:
   build:
@@ -45,7 +45,7 @@ jobs:
           context: .
           file: ./services/mobile_vault/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository }}:mobile-vault-latest
+          tags: ghcr.io/novasafe-org/novasafe-mobile-vault:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -83,13 +83,12 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-          SERVICE_DIR: ${{ secrets.MOBILE_VAULT_SERVICE_DIR }}
           SERVICE_NAME: ${{ secrets.MOBILE_VAULT_SERVICE_NAME }}
           CONTAINER_NAME: ${{ secrets.MOBILE_VAULT_CONTAINER_NAME }}
+          MOBILE_VAULT_IMAGE: ${{ secrets.MOBILE_VAULT_IMAGE }}
         run: |
           sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} << EOF
             set -e
@@ -98,9 +97,10 @@ jobs:
             echo "🚀 NovaSafe Mobile Vault Deployment Started"
             echo "============================================="
 
-            DEPLOY_DIR="${DEPLOY_PATH}/\${SERVICE_DIR:-platform/backend}"
-            SERVICE="\${SERVICE_NAME:-mobile-vault}"
-            CONTAINER="\${CONTAINER_NAME:-vault-mobile-vault}"
+            DEPLOY_DIR="/opt/mobile-vault-backend"
+            SERVICE="\${SERVICE_NAME:-mobile_vault}"
+            CONTAINER="\${CONTAINER_NAME:-mobile-vault-backend}"
+            IMAGE="\${MOBILE_VAULT_IMAGE:-ghcr.io/novasafe-org/novasafe-mobile-vault:latest}"
 
             echo "📂 Moving to deployment directory: \$DEPLOY_DIR"
             cd "\$DEPLOY_DIR"
@@ -119,6 +119,18 @@ jobs:
 
             echo "🔐 Logging into GHCR"
             echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+
+            echo "✅ Using Mobile Vault image: \$IMAGE"
+
+            echo "🔎 Verifying compose service exists: \$SERVICE"
+            if ! \$DC config --services | grep -Fxq "\$SERVICE"; then
+              echo "❌ Service '\$SERVICE' not found in docker-compose.yml"
+              echo "Available services:"
+              \$DC config --services || true
+              echo ""
+              echo "Set secret MOBILE_VAULT_SERVICE_NAME to your actual compose service name."
+              exit 1
+            fi
 
             echo "📦 Pulling latest mobile vault image"
             \$DC pull "\$SERVICE"
