@@ -132,7 +132,7 @@ jobs:
               exit 1
             fi
 
-            echo "📦 Pulling latest mobile vault image"
+            echo "📦 Pulling latest mobile vault image."
             \$DC pull "\$SERVICE"
 
             echo "🔄 Recreating mobile vault container"
