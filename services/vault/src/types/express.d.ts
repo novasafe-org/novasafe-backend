@@ -5,3 +5,11 @@ declare module 'express-serve-static-core' {
     rbacContext?: any;
   }
 }
+
+declare global {
+  namespace Express {
+    interface Request {
+      rbacContext?: any;
+    }
+  }
+}
