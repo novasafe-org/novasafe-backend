@@ -1,12 +1,6 @@
-export interface BaseDBConfig {
-  type: 'mongodb';
-  databaseName: string;
-  host: string;
-  port: number | string;
-  uri: string;
-  collections: Record<string, string>;
-}
+// @ts-nocheck
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 
-export interface DBConfigGeneric<TCollections extends Record<string, string>> extends BaseDBConfig {
-  collections: TCollections;
-}
+
+export {};

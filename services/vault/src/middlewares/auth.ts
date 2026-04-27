@@ -1,143 +1,83 @@
-import { Request, Response, NextFunction } from 'express';
-import { verifyToken } from '../utils/generateToken';
-import { IUserPayload } from '../models/User';
-import { getSessionByTokenId, updateSessionActivity } from '../services/sessionService';
-
-/**
- * Extend Express Request to include user payload
- * This allows downstream route handlers to access req.user
- */
-declare global {
-  namespace Express {
-    interface Request {
-      user?: IUserPayload;
+// @ts-nocheck
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.authMiddleware = void 0;
+const generateToken_1 = require("../utils/generateToken");
+const sessionService_1 = require("../services/sessionService");
+const authMiddleware = async (req, res, next) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) {
+            res.status(401).json({
+                message: 'Authentication required',
+                error: 'No authorization header provided'
+            });
+            return;
+        }
+        if (!authHeader.startsWith('Bearer ')) {
+            res.status(401).json({
+                message: 'Invalid authorization format',
+                error: 'Authorization header must be in format: Bearer <token>'
+            });
+            return;
+        }
+        const token = authHeader.substring(7);
+        if (!token) {
+            res.status(401).json({
+                message: 'Authentication required',
+                error: 'No token provided'
+            });
+            return;
+        }
+        const decoded = (0, generateToken_1.verifyToken)(token);
+        const isPreAuthToken = decoded.preAuth === true;
+        const is2FAVerifyRoute = req.path.includes('/2fa/verify') || req.originalUrl.includes('/2fa/verify');
+        if (isPreAuthToken && !is2FAVerifyRoute) {
+            res.status(403).json({
+                message: 'Pre-authentication token',
+                error: 'This token requires 2FA verification. Please complete 2FA verification first.',
+                code: 'PRE_AUTH_TOKEN_REQUIRES_2FA'
+            });
+            return;
+        }
+        if (decoded.jti && !isPreAuthToken) {
+            const session = await (0, sessionService_1.getSessionByTokenId)(decoded.jti);
+            if (!session || session.revoked) {
+                res.status(401).json({
+                    message: 'Session revoked',
+                    error: 'Your session has been revoked. Please log in again.',
+                    code: 'SESSION_REVOKED'
+                });
+                return;
+            }
+            if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
+                res.status(401).json({
+                    message: 'Session expired',
+                    error: 'Your session has expired. Please log in again.',
+                    code: 'SESSION_EXPIRED'
+                });
+                return;
+            }
+            (0, sessionService_1.updateSessionActivity)(decoded.jti).catch(() => {
+            });
+        }
+        req.user = decoded;
+        req.tokenId = decoded.jti;
+        req.isPreAuthToken = isPreAuthToken;
+        next();
     }
-  }
-}
-
-/**
- * Authentication Middleware
- * 
- * This middleware protects routes by verifying JWT tokens from the Authorization header.
- * It ensures that only authenticated users with valid tokens can access protected endpoints.
- * 
- * USAGE:
- * - Apply to any route that requires authentication
- * - Example: router.get('/protected', authMiddleware, protectedController)
- * 
- * SECURITY NOTES:
- * - Always use HTTPS in production to prevent token interception
- * - Frontend should store tokens securely (httpOnly cookies or memory, not localStorage if XSS is a concern)
- * - Tokens are validated on every request
- * 
- * @param req - Express request object
- * @param res - Express response object
- * @param next - Express next function
- */
-export const authMiddleware = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    // Extract token from Authorization header
-    // Expected format: "Bearer <token>"
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader) {
-      res.status(401).json({ 
-        message: 'Authentication required',
-        error: 'No authorization header provided'
-      });
-      return;
-    }
-
-    // Check if header follows Bearer token format
-    if (!authHeader.startsWith('Bearer ')) {
-      res.status(401).json({ 
-        message: 'Invalid authorization format',
-        error: 'Authorization header must be in format: Bearer <token>'
-      });
-      return;
-    }
-
-    // Extract the token (remove "Bearer " prefix)
-    const token = authHeader.substring(7);
-
-    if (!token) {
-      res.status(401).json({ 
-        message: 'Authentication required',
-        error: 'No token provided'
-      });
-      return;
-    }
-
-    // Verify and decode the token
-    const decoded = verifyToken(token);
-
-    // CRITICAL SECURITY: Check if this is a pre-auth token
-    // Pre-auth tokens can ONLY be used for 2FA verification
-    const isPreAuthToken = (decoded as any).preAuth === true;
-    const is2FAVerifyRoute = req.path.includes('/2fa/verify') || req.originalUrl.includes('/2fa/verify');
-    
-    if (isPreAuthToken && !is2FAVerifyRoute) {
-      res.status(403).json({ 
-        message: 'Pre-authentication token',
-        error: 'This token requires 2FA verification. Please complete 2FA verification first.',
-        code: 'PRE_AUTH_TOKEN_REQUIRES_2FA'
-      });
-      return;
-    }
-
-    // Check if session is revoked (if tokenId exists and not a pre-auth token)
-    // Pre-auth tokens don't have sessions yet - session is created after 2FA verification
-    if (decoded.jti && !isPreAuthToken) {
-      const session = await getSessionByTokenId(decoded.jti);
-      
-      // If session doesn't exist or is revoked, reject the request
-      if (!session || session.revoked) {
-        res.status(401).json({ 
-          message: 'Session revoked',
-          error: 'Your session has been revoked. Please log in again.',
-          code: 'SESSION_REVOKED'
+    catch (error) {
+        res.status(401).json({
+            message: 'Invalid or expired token',
+            error: error.message
         });
-        return;
-      }
-
-      // Check if session is expired
-      if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
-        res.status(401).json({ 
-          message: 'Session expired',
-          error: 'Your session has expired. Please log in again.',
-          code: 'SESSION_EXPIRED'
-        });
-        return;
-      }
-
-      // Update last activity (don't await to avoid blocking the request)
-      // This is fire-and-forget for performance
-      updateSessionActivity(decoded.jti).catch(() => {
-        // Silently fail - activity update is not critical
-      });
     }
-
-    // Attach user payload to request object for use in route handlers
-    req.user = decoded;
-
-    // Attach tokenId to request for session tracking
-    (req as any).tokenId = decoded.jti;
-    
-    // Attach pre-auth flag for use in route handlers
-    (req as any).isPreAuthToken = isPreAuthToken;
-
-    // Proceed to next middleware or route handler
-    next();
-  } catch (error: any) {
-    // Token verification failed
-    res.status(401).json({ 
-      message: 'Invalid or expired token',
-      error: error.message
-    });
-  }
 };
+exports.authMiddleware = authMiddleware;
 
+
+export {};
+
+// __CJS_EXPORT_BRIDGE__
+const __cjs_exports: any = exports as any;
+export const authMiddleware = __cjs_exports.authMiddleware;

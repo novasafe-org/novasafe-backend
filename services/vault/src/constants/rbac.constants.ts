@@ -1,227 +1,165 @@
-/**
- * RBAC Constants
- * 
- * Single source of truth for roles, permissions, and role-to-permission mappings.
- * This file defines the complete permission matrix for the NovaSafe application.
- * 
- * IMPORTANT: All permission checks MUST reference these constants.
- * Never hardcode permission strings elsewhere.
- */
-
-/**
- * Supported roles in the system
- */
-export enum UserRole {
-  OWNER = 'owner',
-  ADMIN = 'admin',
-  MEMBER = 'member',
-  VIEWER = 'viewer',
-}
-
-/**
- * Permission strings
- * Format: resource:action
- * 
- * Resources:
- * - vault: Vault management
- * - item: Vault item management
- * - share: Sharing and access control
- * - users: User management
- * - billing: Billing and subscription
- * - logs: Activity logs
- * - settings: Organization settings
- */
-export enum Permission {
-  // Vault permissions
-  VAULT_CREATE = 'vault:create',
-  VAULT_READ = 'vault:read',
-  VAULT_UPDATE = 'vault:update',
-  VAULT_DELETE = 'vault:delete',
-  
-  // Item permissions
-  ITEM_CREATE = 'item:create',
-  ITEM_READ = 'item:read',
-  ITEM_UPDATE = 'item:update',
-  ITEM_DELETE = 'item:delete',
-  
-  // Sharing permissions
-  SHARE_MANAGE = 'share:manage',
-  SHARE_VIEW = 'share:view',
-  
-  // User management permissions
-  USERS_INVITE = 'users:invite',
-  USERS_VIEW = 'users:view',
-  USERS_UPDATE_ROLE = 'users:update_role',
-  USERS_SUSPEND = 'users:suspend',
-  USERS_REVOKE = 'users:revoke',
-  
-  // Billing permissions
-  BILLING_READ = 'billing:read',
-  BILLING_UPDATE = 'billing:update',
-  BILLING_CANCEL = 'billing:cancel',
-  
-  // Activity logs permissions
-  LOGS_READ = 'logs:read',
-  LOGS_EXPORT = 'logs:export',
-  
-  // Organization settings permissions
-  SETTINGS_READ = 'settings:read',
-  SETTINGS_UPDATE = 'settings:update',
-  
-  // Secrets Manager permissions
-  SECRETS_CREATE = 'secrets:create',
-  SECRETS_READ = 'secrets:read',
-  SECRETS_UPDATE = 'secrets:update',
-  SECRETS_DELETE = 'secrets:delete',
-}
-
-/**
- * Role-to-Permission Mapping
- * 
- * This is the single source of truth for what each role can do.
- * All authorization checks should reference this mapping.
- */
-export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
-  [UserRole.OWNER]: [
-    // Full access to everything
-    Permission.VAULT_CREATE,
-    Permission.VAULT_READ,
-    Permission.VAULT_UPDATE,
-    Permission.VAULT_DELETE,
-    Permission.ITEM_CREATE,
-    Permission.ITEM_READ,
-    Permission.ITEM_UPDATE,
-    Permission.ITEM_DELETE,
-    Permission.SHARE_MANAGE,
-    Permission.SHARE_VIEW,
-    Permission.USERS_INVITE,
-    Permission.USERS_VIEW,
-    Permission.USERS_UPDATE_ROLE,
-    Permission.USERS_SUSPEND,
-    Permission.USERS_REVOKE,
-    Permission.BILLING_READ,
-    Permission.BILLING_UPDATE,
-    Permission.BILLING_CANCEL,
-    Permission.LOGS_READ,
-    Permission.LOGS_EXPORT,
-    Permission.SETTINGS_READ,
-    Permission.SETTINGS_UPDATE,
-    Permission.SECRETS_CREATE,
-    Permission.SECRETS_READ,
-    Permission.SECRETS_UPDATE,
-    Permission.SECRETS_DELETE,
-  ],
-  
-  [UserRole.ADMIN]: [
-    // Full access to everything (same as owner)
-    // Admins have all permissions except account deletion/ownership transfer
-    Permission.VAULT_CREATE,
-    Permission.VAULT_READ,
-    Permission.VAULT_UPDATE,
-    Permission.VAULT_DELETE,
-    Permission.ITEM_CREATE,
-    Permission.ITEM_READ,
-    Permission.ITEM_UPDATE,
-    Permission.ITEM_DELETE,
-    Permission.SHARE_MANAGE,
-    Permission.SHARE_VIEW,
-    Permission.USERS_INVITE,
-    Permission.USERS_VIEW,
-    Permission.USERS_UPDATE_ROLE,
-    Permission.USERS_SUSPEND,
-    Permission.USERS_REVOKE,
-    Permission.BILLING_READ,
-    Permission.BILLING_UPDATE,
-    Permission.BILLING_CANCEL,
-    Permission.LOGS_READ,
-    Permission.LOGS_EXPORT,
-    Permission.SETTINGS_READ,
-    Permission.SETTINGS_UPDATE,
-    Permission.SECRETS_CREATE,
-    Permission.SECRETS_READ,
-    Permission.SECRETS_UPDATE,
-    Permission.SECRETS_DELETE,
-  ],
-  
-  [UserRole.MEMBER]: [
-    // Can access assigned vaults/items and create/edit items
-    // Cannot manage users or billing
-    Permission.VAULT_READ,
-    Permission.ITEM_CREATE,
-    Permission.ITEM_READ,
-    Permission.ITEM_UPDATE,
-    Permission.ITEM_DELETE,
-    Permission.SHARE_VIEW,
-    Permission.SECRETS_CREATE,
-    Permission.SECRETS_READ,
-    Permission.SECRETS_UPDATE,
-    Permission.SECRETS_DELETE,
-    // Note: Limited vault/item permissions based on assigned access
-  ],
-  
-  [UserRole.VIEWER]: [
-    // Read-only access to assigned vaults/items
-    Permission.VAULT_READ,
-    Permission.ITEM_READ,
-    Permission.SHARE_VIEW,
-    Permission.SECRETS_READ,
-    // Note: No create/update/delete permissions
-  ],
+// @ts-nocheck
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.roleCanManageRole = exports.ROLE_HIERARCHY = exports.roleHasAllPermissions = exports.roleHasAnyPermission = exports.roleHasPermission = exports.getPermissionsForRole = exports.ROLE_PERMISSIONS = exports.Permission = exports.UserRole = void 0;
+var UserRole;
+(function (UserRole) {
+    UserRole["OWNER"] = "owner";
+    UserRole["ADMIN"] = "admin";
+    UserRole["MEMBER"] = "member";
+    UserRole["VIEWER"] = "viewer";
+})(UserRole || (exports.UserRole = UserRole = {}));
+var Permission;
+(function (Permission) {
+    Permission["VAULT_CREATE"] = "vault:create";
+    Permission["VAULT_READ"] = "vault:read";
+    Permission["VAULT_UPDATE"] = "vault:update";
+    Permission["VAULT_DELETE"] = "vault:delete";
+    Permission["ITEM_CREATE"] = "item:create";
+    Permission["ITEM_READ"] = "item:read";
+    Permission["ITEM_UPDATE"] = "item:update";
+    Permission["ITEM_DELETE"] = "item:delete";
+    Permission["SHARE_MANAGE"] = "share:manage";
+    Permission["SHARE_VIEW"] = "share:view";
+    Permission["USERS_INVITE"] = "users:invite";
+    Permission["USERS_VIEW"] = "users:view";
+    Permission["USERS_UPDATE_ROLE"] = "users:update_role";
+    Permission["USERS_SUSPEND"] = "users:suspend";
+    Permission["USERS_REVOKE"] = "users:revoke";
+    Permission["BILLING_READ"] = "billing:read";
+    Permission["BILLING_UPDATE"] = "billing:update";
+    Permission["BILLING_CANCEL"] = "billing:cancel";
+    Permission["LOGS_READ"] = "logs:read";
+    Permission["LOGS_EXPORT"] = "logs:export";
+    Permission["SETTINGS_READ"] = "settings:read";
+    Permission["SETTINGS_UPDATE"] = "settings:update";
+    Permission["SECRETS_CREATE"] = "secrets:create";
+    Permission["SECRETS_READ"] = "secrets:read";
+    Permission["SECRETS_UPDATE"] = "secrets:update";
+    Permission["SECRETS_DELETE"] = "secrets:delete";
+})(Permission || (exports.Permission = Permission = {}));
+exports.ROLE_PERMISSIONS = {
+    [UserRole.OWNER]: [
+        Permission.VAULT_CREATE,
+        Permission.VAULT_READ,
+        Permission.VAULT_UPDATE,
+        Permission.VAULT_DELETE,
+        Permission.ITEM_CREATE,
+        Permission.ITEM_READ,
+        Permission.ITEM_UPDATE,
+        Permission.ITEM_DELETE,
+        Permission.SHARE_MANAGE,
+        Permission.SHARE_VIEW,
+        Permission.USERS_INVITE,
+        Permission.USERS_VIEW,
+        Permission.USERS_UPDATE_ROLE,
+        Permission.USERS_SUSPEND,
+        Permission.USERS_REVOKE,
+        Permission.BILLING_READ,
+        Permission.BILLING_UPDATE,
+        Permission.BILLING_CANCEL,
+        Permission.LOGS_READ,
+        Permission.LOGS_EXPORT,
+        Permission.SETTINGS_READ,
+        Permission.SETTINGS_UPDATE,
+        Permission.SECRETS_CREATE,
+        Permission.SECRETS_READ,
+        Permission.SECRETS_UPDATE,
+        Permission.SECRETS_DELETE,
+    ],
+    [UserRole.ADMIN]: [
+        Permission.VAULT_CREATE,
+        Permission.VAULT_READ,
+        Permission.VAULT_UPDATE,
+        Permission.VAULT_DELETE,
+        Permission.ITEM_CREATE,
+        Permission.ITEM_READ,
+        Permission.ITEM_UPDATE,
+        Permission.ITEM_DELETE,
+        Permission.SHARE_MANAGE,
+        Permission.SHARE_VIEW,
+        Permission.USERS_INVITE,
+        Permission.USERS_VIEW,
+        Permission.USERS_UPDATE_ROLE,
+        Permission.USERS_SUSPEND,
+        Permission.USERS_REVOKE,
+        Permission.BILLING_READ,
+        Permission.BILLING_UPDATE,
+        Permission.BILLING_CANCEL,
+        Permission.LOGS_READ,
+        Permission.LOGS_EXPORT,
+        Permission.SETTINGS_READ,
+        Permission.SETTINGS_UPDATE,
+        Permission.SECRETS_CREATE,
+        Permission.SECRETS_READ,
+        Permission.SECRETS_UPDATE,
+        Permission.SECRETS_DELETE,
+    ],
+    [UserRole.MEMBER]: [
+        Permission.VAULT_READ,
+        Permission.ITEM_CREATE,
+        Permission.ITEM_READ,
+        Permission.ITEM_UPDATE,
+        Permission.ITEM_DELETE,
+        Permission.SHARE_VIEW,
+        Permission.SECRETS_CREATE,
+        Permission.SECRETS_READ,
+        Permission.SECRETS_UPDATE,
+        Permission.SECRETS_DELETE,
+    ],
+    [UserRole.VIEWER]: [
+        Permission.VAULT_READ,
+        Permission.ITEM_READ,
+        Permission.SHARE_VIEW,
+        Permission.SECRETS_READ,
+    ],
 };
-
-/**
- * Get all permissions for a role
- */
-export const getPermissionsForRole = (role: UserRole | string): Permission[] => {
-  const normalizedRole = role.toLowerCase() as UserRole;
-  return ROLE_PERMISSIONS[normalizedRole] || [];
+const getPermissionsForRole = (role) => {
+    const normalizedRole = role.toLowerCase();
+    return exports.ROLE_PERMISSIONS[normalizedRole] || [];
 };
-
-/**
- * Check if a role has a specific permission
- */
-export const roleHasPermission = (role: UserRole | string, permission: Permission): boolean => {
-  const permissions = getPermissionsForRole(role);
-  return permissions.includes(permission);
+exports.getPermissionsForRole = getPermissionsForRole;
+const roleHasPermission = (role, permission) => {
+    const permissions = (0, exports.getPermissionsForRole)(role);
+    return permissions.includes(permission);
 };
-
-/**
- * Check if a role has any of the specified permissions
- */
-export const roleHasAnyPermission = (role: UserRole | string, permissions: Permission[]): boolean => {
-  const rolePermissions = getPermissionsForRole(role);
-  return permissions.some(perm => rolePermissions.includes(perm));
+exports.roleHasPermission = roleHasPermission;
+const roleHasAnyPermission = (role, permissions) => {
+    const rolePermissions = (0, exports.getPermissionsForRole)(role);
+    return permissions.some(perm => rolePermissions.includes(perm));
 };
-
-/**
- * Check if a role has all of the specified permissions
- */
-export const roleHasAllPermissions = (role: UserRole | string, permissions: Permission[]): boolean => {
-  const rolePermissions = getPermissionsForRole(role);
-  return permissions.every(perm => rolePermissions.includes(perm));
+exports.roleHasAnyPermission = roleHasAnyPermission;
+const roleHasAllPermissions = (role, permissions) => {
+    const rolePermissions = (0, exports.getPermissionsForRole)(role);
+    return permissions.every(perm => rolePermissions.includes(perm));
 };
-
-/**
- * Role hierarchy (for comparison)
- * Higher number = more privileges
- */
-export const ROLE_HIERARCHY: Record<UserRole, number> = {
-  [UserRole.OWNER]: 4,
-  [UserRole.ADMIN]: 3,
-  [UserRole.MEMBER]: 2,
-  [UserRole.VIEWER]: 1,
+exports.roleHasAllPermissions = roleHasAllPermissions;
+exports.ROLE_HIERARCHY = {
+    [UserRole.OWNER]: 4,
+    [UserRole.ADMIN]: 3,
+    [UserRole.MEMBER]: 2,
+    [UserRole.VIEWER]: 1,
 };
-
-/**
- * Check if role1 has higher or equal privileges than role2
- */
-export const roleCanManageRole = (role1: UserRole | string, role2: UserRole | string): boolean => {
-  const normalizedRole1 = role1.toLowerCase() as UserRole;
-  const normalizedRole2 = role2.toLowerCase() as UserRole;
-  
-  const hierarchy1 = ROLE_HIERARCHY[normalizedRole1] || 0;
-  const hierarchy2 = ROLE_HIERARCHY[normalizedRole2] || 0;
-  
-  return hierarchy1 >= hierarchy2;
+const roleCanManageRole = (role1, role2) => {
+    const normalizedRole1 = role1.toLowerCase();
+    const normalizedRole2 = role2.toLowerCase();
+    const hierarchy1 = exports.ROLE_HIERARCHY[normalizedRole1] || 0;
+    const hierarchy2 = exports.ROLE_HIERARCHY[normalizedRole2] || 0;
+    return hierarchy1 >= hierarchy2;
 };
+exports.roleCanManageRole = roleCanManageRole;
 
+
+export {};
+
+// __CJS_EXPORT_BRIDGE__
+const __cjs_exports: any = exports as any;
+export const roleCanManageRole = __cjs_exports.roleCanManageRole;
+export const ROLE_HIERARCHY = __cjs_exports.ROLE_HIERARCHY;
+export const roleHasAllPermissions = __cjs_exports.roleHasAllPermissions;
+export const roleHasAnyPermission = __cjs_exports.roleHasAnyPermission;
+export const roleHasPermission = __cjs_exports.roleHasPermission;
+export const getPermissionsForRole = __cjs_exports.getPermissionsForRole;
+export const ROLE_PERMISSIONS = __cjs_exports.ROLE_PERMISSIONS;
+export const Permission = __cjs_exports.Permission;
+export const UserRole = __cjs_exports.UserRole;

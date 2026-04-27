@@ -1,0 +1,141 @@
+# Build and push Mobile Vault image, then deploy only the mobile vault service.
+# Image: ghcr.io/<org>/<repo>:mobile-vault-latest
+# Deployment: updates service "mobile-vault" in docker-compose at DEPLOY_PATH.
+
+name: Build & Deploy Mobile Vault
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'services/mobile_vault/**'
+      - 'common/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/mobile-vault-deploy.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push Mobile Vault Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./services/mobile_vault/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository }}:mobile-vault-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    if: success()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
+      - name: Validate SSH secrets
+        run: |
+          if [ -z "${{ secrets.SSH_USER }}" ] || [ -z "${{ secrets.SSH_HOST }}" ] || [ -z "${{ secrets.SSH_PASSWORD }}" ]; then
+            echo "::error::Missing required secrets. Ensure SSH_USER, SSH_HOST, and SSH_PASSWORD are set."
+            exit 1
+          fi
+          echo "SSH_USER and SSH_HOST are set (SSH_PASSWORD is secret)."
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy Mobile Vault to server
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          SERVICE_DIR: ${{ secrets.MOBILE_VAULT_SERVICE_DIR }}
+          SERVICE_NAME: ${{ secrets.MOBILE_VAULT_SERVICE_NAME }}
+          CONTAINER_NAME: ${{ secrets.MOBILE_VAULT_CONTAINER_NAME }}
+        run: |
+          sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} << EOF
+            set -e
+
+            echo "============================================="
+            echo "🚀 NovaSafe Mobile Vault Deployment Started"
+            echo "============================================="
+
+            DEPLOY_DIR="${DEPLOY_PATH}/\${SERVICE_DIR:-platform/backend}"
+            SERVICE="\${SERVICE_NAME:-mobile-vault}"
+            CONTAINER="\${CONTAINER_NAME:-vault-mobile-vault}"
+
+            echo "📂 Moving to deployment directory: \$DEPLOY_DIR"
+            cd "\$DEPLOY_DIR"
+
+            if [ ! -f docker-compose.yml ]; then
+              echo "❌ docker-compose.yml not found in \$DEPLOY_DIR"
+              exit 1
+            fi
+
+            echo "🔎 Detecting docker compose command"
+            if docker compose version >/dev/null 2>&1; then
+              DC="docker compose"
+            else
+              DC="docker-compose"
+            fi
+
+            echo "🔐 Logging into GHCR"
+            echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+
+            echo "📦 Pulling latest mobile vault image"
+            \$DC pull "\$SERVICE"
+
+            echo "🔄 Recreating mobile vault container"
+            \$DC up -d --no-deps --remove-orphans "\$SERVICE"
+
+            echo "📊 Container status"
+            docker ps --filter "name=\$CONTAINER"
+
+            echo "📜 Last 50 container logs"
+            docker logs --tail 50 "\$CONTAINER" || true
+
+            echo "🧹 Cleaning unused images"
+            docker image prune -f || true
+
+            echo "============================================="
+            echo "✅ Mobile Vault Deployment Completed"
+            echo "============================================="
+          EOF

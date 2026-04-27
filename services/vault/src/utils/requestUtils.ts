@@ -1,53 +1,37 @@
-/**
- * Request Utilities
- * 
- * Helper functions for extracting request metadata
- * Used for activity logging and security tracking
- */
-
-import { Request } from 'express';
-
-/**
- * Extract IP address from request
- * Handles proxies and load balancers
- */
-export function getClientIp(req: Request): string | null {
-  // Check various headers for IP (in order of preference)
-  const forwardedFor = req.headers['x-forwarded-for'];
-  if (forwardedFor) {
-    // X-Forwarded-For can contain multiple IPs, take the first one
-    const ips = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
-    return ips.split(',')[0].trim();
-  }
-
-  const realIp = req.headers['x-real-ip'];
-  if (realIp) {
-    return Array.isArray(realIp) ? realIp[0] : realIp;
-  }
-
-  const cfConnectingIp = req.headers['cf-connecting-ip'];
-  if (cfConnectingIp) {
-    return Array.isArray(cfConnectingIp) ? cfConnectingIp[0] : cfConnectingIp;
-  }
-
-  // Fallback to connection remote address
-  return req.socket.remoteAddress || null;
+// @ts-nocheck
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getClientIp = getClientIp;
+exports.getUserAgent = getUserAgent;
+exports.getLocationFromIp = getLocationFromIp;
+function getClientIp(req) {
+    const forwardedFor = req.headers['x-forwarded-for'];
+    if (forwardedFor) {
+        const ips = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
+        return ips.split(',')[0].trim();
+    }
+    const realIp = req.headers['x-real-ip'];
+    if (realIp) {
+        return Array.isArray(realIp) ? realIp[0] : realIp;
+    }
+    const cfConnectingIp = req.headers['cf-connecting-ip'];
+    if (cfConnectingIp) {
+        return Array.isArray(cfConnectingIp) ? cfConnectingIp[0] : cfConnectingIp;
+    }
+    return req.socket.remoteAddress || null;
+}
+function getUserAgent(req) {
+    return req.headers['user-agent'] || null;
+}
+function getLocationFromIp(ip) {
+    return null;
 }
 
-/**
- * Extract user agent from request
- */
-export function getUserAgent(req: Request): string | null {
-  return req.headers['user-agent'] || null;
-}
 
-/**
- * Extract location from IP (placeholder - can be enhanced with geolocation service)
- * For now, returns null - can be integrated with IP geolocation API later
- */
-export function getLocationFromIp(ip: string | null): string | null {
-  // TODO: Integrate with IP geolocation service (e.g., ipapi.co, MaxMind)
-  // For now, return null
-  return null;
-}
+export {};
 
+// __CJS_EXPORT_BRIDGE__
+const __cjs_exports: any = exports as any;
+export const getClientIp = __cjs_exports.getClientIp;
+export const getUserAgent = __cjs_exports.getUserAgent;
+export const getLocationFromIp = __cjs_exports.getLocationFromIp;

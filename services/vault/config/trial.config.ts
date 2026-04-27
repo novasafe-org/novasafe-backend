@@ -1,71 +1,56 @@
-/**
- * Trial period configuration
- *
- * Used when creating accounts and subscriptions to set trial end date in the database.
- * Supports TRIAL_DAYS (default 30) and optional TRIAL_MINUTES for testing (e.g. payment flows in minutes).
- *
- * Env:
- * - TRIAL_DAYS: number of days for trial (default 30). Used when TRIAL_MINUTES is not set.
- * - TRIAL_MINUTES: optional; when set, trial duration is this many minutes (for testing).
- */
-
+// @ts-nocheck
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.TRIAL_CONFIG = void 0;
+exports.getTrialDurationMs = getTrialDurationMs;
+exports.getTrialDurationSeconds = getTrialDurationSeconds;
+exports.getTrialEndDate = getTrialEndDate;
+exports.getTrialDays = getTrialDays;
+exports.getTrialDurationLabel = getTrialDurationLabel;
 const TRIAL_DAYS = Math.max(0, parseInt(process.env.TRIAL_DAYS || '30', 10));
 const TRIAL_MINUTES = process.env.TRIAL_MINUTES ? Math.max(0, parseInt(process.env.TRIAL_MINUTES, 10)) : null;
-
-/**
- * Trial duration in milliseconds.
- * If TRIAL_MINUTES is set, use that; otherwise TRIAL_DAYS.
- */
-export function getTrialDurationMs(): number {
-  if (TRIAL_MINUTES != null && TRIAL_MINUTES > 0) {
-    return TRIAL_MINUTES * 60 * 1000;
-  }
-  return TRIAL_DAYS * 24 * 60 * 60 * 1000;
+function getTrialDurationMs() {
+    if (TRIAL_MINUTES != null && TRIAL_MINUTES > 0) {
+        return TRIAL_MINUTES * 60 * 1000;
+    }
+    return TRIAL_DAYS * 24 * 60 * 60 * 1000;
 }
-
-/**
- * Trial duration in seconds (for providers that use seconds, e.g. Razorpay).
- */
-export function getTrialDurationSeconds(): number {
-  return Math.floor(getTrialDurationMs() / 1000);
+function getTrialDurationSeconds() {
+    return Math.floor(getTrialDurationMs() / 1000);
 }
-
-/**
- * Trial end date from a given start date.
- * Use this when creating subscriptions / setting trial end in the database.
- */
-export function getTrialEndDate(from: Date): Date {
-  return new Date(from.getTime() + getTrialDurationMs());
+function getTrialEndDate(from) {
+    return new Date(from.getTime() + getTrialDurationMs());
 }
-
-/**
- * Trial length in days for display and for callers that still pass "days".
- * When using TRIAL_MINUTES, returns equivalent fractional days (e.g. 5 min ≈ 0.0035 days).
- * For subscription creation we prefer getTrialEndDate() so minutes work correctly.
- */
-export function getTrialDays(): number {
-  if (TRIAL_MINUTES != null && TRIAL_MINUTES > 0) {
-    return TRIAL_MINUTES / (24 * 60); // fractional days
-  }
-  return TRIAL_DAYS;
+function getTrialDays() {
+    if (TRIAL_MINUTES != null && TRIAL_MINUTES > 0) {
+        return TRIAL_MINUTES / (24 * 60);
+    }
+    return TRIAL_DAYS;
 }
-
-/**
- * Human-readable trial duration for logs (e.g. "30 days" or "5 minutes").
- */
-export function getTrialDurationLabel(): string {
-  if (TRIAL_MINUTES != null && TRIAL_MINUTES > 0) {
-    return `${TRIAL_MINUTES} minute${TRIAL_MINUTES === 1 ? '' : 's'}`;
-  }
-  return `${TRIAL_DAYS} day${TRIAL_DAYS === 1 ? '' : 's'}`;
+function getTrialDurationLabel() {
+    if (TRIAL_MINUTES != null && TRIAL_MINUTES > 0) {
+        return `${TRIAL_MINUTES} minute${TRIAL_MINUTES === 1 ? '' : 's'}`;
+    }
+    return `${TRIAL_DAYS} day${TRIAL_DAYS === 1 ? '' : 's'}`;
 }
+exports.TRIAL_CONFIG = {
+    trialDays: TRIAL_DAYS,
+    trialMinutes: TRIAL_MINUTES,
+    getTrialDurationMs,
+    getTrialDurationSeconds,
+    getTrialEndDate,
+    getTrialDays,
+    getTrialDurationLabel,
+};
 
-export const TRIAL_CONFIG = {
-  trialDays: TRIAL_DAYS,
-  trialMinutes: TRIAL_MINUTES,
-  getTrialDurationMs,
-  getTrialDurationSeconds,
-  getTrialEndDate,
-  getTrialDays,
-  getTrialDurationLabel,
-} as const;
+
+export {};
+
+// __CJS_EXPORT_BRIDGE__
+const __cjs_exports: any = exports as any;
+export const TRIAL_CONFIG = __cjs_exports.TRIAL_CONFIG;
+export const getTrialDurationMs = __cjs_exports.getTrialDurationMs;
+export const getTrialDurationSeconds = __cjs_exports.getTrialDurationSeconds;
+export const getTrialEndDate = __cjs_exports.getTrialEndDate;
+export const getTrialDays = __cjs_exports.getTrialDays;
+export const getTrialDurationLabel = __cjs_exports.getTrialDurationLabel;
