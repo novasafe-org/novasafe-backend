@@ -1,63 +1,43 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import logger from '../logger';
 
 interface EmailConfig {
-  host: string;
-  port: number;
-  secure: boolean;
-  user: string;
-  pass: string;
+  apiKey: string;
   from: string;
 }
 
-let transporter: nodemailer.Transporter | null = null;
+let resendClient: Resend | null = null;
 
 const getConfig = (): EmailConfig => ({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: Number(process.env.SMTP_PORT || 587),
-  secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
-  user: process.env.SMTP_USER || '',
-  pass: process.env.SMTP_PASSWORD || '',
-  from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@novasafe.io',
+  apiKey: process.env.RESEND_API_KEY || '',
+  from: process.env.RESEND_FROM || process.env.SMTP_FROM || 'onboarding@resend.dev',
 });
 
-const getTransporter = (): nodemailer.Transporter | null => {
-  if (transporter) return transporter;
+const getResendClient = (): Resend | null => {
+  if (resendClient) return resendClient;
   const cfg = getConfig();
-  if (!cfg.user || !cfg.pass) {
-    logger.error('SMTP_USER/SMTP_PASSWORD not configured. Email sending disabled.');
+  if (!cfg.apiKey) {
+    logger.error('RESEND_API_KEY not configured. Email sending disabled.');
     return null;
   }
-  transporter = nodemailer.createTransport({
-    host: cfg.host,
-    port: cfg.port,
-    secure: cfg.secure,
-    auth: { user: cfg.user, pass: cfg.pass },
-    connectionTimeout: 30000,
-    greetingTimeout: 30000,
-    socketTimeout: 30000,
-  });
-  transporter.verify().then(() => {
-    logger.info('SMTP transporter verified successfully');
-  }).catch((err) => {
-    logger.warn({ error: err?.message }, 'SMTP transporter verification failed');
-  });
-  return transporter;
+  resendClient = new Resend(cfg.apiKey);
+  logger.info('Resend client initialized');
+  return resendClient;
 };
 
 const sendMail = async (to: string, subject: string, html: string, text: string): Promise<boolean> => {
-  const mailer = getTransporter();
-  if (!mailer) return false;
+  const client = getResendClient();
+  if (!client) return false;
   try {
     const cfg = getConfig();
-    const info = await mailer.sendMail({
-      from: `"NovaSafe" <${cfg.from}>`,
+    const result = await client.emails.send({
+      from: cfg.from,
       to,
       subject,
       html,
-      text,
+      text, // keep plain-text for client compatibility
     });
-    logger.info({ to, messageId: info.messageId }, 'Email sent');
+    logger.info({ to, messageId: result?.data?.id }, 'Email sent via Resend');
     return true;
   } catch (error: any) {
     logger.error({ to, error: error?.message }, 'Failed to send email');
