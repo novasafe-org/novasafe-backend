@@ -49,6 +49,61 @@ const normalizeCredentialPayload = (payload: any, existing?: any) => ({
   category: payload.category ?? existing?.category ?? 'login',
 });
 
+const COMMON_PASSWORDS = new Set([
+  'password', 'password1', 'admin', 'admin123', 'qwerty', 'qwerty123',
+  'welcome', 'welcome123', 'letmein', 'iloveyou', 'abc123', '123456',
+  '12345678', '123456789', '000000', '111111', 'passw0rd',
+]);
+
+const normalizeLeet = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[@]/g, 'a')
+    .replace(/[0]/g, 'o')
+    .replace(/[1!|]/g, 'i')
+    .replace(/[3]/g, 'e')
+    .replace(/[4]/g, 'a')
+    .replace(/[5$]/g, 's')
+    .replace(/[7]/g, 't')
+    .replace(/[8]/g, 'b');
+
+const hasSequentialPattern = (value: string) => {
+  const lower = value.toLowerCase();
+  const sequences = ['abcdefghijklmnopqrstuvwxyz', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm', '0123456789'];
+  return sequences.some((seq) => {
+    for (let i = 0; i <= seq.length - 4; i++) {
+      const chunk = seq.slice(i, i + 4);
+      const reverse = chunk.split('').reverse().join('');
+      if (lower.includes(chunk) || lower.includes(reverse)) return true;
+    }
+    return false;
+  });
+};
+
+const hasRepeatingPattern = (value: string) => /(.)\1{2,}/.test(value) || /^(.{1,3})\1+$/.test(value);
+
+const getPasswordStrength = (password?: string): 'weak' | 'medium' | 'strong' => {
+  const value = String(password || '');
+  if (!value) return 'medium';
+  if (value.length < 8) return 'weak';
+
+  const normalized = normalizeLeet(value);
+  const compact = normalized.replace(/[^a-z0-9]/g, '');
+  if (COMMON_PASSWORDS.has(compact)) return 'weak';
+  if (hasSequentialPattern(value) || hasRepeatingPattern(compact)) return 'weak';
+
+  let score = 0;
+  if (value.length >= 12) score++;
+  if (/[A-Z]/.test(value) && /[a-z]/.test(value)) score++;
+  if (/\d/.test(value)) score++;
+  if (/[^A-Za-z0-9]/.test(value)) score++;
+  if (new Set(value).size >= Math.min(8, value.length)) score++;
+
+  if (score <= 2) return 'weak';
+  if (score <= 4) return 'medium';
+  return 'strong';
+};
+
 const getPasswordVersions = async (userId: string, credentialId: ObjectId) => {
   const docs = await db.findMany(collection.passwordVersions, {
     credentialId,
@@ -148,7 +203,8 @@ export const listItems = async (userId: string, page: number, limit: number) => 
   const itemsWithDecrypted = await Promise.all(items.map(async (item: any) => {
     const decrypted = decryptPayload(item as any) || {};
     const activePassword = await getActivePasswordVersion(userId, item._id);
-    return { ...item, ...decrypted, password: activePassword?.password };
+    const password = activePassword?.password;
+    return { ...item, ...decrypted, password, strength: getPasswordStrength(password) };
   }));
 
   return { items: itemsWithDecrypted, total };
@@ -451,21 +507,20 @@ export const getDashboardStats = async (userId: string) => {
   });
   const totalItems = await db.getDb().collection(collection.vaultItems).countDocuments(query);
 
-  const weakPasswordsCount = allItems.filter((item: any) => {
-    const decrypted = decryptPayload(item as any) || {};
-    const password = String(decrypted?.password || '');
-    if (!password) return false;
-    let score = 0;
-    if (password.length >= 8) score++;
-    if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score++;
-    if (/\d/.test(password)) score++;
-    if (/[^A-Za-z0-9]/.test(password)) score++;
-    return score <= 1;
-  }).length;
+  const enrichedItems = await Promise.all(
+    allItems.map(async (item: any) => {
+      const decrypted = decryptPayload(item as any) || {};
+      const activePassword = await getActivePasswordVersion(userId, item._id);
+      const password = activePassword?.password;
+      return { ...item, ...decrypted, password, strength: getPasswordStrength(password) };
+    }),
+  );
+
+  const weakPasswordsCount = enrichedItems.filter((item) => item.strength === 'weak').length;
 
   return {
     totalItems,
     weakPasswordsCount,
-    recentlyUsed: allItems.slice(0, 5),
+    recentlyUsed: enrichedItems.slice(0, 5),
   };
 };

@@ -10,6 +10,7 @@ export interface MobileItemSummary {
   lastAccessedAt?: Date | string | null;
   updatedAt?: Date | string;
   createdAt?: Date | string;
+  strength?: 'weak' | 'medium' | 'strong';
 }
 
 export const toMobileItemSummary = (item: any): MobileItemSummary => ({
@@ -21,6 +22,7 @@ export const toMobileItemSummary = (item: any): MobileItemSummary => ({
   field_count: item?.field_count || 0,
   attachment_count: item?.attachment_count || 0,
   accessCount: item?.accessCount || 0,
+  strength: item?.strength,
   lastAccessedAt: item?.lastAccessedAt || null,
   updatedAt: item?.updatedAt,
   createdAt: item?.createdAt,
