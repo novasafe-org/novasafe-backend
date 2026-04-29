@@ -19,6 +19,9 @@ const resolveClientIp = (req: Request): string => {
 const resolveDeviceInfo = (req: Request) => {
   const ua = String(req.headers['user-agent'] || 'Unknown Device');
   const lower = ua.toLowerCase();
+  const requestPlatform = String(req.body?.devicePlatform || '').toLowerCase().trim();
+  const requestModel = String(req.body?.deviceModel || '').trim();
+  const requestOsVersion = String(req.body?.deviceOsVersion || '').trim();
   const platform = lower.includes('android')
     ? 'android'
     : lower.includes('iphone') || lower.includes('ios')
@@ -28,7 +31,11 @@ const resolveDeviceInfo = (req: Request) => {
         : lower.includes('mac')
           ? 'macos'
           : 'web';
-  return { deviceName: ua.slice(0, 80), platform, userAgent: ua };
+  const normalizedPlatform = requestPlatform || platform;
+  const deviceName = requestModel
+    ? `${requestModel}${requestOsVersion ? ` - ${normalizedPlatform} ${requestOsVersion}` : ` - ${normalizedPlatform}`}`
+    : ua.slice(0, 80);
+  return { deviceName, platform: normalizedPlatform, userAgent: ua };
 };
 
 export const mobileLogin = async (req: Request, res: Response): Promise<void> => {

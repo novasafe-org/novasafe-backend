@@ -452,8 +452,15 @@ export const getDashboardStats = async (userId: string) => {
   const totalItems = await db.getDb().collection(collection.vaultItems).countDocuments(query);
 
   const weakPasswordsCount = allItems.filter((item: any) => {
-    const title = (item?.title || '').toLowerCase();
-    return title.includes('temp') || title.includes('weak');
+    const decrypted = decryptPayload(item as any) || {};
+    const password = String(decrypted?.password || '');
+    if (!password) return false;
+    let score = 0;
+    if (password.length >= 8) score++;
+    if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score++;
+    if (/\d/.test(password)) score++;
+    if (/[^A-Za-z0-9]/.test(password)) score++;
+    return score <= 1;
   }).length;
 
   return {
