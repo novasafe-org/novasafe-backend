@@ -11,6 +11,7 @@ import {
   revokeSession,
   updateTwoFactorStatus,
   deleteAccount,
+  downloadExportById,
 } from '../controllers/mobileSettingsController';
 
 const router = Router();
@@ -23,6 +24,7 @@ router.get('/sessions', authMiddleware, getSessions);
 router.post('/sessions/:id/revoke', authMiddleware, revokeSession);
 router.post('/export', authMiddleware, createExport);
 router.get('/export/history', authMiddleware, getExportHistory);
+router.get('/export/:id/download', authMiddleware, downloadExportById);
 router.get('/account-summary', authMiddleware, getAccountDeletionSummary);
 router.post('/delete-account', authMiddleware, deleteAccount);
 

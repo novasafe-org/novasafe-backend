@@ -49,6 +49,54 @@ const normalizeCredentialPayload = (payload: any, existing?: any) => ({
   category: payload.category ?? existing?.category ?? 'login',
 });
 
+const normalizeTags = (tags: any): string[] => {
+  if (!Array.isArray(tags)) return [];
+  const values = tags
+    .map((t) => String(t || '').trim())
+    .filter(Boolean)
+    .slice(0, 20);
+  return Array.from(new Set(values));
+};
+
+const extractDomain = (url?: string) => {
+  const value = String(url || '').trim();
+  if (!value) return '';
+  try {
+    const parsed = new URL(value.includes('://') ? value : `https://${value}`);
+    return parsed.hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return '';
+  }
+};
+
+const slugify = (value?: string) =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+const deriveLogoUrl = (url?: string, title?: string): string | null => {
+  const fromUrl = extractDomain(url);
+  if (fromUrl) return `https://logo.clearbit.com/${fromUrl}`;
+  const titleSlug = slugify(title);
+  if (!titleSlug) return null;
+  const commonMap: Record<string, string> = {
+    gmail: 'gmail.com',
+    google: 'google.com',
+    facebook: 'facebook.com',
+    instagram: 'instagram.com',
+    whatsapp: 'whatsapp.com',
+    linkedin: 'linkedin.com',
+    twitter: 'x.com',
+    x: 'x.com',
+    amazon: 'amazon.com',
+    youtube: 'youtube.com',
+    netflix: 'netflix.com',
+  };
+  const matched = Object.keys(commonMap).find((k) => titleSlug.includes(k));
+  return matched ? `https://logo.clearbit.com/${commonMap[matched]}` : null;
+};
+
 const COMMON_PASSWORDS = new Set([
   'password', 'password1', 'admin', 'admin123', 'qwerty', 'qwerty123',
   'welcome', 'welcome123', 'letmein', 'iloveyou', 'abc123', '123456',
@@ -204,7 +252,7 @@ export const listItems = async (userId: string, page: number, limit: number) => 
     const decrypted = decryptPayload(item as any) || {};
     const activePassword = await getActivePasswordVersion(userId, item._id);
     const password = activePassword?.password;
-    return { ...item, ...decrypted, password, strength: getPasswordStrength(password) };
+    return { ...item, ...decrypted, password, tags: item.tags || [], logoUrl: item.logoUrl || null, strength: getPasswordStrength(password) };
   }));
 
   return { items: itemsWithDecrypted, total };
@@ -227,6 +275,8 @@ export const getItemById = async (userId: string, id: string, revealSensitive = 
     ...item,
     ...decrypted,
     password: activePassword?.password,
+    tags: item.tags || [],
+    logoUrl: item.logoUrl || null,
     password_versions: passwordVersions,
     custom_fields: customFields,
   };
@@ -235,6 +285,8 @@ export const getItemById = async (userId: string, id: string, revealSensitive = 
 export const createItem = async (userId: string, payload: any) => {
   const now = new Date();
   const normalizedPayload = normalizeCredentialPayload(payload);
+  const tags = normalizeTags(payload.tags);
+  const logoUrl = deriveLogoUrl(normalizedPayload.url, normalizedPayload.title);
   const encrypted = encryptPayload(normalizedPayload);
   const doc = {
     userId: new ObjectId(userId),
@@ -244,7 +296,8 @@ export const createItem = async (userId: string, payload: any) => {
     category: normalizedPayload.category,
     title: normalizedPayload.title,
     folderId: payload.folderId ? new ObjectId(payload.folderId) : null,
-    tags: Array.isArray(payload.tags) ? payload.tags : [],
+    tags,
+    logoUrl,
     isFavorite: Boolean(payload.isFavorite),
     field_count: payload.field_count || 0,
     attachment_count: payload.attachment_count || 0,
@@ -295,6 +348,8 @@ export const createItem = async (userId: string, payload: any) => {
   return {
     ...inserted,
     ...normalizedPayload,
+    tags,
+    logoUrl,
     password: versions.find((v: any) => !v.is_expired)?.password,
     password_versions: versions,
     custom_fields: customFields,
@@ -305,6 +360,8 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
   const existing: any = await getItemById(userId, id);
   if (!existing) return null;
   const mergedPlain = normalizeCredentialPayload(payload, existing);
+  const tags = payload.tags !== undefined ? normalizeTags(payload.tags) : normalizeTags(existing.tags);
+  const logoUrl = payload.logoUrl === null ? null : (deriveLogoUrl(mergedPlain.url, mergedPlain.title) || existing.logoUrl || null);
   const encrypted = encryptPayload(mergedPlain);
   const updateData: any = {
     updatedAt: new Date(),
@@ -314,7 +371,8 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
     authTag: encrypted.authTag,
     category: mergedPlain.category,
     title: mergedPlain.title,
-    tags: payload.tags ?? existing.tags,
+    tags,
+    logoUrl,
     isFavorite: payload.isFavorite ?? existing.isFavorite,
     field_count: payload.field_count ?? existing.field_count ?? 0,
     attachment_count: payload.attachment_count ?? existing.attachment_count ?? 0,
@@ -338,6 +396,8 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
   return {
     ...updated,
     ...mergedPlain,
+    tags,
+    logoUrl,
     password: versions.find((v: any) => !v.is_expired)?.password,
     password_versions: versions,
     custom_fields: customFields,

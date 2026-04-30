@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { ObjectId } from 'mongodb';
 import { DB_CONFIG } from '../config/dbConfig';
 import Database from '../database/connection';
+import { decryptPayload } from '../utils/crypto';
 
 const db = new Database('vault');
 
@@ -115,17 +116,54 @@ export const createExport = async (req: Request, res: Response): Promise<void> =
   const userObjectId = getUserObjectId(req);
   if (!userObjectId) return void res.status(401).json({ success: false, message: 'Authentication required' });
   const now = new Date();
+  const format = String(req.body?.format || 'csv').toLowerCase() === 'csv' ? 'csv' : 'csv';
+  const items = await db.findMany(
+    DB_CONFIG.collections.vaultItems,
+    { userId: userObjectId, deleted: { $ne: true }, deleted_at: null },
+    { sort: { updatedAt: -1 }, limit: 5000 },
+  );
+  const rows = items.map((item: any) => {
+    const decrypted = decryptPayload(item as any) || {};
+    return {
+      title: decrypted.title || item.title || '',
+      username: decrypted.username || '',
+      url: decrypted.url || '',
+      notes: decrypted.notes || '',
+      category: item.category || decrypted.type || 'login',
+      tags: Array.isArray(item.tags) ? item.tags.join('|') : '',
+      updatedAt: item.updatedAt || '',
+    };
+  });
+  const header = ['title', 'username', 'url', 'notes', 'category', 'tags', 'updatedAt'];
+  const escape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const csv = [header.join(','), ...rows.map((r) => header.map((h) => escape((r as any)[h])).join(','))].join('\n');
+
   const record = {
     userId: userObjectId,
-    format: req.body?.format || 'json',
+    format,
     status: 'completed',
-    itemCount: req.body?.itemCount || 0,
-    fileName: `novasafe-export-${now.getTime()}.json`,
+    itemCount: rows.length,
+    fileName: `novasafe-export-${now.getTime()}.csv`,
+    payload: Buffer.from(csv, 'utf-8').toString('base64'),
     createdAt: now,
     source: 'mobile',
   };
   await db.insertOne(DB_CONFIG.collections.exportHistory, record);
   res.status(201).json({ success: true, source: req.source, message: 'Export recorded', data: record });
+};
+
+export const downloadExportById = async (req: Request, res: Response): Promise<void> => {
+  const userObjectId = getUserObjectId(req);
+  if (!userObjectId) return void res.status(401).json({ success: false, message: 'Authentication required' });
+  const id = req.params.id;
+  if (!ObjectId.isValid(id)) return void res.status(400).json({ success: false, message: 'Invalid export id' });
+  const record = await db.findOne(DB_CONFIG.collections.exportHistory, { _id: new ObjectId(id), userId: userObjectId });
+  if (!record?.payload) return void res.status(404).json({ success: false, message: 'Export file not found' });
+  const buffer = Buffer.from(String(record.payload), 'base64');
+  const fileName = record.fileName || `novasafe-export-${id}.csv`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  res.status(200).send(buffer);
 };
 
 export const getExportHistory = async (req: Request, res: Response): Promise<void> => {
