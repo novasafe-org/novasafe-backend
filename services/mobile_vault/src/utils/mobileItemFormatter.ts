@@ -13,6 +13,8 @@ export interface MobileItemSummary {
   strength?: 'weak' | 'medium' | 'strong';
   tags?: string[];
   logoUrl?: string | null;
+  /** Website / URL (decrypted) so clients can resolve favicons when logo CDN is stripped. */
+  url?: string | null;
 }
 
 export const toMobileItemSummary = (item: any): MobileItemSummary => ({
@@ -27,6 +29,7 @@ export const toMobileItemSummary = (item: any): MobileItemSummary => ({
   strength: item?.strength,
   tags: item?.tags || [],
   logoUrl: item?.logoUrl || null,
+  url: item?.url || null,
   lastAccessedAt: item?.lastAccessedAt || null,
   updatedAt: item?.updatedAt,
   createdAt: item?.createdAt,
