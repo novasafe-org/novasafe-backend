@@ -5,6 +5,7 @@ import dashboardRoute from './routes/dashboardRoute';
 import settingsRoute from './routes/settingsRoute';
 import onboardingRoute from './routes/onboardingRoute';
 import shareRoute from './routes/shareRoute';
+import appVersionRoute from './routes/appVersionRoute';
 import { sourceMiddleware } from './middleware/sourceMiddleware';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import logger from './logger';
@@ -25,6 +26,8 @@ app.use((req, _res, next) => {
   next();
 });
 app.use(sourceMiddleware);
+
+app.use('/mobile/app', appVersionRoute);
 
 app.use('/mobile/health', (_req, res) => {
   res.status(200).json({ success: true, source: 'mobile', status: 'ok' });
