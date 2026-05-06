@@ -235,6 +235,71 @@ const getCustomFields = async (userId: string, credentialId: ObjectId, revealSen
   return docs.map((doc: any) => serializeCustomField(doc, revealSensitive));
 };
 
+const normalizeIncomingCustomFields = (payload: any): Array<{
+  field_label: string;
+  field_type: string;
+  field_value: string;
+  is_sensitive?: boolean;
+}> => {
+  const raw = Array.isArray(payload?.custom_fields)
+    ? payload.custom_fields
+    : Array.isArray(payload?.customFields)
+      ? payload.customFields.map((field: any) => ({
+          field_label: field?.field_label || field?.label || field?.key,
+          field_type: field?.field_type || field?.type || 'TEXT',
+          field_value: field?.field_value || field?.value || '',
+          is_sensitive: field?.is_sensitive,
+        }))
+      : [];
+
+  return raw
+    .map((field: any) => ({
+      field_label: String(field?.field_label || '').trim(),
+      field_type: String(field?.field_type || 'TEXT'),
+      field_value: String(field?.field_value ?? ''),
+      is_sensitive: field?.is_sensitive === true,
+    }))
+    .filter((field) => field.field_label);
+};
+
+const replaceCredentialCustomFields = async (
+  userId: string,
+  credentialId: ObjectId,
+  fields: Array<{ field_label: string; field_type: string; field_value: string; is_sensitive?: boolean }>,
+) => {
+  await db.getDb().collection(collection.customFields).updateMany(
+    { credentialId, ...userFilter(userId), deleted: { $ne: true } },
+    { $set: { deleted: true, deletedAt: new Date(), source: 'mobile' } },
+  );
+
+  for (const customField of fields) {
+    const fieldType = parseFieldType(customField.field_type);
+    const label = String(customField.field_label || '').trim();
+    if (!fieldType || !label) continue;
+    const rawValue = String(customField.field_value ?? '');
+    const isSensitive = customField.is_sensitive === true || SENSITIVE_FIELD_TYPES.has(fieldType);
+    const nowField = new Date();
+    let toInsert: any = {
+      userId: new ObjectId(userId),
+      credentialId,
+      field_label: label,
+      field_type: fieldType,
+      is_sensitive: isSensitive,
+      createdAt: nowField,
+      updatedAt: nowField,
+      deleted: false,
+      source: 'mobile',
+    };
+    if (isSensitive) {
+      const encrypted = encryptText(rawValue);
+      toInsert = { ...toInsert, encrypted_data: encrypted.encrypted_data, iv: encrypted.iv, authTag: encrypted.authTag };
+    } else {
+      toInsert.field_value = rawValue;
+    }
+    await db.insertOne(collection.customFields, toInsert);
+  }
+};
+
 export const listItems = async (userId: string, page: number, limit: number) => {
   const skip = (page - 1) * limit;
   const query = {
@@ -314,33 +379,9 @@ export const createItem = async (userId: string, payload: any) => {
   if (payload.password) {
     await createPasswordVersion(userId, result.insertedId, String(payload.password));
   }
-  if (Array.isArray(payload.custom_fields)) {
-    for (const customField of payload.custom_fields) {
-      const fieldType = parseFieldType(customField?.field_type);
-      const label = String(customField?.field_label || '').trim();
-      if (!fieldType || !label) continue;
-      const rawValue = String(customField?.field_value ?? '');
-      const isSensitive = customField?.is_sensitive === true || SENSITIVE_FIELD_TYPES.has(fieldType);
-      const nowField = new Date();
-      let toInsert: any = {
-        userId: new ObjectId(userId),
-        credentialId: result.insertedId,
-        field_label: label,
-        field_type: fieldType,
-        is_sensitive: isSensitive,
-        createdAt: nowField,
-        updatedAt: nowField,
-        deleted: false,
-        source: 'mobile',
-      };
-      if (isSensitive) {
-        const encrypted = encryptText(rawValue);
-        toInsert = { ...toInsert, encrypted_data: encrypted.encrypted_data, iv: encrypted.iv, authTag: encrypted.authTag };
-      } else {
-        toInsert.field_value = rawValue;
-      }
-      await db.insertOne(collection.customFields, toInsert);
-    }
+  const incomingCustomFields = normalizeIncomingCustomFields(payload);
+  if (incomingCustomFields.length > 0) {
+    await replaceCredentialCustomFields(userId, result.insertedId, incomingCustomFields);
   }
   const inserted = await db.findOne(collection.vaultItems, { _id: result.insertedId });
   const versions = await getPasswordVersions(userId, result.insertedId);
@@ -389,6 +430,10 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
   if (!result.matchedCount) return null;
   if (payload.password) {
     await createPasswordVersion(userId, new ObjectId(id), String(payload.password));
+  }
+  const incomingCustomFields = normalizeIncomingCustomFields(payload);
+  if (incomingCustomFields.length > 0 || payload.custom_fields || payload.customFields) {
+    await replaceCredentialCustomFields(userId, new ObjectId(id), incomingCustomFields);
   }
   const updated = await db.findOne(collection.vaultItems, filter);
   const versions = await getPasswordVersions(userId, new ObjectId(id));
@@ -577,10 +622,17 @@ export const getDashboardStats = async (userId: string) => {
   );
 
   const weakPasswordsCount = enrichedItems.filter((item) => item.strength === 'weak').length;
+  const reusedPasswordsCount = enrichedItems.filter((item) => Boolean(item.reused)).length;
+  const breachedPasswordsCount = enrichedItems.filter((item) => Boolean(item.breached)).length;
+  const riskRatio = totalItems > 0 ? ((weakPasswordsCount + reusedPasswordsCount + breachedPasswordsCount) / totalItems) : 0;
+  const computedScore = Math.max(0, Math.min(100, Math.round(100 - (riskRatio * 100))));
 
   return {
     totalItems,
     weakPasswordsCount,
+    reusedPasswordsCount,
+    breachedPasswordsCount,
+    securityScore: computedScore,
     recentlyUsed: enrichedItems.slice(0, 5),
   };
 };

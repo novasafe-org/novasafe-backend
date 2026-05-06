@@ -6,6 +6,8 @@ import settingsRoute from './routes/settingsRoute';
 import onboardingRoute from './routes/onboardingRoute';
 import shareRoute from './routes/shareRoute';
 import appVersionRoute from './routes/appVersionRoute';
+import { authMiddleware } from './middleware/auth';
+import { getMobileSecuritySummary } from './controllers/mobileDashboardController';
 import { sourceMiddleware } from './middleware/sourceMiddleware';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import logger from './logger';
@@ -35,6 +37,7 @@ app.use('/mobile/health', (_req, res) => {
 app.use('/mobile/auth', authRoute);
 app.use('/mobile/vault', vaultRoute);
 app.use('/mobile/dashboard', dashboardRoute);
+app.get('/mobile/security/summary', authMiddleware, getMobileSecuritySummary);
 app.use('/mobile/settings', settingsRoute);
 app.use('/mobile/onboarding', onboardingRoute);
 app.use('/mobile/share', shareRoute);
