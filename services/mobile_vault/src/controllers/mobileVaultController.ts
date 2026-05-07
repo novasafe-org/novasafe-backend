@@ -6,6 +6,8 @@ import {
   deleteCustomField,
   deleteItemById,
   deletePasswordVersion,
+  syncBulkUpload,
+  pullSyncDeltaItems,
   getItemById,
   listItems,
   markPasswordVersionExpired,
@@ -147,4 +149,19 @@ export const deleteItemCustomField = async (req: Request, res: Response): Promis
   const item = await deleteCustomField(userId, req.params.id, req.params.fieldId);
   if (!item) return void res.status(404).json({ success: false, message: 'Custom field not found' });
   res.status(200).json({ success: true, source: req.source, data: toMobileItemDetail(item) });
+};
+
+export const bulkSyncUpload = async (req: Request, res: Response): Promise<void> => {
+  const userId = requireUserId(req);
+  if (!userId) return void res.status(401).json({ success: false, message: 'Authentication required' });
+  const result = await syncBulkUpload(userId, req.body || {});
+  res.status(200).json({ success: true, source: req.source, ...result });
+};
+
+export const pullSyncDelta = async (req: Request, res: Response): Promise<void> => {
+  const userId = requireUserId(req);
+  if (!userId) return void res.status(401).json({ success: false, message: 'Authentication required' });
+  const since = typeof req.query.since === 'string' ? req.query.since : undefined;
+  const data = await pullSyncDeltaItems(userId, since);
+  res.status(200).json({ success: true, source: req.source, data: data.map(toMobileItemDetail) });
 };

@@ -1,12 +1,22 @@
 import bcrypt from 'bcryptjs';
 import { Request, Response } from 'express';
 import { ObjectId } from 'mongodb';
+import { OAuth2Client } from 'google-auth-library';
 import { DB_CONFIG } from '../config/dbConfig';
 import Database from '../database/connection';
 import { sendTwoFactorEmail } from '../services/emailService';
 import { generateToken } from '../utils/token';
 
 const db = new Database('vault');
+const googleClient = new OAuth2Client();
+const resolveGoogleAudiences = () =>
+  [
+    process.env.GOOGLE_WEB_CLIENT_ID,
+    process.env.GOOGLE_ANDROID_CLIENT_ID,
+    process.env.VITE_GOOGLE_WEB_CLIENT_ID,
+    process.env.VITE_GOOGLE_ANDROID_CLIENT_ID,
+  ].filter((value): value is string => Boolean(value && value.trim()));
+
 const resolveClientIp = (req: Request): string => {
   const forwarded = req.headers['x-forwarded-for'];
   if (typeof forwarded === 'string' && forwarded.trim()) {
@@ -36,6 +46,52 @@ const resolveDeviceInfo = (req: Request) => {
     ? `${requestModel}${requestOsVersion ? ` - ${normalizedPlatform} ${requestOsVersion}` : ` - ${normalizedPlatform}`}`
     : ua.slice(0, 80);
   return { deviceName, platform: normalizedPlatform, userAgent: ua };
+};
+
+const toAuthUser = (user: any) => ({
+  id: user._id?.toString() || user.googleId,
+  email: user.email,
+  name: user.name,
+  picture: user.picture || user.avatar_url,
+});
+
+const buildAuthResponse = async (
+  req: Request,
+  user: any,
+  options?: { requiresMasterPasswordSetup?: boolean; requiresVaultSetup?: boolean }
+) => {
+  const tokenResult = generateToken({
+    id: user._id?.toString() || user.googleId,
+    email: user.email,
+    name: user.name,
+    picture: user.picture || user.avatar_url,
+  });
+
+  const ipAddress = resolveClientIp(req);
+  const device = resolveDeviceInfo(req);
+  await db.insertOne(DB_CONFIG.collections.sessions, {
+    userId: new ObjectId(user._id),
+    tokenId: tokenResult.tokenId,
+    revoked: false,
+    source: 'mobile',
+    ipAddress,
+    deviceName: device.deviceName,
+    platform: device.platform,
+    userAgent: device.userAgent,
+    createdAt: new Date(),
+    lastActivity: new Date(),
+  });
+
+  return {
+    success: true,
+    source: req.source,
+    token: tokenResult.token,
+    accessToken: tokenResult.token,
+    refreshToken: null,
+    user: toAuthUser(user),
+    requiresMasterPasswordSetup: Boolean(options?.requiresMasterPasswordSetup),
+    requiresVaultSetup: Boolean(options?.requiresVaultSetup),
+  };
 };
 
 export const mobileLogin = async (req: Request, res: Response): Promise<void> => {
@@ -84,39 +140,8 @@ export const mobileLogin = async (req: Request, res: Response): Promise<void> =>
     });
   }
 
-  const tokenResult = generateToken({
-    id: user._id?.toString() || user.googleId,
-    email: user.email,
-    name: user.name,
-    picture: user.picture,
-  });
-
-  const ipAddress = resolveClientIp(req);
-  const device = resolveDeviceInfo(req);
-  await db.insertOne(DB_CONFIG.collections.sessions, {
-    userId: new ObjectId(user._id),
-    tokenId: tokenResult.tokenId,
-    revoked: false,
-    source: 'mobile',
-    ipAddress,
-    deviceName: device.deviceName,
-    platform: device.platform,
-    userAgent: device.userAgent,
-    createdAt: new Date(),
-    lastActivity: new Date(),
-  });
-
-  res.status(200).json({
-    success: true,
-    source: req.source,
-    token: tokenResult.token,
-    user: {
-      id: user._id?.toString() || user.googleId,
-      email: user.email,
-      name: user.name,
-      picture: user.picture,
-    },
-  });
+  const authResponse = await buildAuthResponse(req, user);
+  res.status(200).json(authResponse);
 };
 
 export const mobileVerifyTwoFactor = async (req: Request, res: Response): Promise<void> => {
@@ -139,39 +164,8 @@ export const mobileVerifyTwoFactor = async (req: Request, res: Response): Promis
     { $set: { verified: true, verifiedAt: new Date() } },
   );
 
-  const tokenResult = generateToken({
-    id: user._id?.toString() || user.googleId,
-    email: user.email,
-    name: user.name,
-    picture: user.picture,
-  });
-
-  const ipAddress = resolveClientIp(req);
-  const device = resolveDeviceInfo(req);
-  await db.insertOne(DB_CONFIG.collections.sessions, {
-    userId: new ObjectId(user._id),
-    tokenId: tokenResult.tokenId,
-    revoked: false,
-    source: 'mobile',
-    ipAddress,
-    deviceName: device.deviceName,
-    platform: device.platform,
-    userAgent: device.userAgent,
-    createdAt: new Date(),
-    lastActivity: new Date(),
-  });
-
-  res.status(200).json({
-    success: true,
-    source: req.source,
-    token: tokenResult.token,
-    user: {
-      id: user._id?.toString() || user.googleId,
-      email: user.email,
-      name: user.name,
-      picture: user.picture,
-    },
-  });
+  const authResponse = await buildAuthResponse(req, user);
+  res.status(200).json(authResponse);
 };
 
 export const mobileValidateSession = async (req: Request, res: Response): Promise<void> => {
@@ -196,4 +190,102 @@ export const mobileLogout = async (req: Request, res: Response): Promise<void> =
   if (!req.tokenId) return void res.status(200).json({ success: true, source: req.source, message: 'Logout successful' });
   await db.updateOne(DB_CONFIG.collections.sessions, { tokenId: req.tokenId }, { $set: { revoked: true, revokedAt: new Date() } });
   res.status(200).json({ success: true, source: req.source, message: 'Logout successful' });
+};
+
+export const mobileGoogleOAuth = async (req: Request, res: Response): Promise<void> => {
+  const idToken = String(req.body?.idToken || '').trim();
+  if (!idToken) return void res.status(400).json({ success: false, message: 'Google idToken is required' });
+
+  const audiences = resolveGoogleAudiences();
+  if (!audiences.length) {
+    return void res.status(500).json({ success: false, message: 'Google OAuth audience is not configured on server' });
+  }
+
+  try {
+    const ticket = await googleClient.verifyIdToken({ idToken, audience: audiences });
+    const payload = ticket.getPayload();
+
+    if (!payload?.email || !payload.sub) {
+      return void res.status(401).json({ success: false, message: 'Google token missing required claims' });
+    }
+    if (!payload.email_verified) {
+      return void res.status(401).json({ success: false, message: 'Google account email is not verified' });
+    }
+
+    const now = new Date();
+    const email = payload.email.toLowerCase().trim();
+    const providerId = payload.sub;
+    const fullName = payload.name || payload.given_name || email.split('@')[0];
+    const avatar = payload.picture || null;
+
+    let user = await db.findOne(DB_CONFIG.collections.vaultUsers, {
+      $or: [{ email }, { provider_id: providerId }, { googleId: providerId }],
+      deleted: { $ne: true },
+    });
+
+    let isFirstOAuthLogin = false;
+    if (!user) {
+      const insert = await db.insertOne(DB_CONFIG.collections.vaultUsers, {
+        email,
+        name: fullName,
+        avatar_url: avatar,
+        picture: avatar,
+        auth_provider: 'google',
+        provider_id: providerId,
+        auth_methods: ['google'],
+        has_password: false,
+        email_verified: true,
+        cloudSyncEnabled: false,
+        cloudSyncUpdatedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        source: 'mobile',
+      });
+      user = await db.findOne(DB_CONFIG.collections.vaultUsers, { _id: insert.insertedId });
+      isFirstOAuthLogin = true;
+      console.info('[OAuth][Google] Created new mobile user', { userId: insert.insertedId.toString() });
+    } else {
+      const existingMethods = Array.isArray(user.auth_methods)
+        ? user.auth_methods
+        : user.passwordHash
+          ? ['local']
+          : [];
+      const authMethods = existingMethods.includes('google') ? existingMethods : [...existingMethods, 'google'];
+      const hasPassword = typeof user.has_password === 'boolean' ? user.has_password : Boolean(user.passwordHash);
+
+      await db.updateOne(
+        DB_CONFIG.collections.vaultUsers,
+        { _id: user._id },
+        {
+          $set: {
+            provider_id: user.provider_id || providerId,
+            googleId: user.googleId || providerId,
+            auth_provider: hasPassword ? user.auth_provider || 'local' : 'google',
+            auth_methods: authMethods,
+            has_password: hasPassword,
+            email_verified: true,
+            picture: user.picture || avatar,
+            avatar_url: user.avatar_url || avatar,
+            updatedAt: now,
+          },
+        }
+      );
+      user = await db.findOne(DB_CONFIG.collections.vaultUsers, { _id: user._id });
+      console.info('[OAuth][Google] Linked/logged in existing user', { userId: user?._id?.toString() });
+    }
+
+    if (!user?._id) return void res.status(500).json({ success: false, message: 'Unable to prepare OAuth session' });
+
+    const requiresMasterPasswordSetup = isFirstOAuthLogin || !Boolean(user.passwordHash || user.has_password);
+    const authResponse = await buildAuthResponse(req, user, {
+      requiresMasterPasswordSetup,
+      requiresVaultSetup: isFirstOAuthLogin,
+    });
+
+    res.status(200).json(authResponse);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Google authentication failed';
+    console.error('[OAuth][Google] Verification failed', { message });
+    res.status(401).json({ success: false, message: 'Invalid or expired Google token' });
+  }
 };

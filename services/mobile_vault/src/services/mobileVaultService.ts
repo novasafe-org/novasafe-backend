@@ -367,6 +367,11 @@ export const createItem = async (userId: string, payload: any) => {
     field_count: payload.field_count || 0,
     attachment_count: payload.attachment_count || 0,
     source: 'mobile',
+    sync_status: 'synced',
+    synced_at: now,
+    local_version: Number(payload.localVersion || 1),
+    cloud_version: 1,
+    device_id: payload.deviceId || null,
     createdAt: now,
     updatedAt: now,
     deleted: false,
@@ -407,6 +412,11 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
   const updateData: any = {
     updatedAt: new Date(),
     source: 'mobile',
+    sync_status: 'synced',
+    synced_at: new Date(),
+    local_version: Number(payload.localVersion || existing.local_version || 1),
+    cloud_version: Number(existing.cloud_version || 0) + 1,
+    device_id: payload.deviceId || existing.device_id || null,
     encrypted_data: encrypted.encrypted_data,
     iv: encrypted.iv,
     authTag: encrypted.authTag,
@@ -597,6 +607,66 @@ export const deleteCustomField = async (userId: string, itemId: string, fieldId:
   });
   if (!result.matchedCount) return null;
   return getItemById(userId, itemId, false);
+};
+
+export const syncBulkUpload = async (
+  userId: string,
+  payload: {
+    operations?: Array<{ op: 'create' | 'update' | 'delete'; itemId: string; payload?: any }>;
+    deviceId?: string;
+  },
+) => {
+  const operations = Array.isArray(payload.operations) ? payload.operations : [];
+  const syncedIds: string[] = [];
+  for (const op of operations) {
+    try {
+      if (op.op === 'create') {
+        const created = await createItem(userId, { ...(op.payload || {}), deviceId: payload.deviceId, localVersion: op.payload?.localVersion || 1 });
+        const createdId = (created as any)?.id || (created as any)?._id?.toString?.();
+        if (createdId) syncedIds.push(String(createdId));
+      } else if (op.op === 'update') {
+        const updated = await updateItemById(userId, op.itemId, { ...(op.payload || {}), deviceId: payload.deviceId });
+        const updatedId = (updated as any)?.id || (updated as any)?._id?.toString?.();
+        if (updatedId) syncedIds.push(String(updatedId));
+      } else if (op.op === 'delete') {
+        const deleted = await deleteItemById(userId, op.itemId);
+        if (deleted) syncedIds.push(op.itemId);
+      }
+    } catch {
+      // Continue best-effort syncing for remaining operations.
+    }
+  }
+  await db.updateOne(DB_CONFIG.collections.vaultUsers, { _id: new ObjectId(userId) }, { $set: { lastVaultSyncedAt: new Date() } });
+  return { syncedIds, syncedAt: new Date().toISOString() };
+};
+
+export const pullSyncDeltaItems = async (userId: string, since?: string) => {
+  const updatedAtFilter = since ? { $gt: new Date(since) } : undefined;
+  const query: any = {
+    ...userFilter(userId),
+    deleted: { $ne: true },
+    deleted_at: null,
+  };
+  if (updatedAtFilter) query.updatedAt = updatedAtFilter;
+
+  const items = await db.findMany(collection.vaultItems, query, { sort: { updatedAt: -1 }, limit: 500 });
+  return Promise.all(items.map(async (item: any) => {
+    const decrypted = decryptPayload(item as any) || {};
+    const activePassword = await getActivePasswordVersion(userId, item._id);
+    const customFields = await getCustomFields(userId, item._id, true);
+    return {
+      ...item,
+      ...decrypted,
+      id: item._id?.toString?.(),
+      password: activePassword?.password,
+      custom_fields: customFields,
+      sync_status: item.sync_status || 'synced',
+      synced_at: item.synced_at || item.updatedAt,
+      local_version: item.local_version || 1,
+      cloud_version: item.cloud_version || 1,
+      device_id: item.device_id || null,
+    };
+  }));
 };
 
 export const getDashboardStats = async (userId: string) => {

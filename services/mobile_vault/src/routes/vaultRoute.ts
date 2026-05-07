@@ -7,6 +7,8 @@ import {
   deleteMobileItem,
   deletePasswordVersionById,
   expirePasswordVersion,
+  bulkSyncUpload,
+  pullSyncDelta,
   getMobileItem,
   getMobileItems,
   updateItemCustomField,
@@ -25,5 +27,7 @@ router.put('/items/:id/custom-fields/:fieldId', authMiddleware, updateItemCustom
 router.delete('/items/:id/custom-fields/:fieldId', authMiddleware, deleteItemCustomField);
 router.post('/items/:id/password-versions/:versionId/expire', authMiddleware, expirePasswordVersion);
 router.delete('/items/:id/password-versions/:versionId', authMiddleware, deletePasswordVersionById);
+router.post('/sync/bulk-upload', authMiddleware, bulkSyncUpload);
+router.get('/sync/pull', authMiddleware, pullSyncDelta);
 
 export default router;
