@@ -4,6 +4,7 @@ import { ObjectId } from 'mongodb';
 import { DB_CONFIG } from '../config/dbConfig';
 import Database from '../database/connection';
 import { decryptPayload } from '../utils/crypto';
+import { createItem, listItems, updateItemById } from '../services/mobileVaultService';
 
 const db = new Database('vault');
 
@@ -191,6 +192,20 @@ export const changeMasterPassword = async (req: Request, res: Response): Promise
     { $set: { passwordHash: newHash, updatedAt: new Date(), source: 'mobile' } },
   );
   res.status(200).json({ success: true, source: req.source, message: 'Password changed successfully' });
+};
+
+export const verifyMasterPassword = async (req: Request, res: Response): Promise<void> => {
+  const userObjectId = getUserObjectId(req);
+  if (!userObjectId) return void res.status(401).json({ success: false, message: 'Authentication required' });
+  const { password } = req.body || {};
+  if (!password) {
+    return void res.status(400).json({ success: false, message: 'password is required' });
+  }
+  const user = await db.findOne(DB_CONFIG.collections.vaultUsers, { _id: userObjectId });
+  if (!user?.passwordHash) return void res.status(404).json({ success: false, message: 'User not found' });
+  const valid = await bcrypt.compare(String(password), user.passwordHash);
+  if (!valid) return void res.status(400).json({ success: false, message: 'Invalid master password' });
+  res.status(200).json({ success: true, source: req.source, verified: true });
 };
 
 export const setLoginPassword = async (req: Request, res: Response): Promise<void> => {
@@ -394,6 +409,134 @@ export const getExportHistory = async (req: Request, res: Response): Promise<voi
     createdAt: r.createdAt,
   }));
   res.status(200).json({ success: true, source: req.source, history: mapped });
+};
+
+export const deleteExportHistoryItem = async (req: Request, res: Response): Promise<void> => {
+  const userObjectId = getUserObjectId(req);
+  if (!userObjectId) return void res.status(401).json({ success: false, message: 'Authentication required' });
+  const id = String(req.params.id || '');
+  if (!ObjectId.isValid(id)) return void res.status(400).json({ success: false, message: 'Invalid export id' });
+  const result = await db.getDb().collection(DB_CONFIG.collections.exportHistory).deleteOne({
+    _id: new ObjectId(id),
+    userId: userObjectId,
+  });
+  if (!result.deletedCount) return void res.status(404).json({ success: false, message: 'Export history not found' });
+  res.status(200).json({ success: true, source: req.source, message: 'Export history deleted' });
+};
+
+interface ImportCsvRow {
+  title?: string;
+  type?: string;
+  username?: string;
+  password?: string;
+  website?: string;
+  notes?: string;
+  category?: string;
+  favorite?: string | boolean;
+  created_at?: string;
+  updated_at?: string;
+  custom_fields_json?: string;
+}
+
+const SUPPORTED_IMPORT_TYPES = new Set(['login', 'note', 'card', 'key']);
+
+const normalizeImportValue = (v: unknown): string => String(v ?? '').trim();
+
+const duplicateKey = (row: Pick<ImportCsvRow, 'title' | 'type' | 'username' | 'website'>): string =>
+  `${normalizeImportValue(row.title).toLowerCase()}|${normalizeImportValue(row.type || 'login').toLowerCase()}|${normalizeImportValue(row.username).toLowerCase()}|${normalizeImportValue(row.website).toLowerCase()}`;
+
+export const importCsvData = async (req: Request, res: Response): Promise<void> => {
+  const userObjectId = getUserObjectId(req);
+  if (!userObjectId) return void res.status(401).json({ success: false, message: 'Authentication required' });
+  const duplicateMode = String(req.body?.duplicateMode || 'skip');
+  const rows = Array.isArray(req.body?.rows) ? (req.body.rows as ImportCsvRow[]) : [];
+  if (!rows.length) {
+    return void res.status(400).json({ success: false, message: 'rows are required' });
+  }
+
+  const { items } = await listItems(userObjectId.toString(), 1, 5000);
+  const existingByKey = new Map<string, any>();
+  items.forEach((item: any) => {
+    existingByKey.set(duplicateKey({
+      title: item.title,
+      type: item.type || item.category || 'login',
+      username: item.username,
+      website: item.url,
+    }), item);
+  });
+
+  let imported = 0;
+  let invalid = 0;
+  let duplicates = 0;
+  const errors: Array<{ index: number; message: string }> = [];
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const type = normalizeImportValue(row.type || 'login').toLowerCase();
+    const title = normalizeImportValue(row.title);
+    const password = normalizeImportValue(row.password);
+
+    if (!title || !password) {
+      invalid += 1;
+      errors.push({ index, message: 'title and password are required' });
+      continue;
+    }
+    if (!SUPPORTED_IMPORT_TYPES.has(type)) {
+      invalid += 1;
+      errors.push({ index, message: `unsupported type: ${type}` });
+      continue;
+    }
+
+    const key = duplicateKey({
+      title,
+      type,
+      username: normalizeImportValue(row.username),
+      website: normalizeImportValue(row.website),
+    });
+    const existing = existingByKey.get(key);
+    if (existing) {
+      duplicates += 1;
+      if (duplicateMode === 'skip') {
+        continue;
+      }
+      if (duplicateMode === 'replace') {
+        await updateItemById(userObjectId.toString(), String(existing.id || existing._id), {
+          title,
+          type,
+          category: normalizeImportValue(row.category || type),
+          username: normalizeImportValue(row.username),
+          password,
+          url: normalizeImportValue(row.website),
+          notes: normalizeImportValue(row.notes),
+        });
+        imported += 1;
+        continue;
+      }
+    }
+
+    await createItem(userObjectId.toString(), {
+      title,
+      type,
+      category: normalizeImportValue(row.category || type),
+      username: normalizeImportValue(row.username),
+      password,
+      url: normalizeImportValue(row.website),
+      notes: normalizeImportValue(row.notes),
+    });
+    imported += 1;
+  }
+
+  res.status(200).json({
+    success: true,
+    source: req.source,
+    summary: {
+      totalRows: rows.length,
+      imported,
+      invalid,
+      duplicates,
+    },
+    errors: errors.slice(0, 20),
+  });
 };
 
 export const getAccountDeletionSummary = async (req: Request, res: Response): Promise<void> => {

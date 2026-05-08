@@ -74,6 +74,7 @@ export const createAccount = async (req: Request, res: Response): Promise<void> 
           deleted: false,
           deletedAt: null,
           updatedAt: now,
+          novasafeEmailVerified: true,
         },
       },
     );
@@ -90,6 +91,7 @@ export const createAccount = async (req: Request, res: Response): Promise<void> 
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
+      novasafeEmailVerified: true,
     });
   }
   res.status(201).json({ success: true, source: req.source, message: 'Account created' });
