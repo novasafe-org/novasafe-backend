@@ -5,6 +5,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { DB_CONFIG } from '../config/dbConfig';
 import Database from '../database/connection';
 import { sendSignupOTPEmail, sendTwoFactorEmail } from '../services/emailService';
+import { assertEntitlement } from '../services/subscriptionService';
 import { generateOauthPendingToken, generateToken } from '../utils/token';
 
 const db = new Database('vault');
@@ -121,6 +122,31 @@ const buildAuthResponse = async (
 
   const ipAddress = resolveClientIp(req);
   const device = resolveDeviceInfo(req);
+
+  const userId = user._id?.toString?.();
+  if (userId) {
+    const multiDevice = await assertEntitlement(userId, 'canUseMultiDevice');
+    if (!multiDevice.ok) {
+      const activeSessions = await db
+        .getDb()
+        .collection(DB_CONFIG.collections.sessions)
+        .countDocuments({
+          userId: new ObjectId(user._id),
+          revoked: { $ne: true },
+        });
+      if (activeSessions >= 1) {
+        return {
+          success: false,
+          source: req.source,
+          code: 'NOVASAFE_SUBSCRIPTION_REQUIRED',
+          message: 'Multiple device sessions require NovaSafe Pro.',
+          entitlement: 'canUseMultiDevice',
+          subscription: multiDevice.state,
+        };
+      }
+    }
+  }
+
   await db.insertOne(DB_CONFIG.collections.sessions, {
     userId: new ObjectId(user._id),
     tokenId: tokenResult.tokenId,

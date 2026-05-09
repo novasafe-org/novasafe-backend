@@ -13,7 +13,9 @@ import {
   markPasswordVersionExpired,
   updateCustomField,
   updateItemById,
+  getVaultDataRevisionForUser,
 } from '../services/mobileVaultService';
+import { assertCanCreateVaultItem } from '../services/subscriptionService';
 import { toMobileItemDetail, toMobileItemSummary } from '../utils/mobileItemFormatter';
 
 const pagination = (req: Request) => {
@@ -23,6 +25,18 @@ const pagination = (req: Request) => {
 };
 
 const requireUserId = (req: Request): string | null => req.user?.id || null;
+
+export const getMobileVaultRevision = async (req: Request, res: Response): Promise<void> => {
+  const userId = requireUserId(req);
+  if (!userId) return void res.status(401).json({ success: false, message: 'Authentication required' });
+
+  const revision = await getVaultDataRevisionForUser(userId);
+  res.status(200).json({
+    success: true,
+    source: req.source,
+    revision,
+  });
+};
 
 export const getMobileItems = async (req: Request, res: Response): Promise<void> => {
   const userId = requireUserId(req);
@@ -56,6 +70,16 @@ export const createMobileItem = async (req: Request, res: Response): Promise<voi
   if (!userId) return void res.status(401).json({ success: false, message: 'Authentication required' });
   if (!req.body?.title || !(req.body?.category || req.body?.type)) {
     return void res.status(400).json({ success: false, message: 'title and category/type are required' });
+  }
+  const category = String(req.body?.category || req.body?.type || "login");
+  const allowed = await assertCanCreateVaultItem(userId, category);
+  if (!allowed.ok && "message" in allowed) {
+    return void res.status(403).json({
+      success: false,
+      code: 'NOVASAFE_SUBSCRIPTION_REQUIRED',
+      message: allowed.message,
+      subscription: allowed.state,
+    });
   }
 
   const item = await createItem(userId, req.body);

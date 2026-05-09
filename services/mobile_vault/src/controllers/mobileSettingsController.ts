@@ -4,7 +4,8 @@ import { ObjectId } from 'mongodb';
 import { DB_CONFIG } from '../config/dbConfig';
 import Database from '../database/connection';
 import { decryptPayload } from '../utils/crypto';
-import { createItem, listItems, updateItemById } from '../services/mobileVaultService';
+import { bumpVaultDataRevision, createItem, listItems, updateItemById } from '../services/mobileVaultService';
+import { assertEntitlement } from '../services/subscriptionService';
 
 const db = new Database('vault');
 
@@ -125,6 +126,19 @@ export const updateSyncSettings = async (req: Request, res: Response): Promise<v
   const cloudSyncEnabled = Boolean(req.body?.cloudSyncEnabled);
   const deleteCloudOnDisable = Boolean(req.body?.deleteCloudOnDisable);
 
+  if (cloudSyncEnabled) {
+    const entitlement = await assertEntitlement(userObjectId.toString(), 'canUseCloudSync');
+    if (!entitlement.ok && "message" in entitlement) {
+      return void res.status(403).json({
+        success: false,
+        code: 'NOVASAFE_SUBSCRIPTION_REQUIRED',
+        message: entitlement.message,
+        entitlement: 'canUseCloudSync',
+        subscription: entitlement.state,
+      });
+    }
+  }
+
   await db.updateOne(
     DB_CONFIG.collections.vaultUsers,
     { _id: userObjectId },
@@ -143,6 +157,8 @@ export const updateSyncSettings = async (req: Request, res: Response): Promise<v
       { $set: { deleted: true, deleted_at: new Date(), source: 'mobile' } },
     );
   }
+
+  await bumpVaultDataRevision(userObjectId.toString());
 
   const updated = await db.findOne(DB_CONFIG.collections.vaultUsers, { _id: userObjectId });
   res.status(200).json({

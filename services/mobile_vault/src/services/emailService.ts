@@ -10,7 +10,11 @@ let resendClient: Resend | null = null;
 
 const getConfig = (): EmailConfig => ({
   apiKey: process.env.RESEND_API_KEY || '',
-  from: process.env.RESEND_FROM || process.env.SMTP_FROM || 'onboarding@resend.dev',
+  from:
+    process.env.RESEND_FROM ||
+    process.env.SMTP_FROM ||
+    process.env.SUBSCRIPTION_EMAIL_FROM ||
+    'no-reply@novasafe.io',
 });
 
 const getResendClient = (): Resend | null => {
@@ -25,13 +29,19 @@ const getResendClient = (): Resend | null => {
   return resendClient;
 };
 
-const sendMail = async (to: string, subject: string, html: string, text: string): Promise<boolean> => {
+export const sendMail = async (
+  to: string,
+  subject: string,
+  html: string,
+  text: string,
+  options?: { from?: string },
+): Promise<boolean> => {
   const client = getResendClient();
   if (!client) return false;
   try {
     const cfg = getConfig();
     const result = await client.emails.send({
-      from: cfg.from,
+      from: options?.from || cfg.from,
       to,
       subject,
       html,

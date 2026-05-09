@@ -15,5 +15,9 @@ export const DB_CONFIG = {
     twoFactorChallenges: 'mobileTwoFactorChallenges',
     exportHistory: 'mobileExportHistory',
     shareRecords: 'mobileShareRecords',
+    subscriptions: 'mobileSubscriptions',
+    subscriptionEvents: 'mobileSubscriptionEvents',
+    entitlements: 'mobileEntitlements',
+    purchaseHistory: 'mobilePurchaseHistory',
   },
 };

@@ -4,6 +4,7 @@ import app from './app';
 import Database from './database/connection';
 import { DB_CONFIG } from './config/dbConfig';
 import logger from './logger';
+import { ensureSubscriptionIndexes } from './services/subscriptionService';
 
 const envPaths = [
   path.resolve(process.cwd(), '.env'),
@@ -22,6 +23,7 @@ const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
 const initializeDatabase = async () => {
   try {
     new Database(DB_CONFIG.databaseName);
+    await ensureSubscriptionIndexes();
     logger.info('MongoDB connection status: connected');
   } catch (error: any) {
     logger.error({ error: error?.message }, 'MongoDB connection status: failed');

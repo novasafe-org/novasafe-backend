@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth';
+import { requireEntitlement } from '../middleware/entitlementGuard';
 import {
   changeMasterPassword,
   createExport,
@@ -34,11 +35,11 @@ router.post('/2fa/toggle', authMiddleware, updateTwoFactorStatus);
 router.get('/sessions', authMiddleware, getSessions);
 router.post('/sessions/:id/revoke', authMiddleware, revokeSession);
 router.post('/sessions/revoke-others', authMiddleware, revokeAllOtherSessions);
-router.post('/export', authMiddleware, createExport);
+router.post('/export', authMiddleware, requireEntitlement('canUseCSVImportExport'), createExport);
 router.get('/export/history', authMiddleware, getExportHistory);
 router.get('/export/:id/download', authMiddleware, downloadExportById);
 router.delete('/export/history/:id', authMiddleware, deleteExportHistoryItem);
-router.post('/import/csv', authMiddleware, importCsvData);
+router.post('/import/csv', authMiddleware, requireEntitlement('canUseCSVImportExport'), importCsvData);
 router.get('/account-summary', authMiddleware, getAccountDeletionSummary);
 router.post('/delete-account', authMiddleware, deleteAccount);
 

@@ -10,6 +10,26 @@ const userFilter = (userId: string) => ({
   $or: [{ userId: new ObjectId(userId) }, { userId }],
 });
 
+/** Bump so other sessions can poll `/revision` instead of maintaining a websocket. */
+export const bumpVaultDataRevision = async (userId: string): Promise<void> => {
+  if (!userId || !ObjectId.isValid(userId)) return;
+  try {
+    await db.updateOne(
+      collection.vaultUsers,
+      { _id: new ObjectId(userId) },
+      { $inc: { vaultDataRevision: 1 }, $set: { vaultDataRevisionUpdatedAt: new Date() } },
+    );
+  } catch {
+    /* ignore */
+  }
+};
+
+export const getVaultDataRevisionForUser = async (userId: string): Promise<number> => {
+  if (!userId || !ObjectId.isValid(userId)) return 0;
+  const doc = await db.findOne(collection.vaultUsers, { _id: new ObjectId(userId) });
+  return Number((doc as any)?.vaultDataRevision) || 0;
+};
+
 const CUSTOM_FIELD_TYPES = new Set([
   'TEXT', 'PASSWORD', 'PIN', 'OTP', 'TOTP', 'SECURITY_QUESTION',
   'EMAIL', 'PHONE', 'USERNAME', 'URL', 'ADDRESS',
@@ -391,6 +411,7 @@ export const createItem = async (userId: string, payload: any) => {
   const inserted = await db.findOne(collection.vaultItems, { _id: result.insertedId });
   const versions = await getPasswordVersions(userId, result.insertedId);
   const customFields = await getCustomFields(userId, result.insertedId, true);
+  await bumpVaultDataRevision(userId);
   return {
     ...inserted,
     ...normalizedPayload,
@@ -448,6 +469,7 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
   const updated = await db.findOne(collection.vaultItems, filter);
   const versions = await getPasswordVersions(userId, new ObjectId(id));
   const customFields = await getCustomFields(userId, new ObjectId(id), true);
+  await bumpVaultDataRevision(userId);
   return {
     ...updated,
     ...mergedPlain,
@@ -471,6 +493,7 @@ export const deleteItemById = async (userId: string, id: string) => {
       { credentialId: new ObjectId(id), ...userFilter(userId), deleted: { $ne: true } },
       { $set: { deleted: true, deletedAt: new Date(), source: 'mobile' } },
     );
+    await bumpVaultDataRevision(userId);
   }
   return result.matchedCount > 0;
 };
@@ -486,6 +509,7 @@ export const markPasswordVersionExpired = async (userId: string, itemId: string,
   }, {
     $set: { is_expired: true, updatedAt: new Date(), source: 'mobile' },
   });
+  if (result.matchedCount) await bumpVaultDataRevision(userId);
   return result.matchedCount > 0;
 };
 
@@ -506,6 +530,7 @@ export const deletePasswordVersion = async (userId: string, itemId: string, vers
   }, {
     $set: { deleted: true, deletedAt: new Date(), source: 'mobile' },
   });
+  if (result.matchedCount) await bumpVaultDataRevision(userId);
   return result.matchedCount > 0;
 };
 
@@ -550,6 +575,7 @@ export const addCustomField = async (
     baseDoc.field_value = rawValue;
   }
   await db.insertOne(collection.customFields, baseDoc);
+  await bumpVaultDataRevision(userId);
   return getItemById(userId, itemId, false);
 };
 
@@ -593,6 +619,7 @@ export const updateCustomField = async (
     setData.authTag = null;
   }
   await db.updateOne(collection.customFields, { _id: new ObjectId(fieldId) }, { $set: setData });
+  await bumpVaultDataRevision(userId);
   return getItemById(userId, itemId, false);
 };
 
@@ -606,6 +633,7 @@ export const deleteCustomField = async (userId: string, itemId: string, fieldId:
     $set: { deleted: true, deletedAt: new Date(), source: 'mobile' },
   });
   if (!result.matchedCount) return null;
+  await bumpVaultDataRevision(userId);
   return getItemById(userId, itemId, false);
 };
 

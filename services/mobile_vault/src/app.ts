@@ -6,6 +6,7 @@ import settingsRoute from './routes/settingsRoute';
 import onboardingRoute from './routes/onboardingRoute';
 import shareRoute from './routes/shareRoute';
 import appVersionRoute from './routes/appVersionRoute';
+import subscriptionRoute from './routes/subscriptionRoute';
 import { authMiddleware } from './middleware/auth';
 import { getMobileSecuritySummary } from './controllers/mobileDashboardController';
 import { sourceMiddleware } from './middleware/sourceMiddleware';
@@ -41,6 +42,7 @@ app.get('/mobile/security/summary', authMiddleware, getMobileSecuritySummary);
 app.use('/mobile/settings', settingsRoute);
 app.use('/mobile/onboarding', onboardingRoute);
 app.use('/mobile/share', shareRoute);
+app.use('/mobile/subscriptions', subscriptionRoute);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
