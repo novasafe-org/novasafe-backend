@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import {
+  getMembershipOverviewForUser,
   getSubscriptionDebugSnapshot,
   getSubscriptionOfferings,
   getSubscriptionStateForUser,
@@ -49,6 +50,19 @@ export const handleRevenueCatWebhook = async (
   const auth = req.headers.authorization;
   const result = await processRevenueCatWebhook(req.body || {}, auth);
   res.status(result.status).json({ success: result.status === 200, message: result.message });
+};
+
+export const getMembershipOverview = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ success: false, message: "Authentication required" });
+    return;
+  }
+  const data = await getMembershipOverviewForUser(userId);
+  res.status(200).json({ success: true, source: req.source, data });
 };
 
 export const getSubscriptionDebugState = async (

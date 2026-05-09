@@ -426,3 +426,21 @@ export async function getSubscriptionDebugSnapshot(userId: string): Promise<{
     },
   };
 }
+
+/** App membership screen: persisted subscription + recent RevenueCat webhook activity for this user. */
+export async function getMembershipOverviewForUser(userId: string): Promise<{
+  subscription: SubscriptionState;
+  recentActivity: Array<{ eventType: string; processedAt: string | null }>;
+}> {
+  const subscription = await getSubscriptionStateForUser(userId, { forceRefresh: false });
+  const events = await db.findMany(
+    DB_CONFIG.collections.subscriptionEvents,
+    { userId: new ObjectId(userId) },
+    { limit: 25, sort: { processedAt: -1 } },
+  );
+  const recentActivity = (events || []).map((e: any) => ({
+    eventType: String(e?.eventType || "UNKNOWN"),
+    processedAt: e?.processedAt ? new Date(e.processedAt).toISOString() : null,
+  }));
+  return { subscription, recentActivity };
+}

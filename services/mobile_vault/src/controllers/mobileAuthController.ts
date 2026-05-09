@@ -8,7 +8,7 @@ import { sendSignupOTPEmail, sendTwoFactorEmail } from '../services/emailService
 import { assertEntitlement } from '../services/subscriptionService';
 import { generateOauthPendingToken, generateToken } from '../utils/token';
 
-const db = new Database('vault');
+const db = new Database(DB_CONFIG.databaseName);
 
 const randomSignupOtp = () => `${Math.floor(100000 + Math.random() * 900000)}`;
 
