@@ -54,9 +54,10 @@ type RevenueCatWebhookEvent = {
   api_version?: string;
 };
 
-const db = new Database("vault");
+const db = new Database(DB_CONFIG.databaseName);
 
 export async function ensureSubscriptionIndexes(): Promise<void> {
+  await db.connect();
   const dbc = db.getDb();
   await Promise.all([
     dbc

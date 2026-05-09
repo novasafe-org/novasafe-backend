@@ -22,7 +22,10 @@ const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
 
 const initializeDatabase = async () => {
   try {
-    new Database(DB_CONFIG.databaseName);
+    // Database constructor kicks off async connect without awaiting — must await
+    // explicitly before anything calls getDb() (e.g. ensureSubscriptionIndexes).
+    const bootstrap = new Database(DB_CONFIG.databaseName);
+    await bootstrap.connect();
     await ensureSubscriptionIndexes();
     logger.info('MongoDB connection status: connected');
   } catch (error: any) {

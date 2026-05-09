@@ -24,6 +24,8 @@ class Database {
   }
 
   getDb(): Db {
+    const pooled = pools[this.serviceName];
+    if (pooled) this.dbConnection = pooled;
     if (!this.dbConnection) throw new Error('Database connection is not established');
     return this.dbConnection;
   }
