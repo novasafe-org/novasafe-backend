@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import Database from '../database/connection';
 import { DB_CONFIG } from '../config/dbConfig';
+import type { OauthOtpProvider } from '../utils/token';
 import { verifyToken } from '../utils/token';
 
 declare global {
@@ -8,8 +9,9 @@ declare global {
     interface Request {
       user?: { id: string; email: string; name?: string; picture?: string };
       tokenId?: string;
-      /** True when JWT is the short-lived Google email OTP token (not a full vault session). */
+      /** True when JWT is the short-lived OAuth email OTP token (not a full vault session). */
       oauthOtpPending?: boolean;
+      oauthOtpProvider?: OauthOtpProvider;
     }
   }
 }
@@ -68,6 +70,7 @@ export const sessionOrPendingAuthMiddleware = async (req: Request, res: Response
     const decoded = verifyToken(authHeader.substring(7));
     req.user = { id: decoded.id, email: decoded.email, name: decoded.name, picture: decoded.picture };
     req.tokenId = decoded.jti;
+    req.oauthOtpProvider = decoded.oauthOtpProvider;
 
     if (decoded.tokenType === 'oauth_otp_pending') {
       req.oauthOtpPending = true;
@@ -109,6 +112,7 @@ export const oauthPendingAuthMiddleware = async (req: Request, res: Response, ne
     req.user = { id: decoded.id, email: decoded.email, name: decoded.name, picture: decoded.picture };
     req.tokenId = decoded.jti;
     req.oauthOtpPending = true;
+    req.oauthOtpProvider = decoded.oauthOtpProvider;
     next();
   } catch {
     res.status(401).json({ success: false, message: 'Invalid or expired token' });

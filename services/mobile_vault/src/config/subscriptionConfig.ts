@@ -4,8 +4,8 @@ export const SUBSCRIPTION_CONFIG = {
   apiKey: process.env.REVENUECAT_API_KEY || "",
   projectId: process.env.REVENUECAT_PROJECT_ID || "",
   apiBaseUrl: process.env.REVENUECAT_API_BASE_URL || "https://api.revenuecat.com/v1",
-  entitlementPro:
-    process.env.REVENUECAT_ENTITLEMENT_PRO || "novasafe_pro",
+  /** Must match the entitlement identifier in RevenueCat (your project uses `pro`). */
+  entitlementPro: process.env.REVENUECAT_ENTITLEMENT_PRO || "pro",
   offeringDefault:
     process.env.REVENUECAT_DEFAULT_OFFERING_ID || "default",
   freeLimits: {

@@ -179,7 +179,23 @@ export async function refreshSubscriptionStateFromRevenueCat(
     return base;
   }
 
-  const entitlement = rc.subscriber.entitlements?.[SUBSCRIPTION_CONFIG.entitlementPro];
+  const entitlementsMap = rc.subscriber.entitlements;
+  const configuredId = SUBSCRIPTION_CONFIG.entitlementPro;
+  let resolvedEntitlementId: string | null = null;
+  let entitlement:
+    | { expires_date?: string | null; product_identifier?: string }
+    | null
+    | undefined = null;
+  if (configuredId && entitlementsMap?.[configuredId]) {
+    resolvedEntitlementId = configuredId;
+    entitlement = entitlementsMap[configuredId];
+  } else if (entitlementsMap?.pro) {
+    resolvedEntitlementId = "pro";
+    entitlement = entitlementsMap.pro;
+  } else if (entitlementsMap?.novasafe_pro) {
+    resolvedEntitlementId = "novasafe_pro";
+    entitlement = entitlementsMap.novasafe_pro;
+  }
   const expiresAt = entitlement?.expires_date || null;
   const isActive =
     Boolean(entitlement) &&
@@ -194,7 +210,7 @@ export async function refreshSubscriptionStateFromRevenueCat(
       ...base,
       isActive,
       productId,
-      entitlementId: SUBSCRIPTION_CONFIG.entitlementPro,
+      entitlementId: resolvedEntitlementId,
       expiresAt,
       renewsAt: expiresAt,
       autoRenewing: isActive,
