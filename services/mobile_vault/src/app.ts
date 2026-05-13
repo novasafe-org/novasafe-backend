@@ -1,3 +1,4 @@
+import "./loadEnv";
 import express from 'express';
 import authRoute from './routes/authRoute';
 import vaultRoute from './routes/vaultRoute';
