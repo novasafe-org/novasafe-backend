@@ -1,7 +1,11 @@
 export const SUBSCRIPTION_CONFIG = {
   provider: "revenuecat",
   webhookSecret: process.env.REVENUECAT_WEBHOOK_SECRET || "",
-  apiKey: process.env.REVENUECAT_API_KEY || "",
+  /** RevenueCat **Secret** API key (Project settings → API keys). Do not use goog_/appl_ public SDK keys here. */
+  apiKey:
+    process.env.REVENUECAT_SECRET_API_KEY ||
+    process.env.REVENUECAT_API_KEY ||
+    "",
   projectId: process.env.REVENUECAT_PROJECT_ID || "",
   apiBaseUrl: process.env.REVENUECAT_API_BASE_URL || "https://api.revenuecat.com/v1",
   /** Must match the entitlement identifier in RevenueCat (your project uses `pro`). */

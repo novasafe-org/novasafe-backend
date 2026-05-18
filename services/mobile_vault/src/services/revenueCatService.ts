@@ -42,8 +42,23 @@ type RevenueCatOfferingResponse = {
   }>;
 };
 
+function resolveRevenueCatServerApiKey(): string {
+  return String(SUBSCRIPTION_CONFIG.apiKey || "").trim();
+}
+
+function isLikelyPublicSdkKey(key: string): boolean {
+  return /^(goog_|appl_|rcbw_)/i.test(key);
+}
+
 async function rcFetch<T>(url: string, init?: RequestInit): Promise<T | null> {
-  if (!SUBSCRIPTION_CONFIG.apiKey) return null;
+  const apiKey = resolveRevenueCatServerApiKey();
+  if (!apiKey) return null;
+  if (isLikelyPublicSdkKey(apiKey)) {
+    console.error(
+      "[RevenueCat] Server sync requires REVENUECAT_SECRET_API_KEY (Secret API key). Public SDK keys (goog_/appl_) cannot read subscriber state.",
+    );
+    return null;
+  }
   const response = await fetch(url, {
     ...init,
     headers: {
@@ -52,7 +67,10 @@ async function rcFetch<T>(url: string, init?: RequestInit): Promise<T | null> {
       ...(init?.headers || {}),
     },
   });
-  if (!response.ok) return null;
+  if (!response.ok) {
+    console.error("[RevenueCat] API request failed", { url, status: response.status });
+    return null;
+  }
   return (await response.json()) as T;
 }
 
