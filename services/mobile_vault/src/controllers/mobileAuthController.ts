@@ -530,10 +530,17 @@ export const mobileGoogleOAuth = async (req: Request, res: Response): Promise<vo
     }
 
     const requiresMasterPasswordSetup = !Boolean(user.passwordHash || user.has_password);
-    const requiresVaultSetup = Boolean(user.isFirstOAuthSignup);
+    // Returning Google sign-in: client onboarding is one-time for new accounts only.
+    if (user.isFirstOAuthSignup) {
+      await db.updateOne(
+        DB_CONFIG.collections.vaultUsers,
+        { _id: user._id },
+        { $set: { isFirstOAuthSignup: false, updatedAt: now } },
+      );
+    }
     const authResponse = await buildAuthResponse(req, user, {
       requiresMasterPasswordSetup,
-      requiresVaultSetup,
+      requiresVaultSetup: false,
     });
 
     res.status(200).json({
@@ -820,10 +827,16 @@ export const mobileAppleOAuth = async (req: Request, res: Response): Promise<voi
     }
 
     const requiresMasterPasswordSetup = !Boolean(user.passwordHash || user.has_password);
-    const requiresVaultSetup = Boolean(user.isFirstOAuthSignup);
+    if (user.isFirstOAuthSignup) {
+      await db.updateOne(
+        DB_CONFIG.collections.vaultUsers,
+        { _id: user._id },
+        { $set: { isFirstOAuthSignup: false, updatedAt: now } },
+      );
+    }
     const authResponse = await buildAuthResponse(req, user, {
       requiresMasterPasswordSetup,
-      requiresVaultSetup,
+      requiresVaultSetup: false,
     });
 
     res.status(200).json({

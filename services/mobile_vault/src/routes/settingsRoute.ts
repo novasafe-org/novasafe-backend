@@ -20,6 +20,8 @@ import {
   deleteExportHistoryItem,
   importCsvData,
   verifyMasterPassword,
+  sendVaultPinResetOtp,
+  verifyVaultPinResetOtp,
 } from '../controllers/mobileSettingsController';
 
 const router = Router();
@@ -42,5 +44,7 @@ router.delete('/export/history/:id', authMiddleware, deleteExportHistoryItem);
 router.post('/import/csv', authMiddleware, requireEntitlement('canUseCSVImportExport'), importCsvData);
 router.get('/account-summary', authMiddleware, getAccountDeletionSummary);
 router.post('/delete-account', authMiddleware, deleteAccount);
+router.post('/vault-pin/send-otp', authMiddleware, sendVaultPinResetOtp);
+router.post('/vault-pin/verify-otp', authMiddleware, verifyVaultPinResetOtp);
 
 export default router;

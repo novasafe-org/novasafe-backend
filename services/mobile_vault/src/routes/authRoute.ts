@@ -13,6 +13,7 @@ import {
   mobileVerifyTwoFactor,
 } from '../controllers/mobileAuthController';
 import { authMiddleware, oauthPendingAuthMiddleware, sessionOrPendingAuthMiddleware } from '../middleware/auth';
+import { sendVaultPinResetOtp, verifyVaultPinResetOtp } from '../controllers/mobileSettingsController';
 
 const router = Router();
 
@@ -27,5 +28,7 @@ router.post('/oauth/apple/resend-otp', oauthPendingAuthMiddleware, mobileAppleRe
 router.post('/2fa/verify', mobileVerifyTwoFactor);
 router.post('/logout', sessionOrPendingAuthMiddleware, mobileLogout);
 router.get('/validate-session', sessionOrPendingAuthMiddleware, mobileValidateSession);
+router.post('/vault-pin/send-otp', authMiddleware, sendVaultPinResetOtp);
+router.post('/vault-pin/verify-otp', authMiddleware, verifyVaultPinResetOtp);
 
 export default router;

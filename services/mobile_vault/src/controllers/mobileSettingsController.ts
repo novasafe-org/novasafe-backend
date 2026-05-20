@@ -4,6 +4,7 @@ import { ObjectId } from 'mongodb';
 import { DB_CONFIG } from '../config/dbConfig';
 import Database from '../database/connection';
 import { decryptPayload } from '../utils/crypto';
+import { sendSignupOTPEmail } from '../services/emailService';
 import { bumpVaultDataRevision, createItem, listItems, updateItemById } from '../services/mobileVaultService';
 import { assertEntitlement } from '../services/subscriptionService';
 
@@ -93,6 +94,7 @@ export const getSettings = async (req: Request, res: Response): Promise<void> =>
       ? ['local']
       : [];
   const hasPassword = typeof user?.has_password === 'boolean' ? user.has_password : Boolean(user?.passwordHash);
+  const authProvider = String(user?.auth_provider || '').toLowerCase() || null;
   res.status(200).json({
     success: true,
     source: req.source,
@@ -102,6 +104,7 @@ export const getSettings = async (req: Request, res: Response): Promise<void> =>
       notificationsEnabled: user?.notificationsEnabled ?? true,
       hasPassword,
       authMethods,
+      authProvider,
       canSetLoginPassword: !hasPassword,
       updatedAt: user?.updatedAt || user?.createdAt || null,
     },
@@ -595,4 +598,95 @@ export const deleteAccount = async (req: Request, res: Response): Promise<void> 
     ),
   ]);
   res.status(200).json({ success: true, source: req.source, message: 'Account deleted successfully' });
+};
+
+const VAULT_PIN_RESET_PURPOSE = 'vault_pin_reset';
+const randomVaultPinOtp = () => `${Math.floor(100000 + Math.random() * 900000)}`;
+
+const resolveVaultUserForPinReset = async (req: Request) => {
+  const emailFromToken = String(req.user?.email || '')
+    .toLowerCase()
+    .trim();
+  const userObjectId = getUserObjectId(req);
+  let user =
+    userObjectId != null
+      ? await db.findOne(DB_CONFIG.collections.vaultUsers, { _id: userObjectId, deleted: { $ne: true } })
+      : null;
+  if (!user?.email && emailFromToken) {
+    user = await db.findOne(DB_CONFIG.collections.vaultUsers, { email: emailFromToken, deleted: { $ne: true } });
+  }
+  return user;
+};
+
+export const sendVaultPinResetOtp = async (req: Request, res: Response): Promise<void> => {
+  if (!req.user?.email) return void res.status(401).json({ success: false, message: 'Authentication required' });
+  const user = await resolveVaultUserForPinReset(req);
+  if (!user?.email) return void res.status(404).json({ success: false, message: 'Account not found for this session' });
+  const email = String(user.email).toLowerCase().trim();
+  const code = randomVaultPinOtp();
+  const now = new Date();
+  await db.getDb().collection(DB_CONFIG.collections.otpCodes).updateOne(
+    { email, purpose: VAULT_PIN_RESET_PURPOSE },
+    {
+      $set: {
+        email,
+        purpose: VAULT_PIN_RESET_PURPOSE,
+        code,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        verifyAttempts: 0,
+        updatedAt: now,
+        lastSentAt: now,
+      },
+    },
+    { upsert: true },
+  );
+  const sent = await sendSignupOTPEmail(email, code);
+  if (!sent) {
+    return void res.status(500).json({ success: false, message: 'Unable to send verification email. Check SMTP configuration.' });
+  }
+  res.status(200).json({ success: true, source: req.source, message: 'Verification code sent to your email' });
+};
+
+export const verifyVaultPinResetOtp = async (req: Request, res: Response): Promise<void> => {
+  if (!req.user?.email) return void res.status(401).json({ success: false, message: 'Authentication required' });
+  const user = await resolveVaultUserForPinReset(req);
+  if (!user?.email) return void res.status(404).json({ success: false, message: 'Account not found for this session' });
+  const email = String(user.email).toLowerCase().trim();
+  const otp = String(req.body?.otp || '').trim();
+  if (!/^\d{6}$/.test(otp)) {
+    return void res.status(400).json({ success: false, message: 'Enter the 6-digit code' });
+  }
+  const otpDoc = await db.findOne(DB_CONFIG.collections.otpCodes, {
+    email,
+    purpose: VAULT_PIN_RESET_PURPOSE,
+    expiresAt: { $gt: new Date() },
+  });
+  if (!otpDoc) {
+    return void res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
+  }
+  const attempts = Number(otpDoc.verifyAttempts ?? 0);
+  if (attempts >= 8) {
+    return void res.status(429).json({ success: false, message: 'Too many attempts. Request a new code.' });
+  }
+  if (String(otpDoc.code) !== otp) {
+    await db.updateOne(
+      DB_CONFIG.collections.otpCodes,
+      { _id: otpDoc._id },
+      { $inc: { verifyAttempts: 1 }, $set: { updatedAt: new Date() } },
+    );
+    return void res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
+  }
+  await db.getDb().collection(DB_CONFIG.collections.otpCodes).deleteMany({ email, purpose: VAULT_PIN_RESET_PURPOSE });
+  const verifiedUntil = new Date(Date.now() + 15 * 60 * 1000);
+  await db.updateOne(
+    DB_CONFIG.collections.vaultUsers,
+    { _id: user._id },
+    { $set: { vaultPinResetVerifiedUntil: verifiedUntil, updatedAt: new Date() } },
+  );
+  res.status(200).json({
+    success: true,
+    source: req.source,
+    message: 'Email verified',
+    verifiedUntil: verifiedUntil.toISOString(),
+  });
 };
