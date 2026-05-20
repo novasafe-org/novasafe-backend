@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node dist/src/index.js",
     "build": "tsc",
-    "dev": "ts-node-dev --require tsconfig-paths/register src/index.ts"
+    "dev": "ts-node-dev --require tsconfig-paths/register src/index.ts",
+    "test": "node --require ts-node/register/transpile-only --test src/subscription/*.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

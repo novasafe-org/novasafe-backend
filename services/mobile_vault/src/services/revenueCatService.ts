@@ -1,24 +1,29 @@
 import { SUBSCRIPTION_CONFIG } from "../config/subscriptionConfig";
+import { syncLog } from "../subscription/subscriptionLogger";
 
-type RevenueCatCustomerResponse = {
+export type RevenueCatEntitlementRow = {
+  expires_date?: string | null;
+  grace_period_expires_date?: string | null;
+  product_identifier?: string | null;
+  purchase_date?: string | null;
+};
+
+export type RevenueCatSubscriptionRow = {
+  expires_date?: string | null;
+  original_purchase_date?: string | null;
+  purchase_date?: string | null;
+  unsubscribe_detected_at?: string | null;
+  billing_issues_detected_at?: string | null;
+  grace_period_expires_date?: string | null;
+  store?: string;
+  ownership_type?: string;
+  period_type?: string;
+};
+
+export type RevenueCatSubscriberResponse = {
   subscriber?: {
-    entitlements?: Record<
-      string,
-      {
-        expires_date?: string | null;
-        product_identifier?: string;
-      }
-    >;
-    subscriptions?: Record<
-      string,
-      {
-        expires_date?: string | null;
-        original_purchase_date?: string | null;
-        purchase_date?: string | null;
-        store?: string;
-        ownership_type?: string;
-      }
-    >;
+    entitlements?: Record<string, RevenueCatEntitlementRow>;
+    subscriptions?: Record<string, RevenueCatSubscriptionRow>;
     first_seen?: string;
     original_app_user_id?: string;
   };
@@ -52,10 +57,13 @@ function isLikelyPublicSdkKey(key: string): boolean {
 
 async function rcFetch<T>(url: string, init?: RequestInit): Promise<T | null> {
   const apiKey = resolveRevenueCatServerApiKey();
-  if (!apiKey) return null;
+  if (!apiKey) {
+    syncLog.warn("RevenueCat secret API key missing — cannot call REST API");
+    return null;
+  }
   if (isLikelyPublicSdkKey(apiKey)) {
-    console.error(
-      "[RevenueCat] Server sync requires REVENUECAT_SECRET_API_KEY (Secret API key). Public SDK keys (goog_/appl_) cannot read subscriber state.",
+    syncLog.error(
+      "REVENUECAT_API_KEY looks like a public SDK key (goog_/appl_). Use sk_ secret key on the server.",
     );
     return null;
   }
@@ -68,7 +76,7 @@ async function rcFetch<T>(url: string, init?: RequestInit): Promise<T | null> {
     },
   });
   if (!response.ok) {
-    console.error("[RevenueCat] API request failed", { url, status: response.status });
+    syncLog.error({ url, status: response.status }, "RevenueCat API request failed");
     return null;
   }
   return (await response.json()) as T;
@@ -76,9 +84,9 @@ async function rcFetch<T>(url: string, init?: RequestInit): Promise<T | null> {
 
 export async function fetchRevenueCatSubscriberByAppUserId(
   appUserId: string,
-): Promise<RevenueCatCustomerResponse | null> {
+): Promise<RevenueCatSubscriberResponse | null> {
   const encoded = encodeURIComponent(appUserId);
-  return rcFetch<RevenueCatCustomerResponse>(
+  return rcFetch<RevenueCatSubscriberResponse>(
     `${SUBSCRIPTION_CONFIG.apiBaseUrl}/subscribers/${encoded}`,
   );
 }

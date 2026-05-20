@@ -11,6 +11,7 @@ import subscriptionRoute from './routes/subscriptionRoute';
 import { authMiddleware } from './middleware/auth';
 import { getMobileSecuritySummary } from './controllers/mobileDashboardController';
 import { sourceMiddleware } from './middleware/sourceMiddleware';
+import { tenantMiddleware } from './middleware/tenantMiddleware';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import logger from './logger';
 
@@ -20,7 +21,10 @@ app.use(express.json({ limit: '1mb' }));
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Workspace-Id, X-Source');
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Workspace-Id, X-Source, X-Tenant',
+  );
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
@@ -29,6 +33,7 @@ app.use((req, _res, next) => {
   logger.info(`${req.method} ${req.url}`);
   next();
 });
+app.use(tenantMiddleware);
 app.use(sourceMiddleware);
 
 app.use('/mobile/app', appVersionRoute);

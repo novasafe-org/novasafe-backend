@@ -4,9 +4,11 @@ import {
   getSubscriptionDebugSnapshot,
   getSubscriptionOfferings,
   getSubscriptionStateForUser,
-  processRevenueCatWebhook,
   syncPurchaseForUser,
 } from "../services/subscriptionService";
+import { processRevenueCatWebhook } from "../subscription/revenueCatWebhookProcessor";
+import { webhookLog } from "../subscription/subscriptionLogger";
+import { isWebhookSecretConfigured } from "../subscription/revenueCatWebhookAuth";
 
 export const getSubscriptionState = async (
   req: Request,
@@ -47,9 +49,29 @@ export const handleRevenueCatWebhook = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
-  const auth = req.headers.authorization;
-  const result = await processRevenueCatWebhook(req.body || {}, auth);
-  res.status(result.status).json({ success: result.status === 200, message: result.message });
+  if (!isWebhookSecretConfigured()) {
+    webhookLog.error("REVENUECAT_WEBHOOK_SECRET is not set — webhook cannot be verified");
+    res.status(503).json({
+      success: false,
+      message: "Webhook secret not configured (set REVENUECAT_WEBHOOK_SECRET)",
+    });
+    return;
+  }
+
+  try {
+    const auth = req.headers.authorization;
+    const result = await processRevenueCatWebhook(req.body ?? {}, auth);
+    res.status(result.status).json({
+      success: result.status >= 200 && result.status < 300,
+      message: result.message,
+      eventId: result.eventId,
+      eventType: result.eventType,
+      duplicate: result.duplicate ?? false,
+    });
+  } catch (error: unknown) {
+    webhookLog.error({ err: error }, "Unhandled webhook error");
+    res.status(500).json({ success: false, message: "Internal webhook error" });
+  }
 };
 
 export const getMembershipOverview = async (

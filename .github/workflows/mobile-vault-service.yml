@@ -96,7 +96,7 @@ jobs:
             echo "🚀 NovaSafe Mobile Vault Deployment Started"
             echo "============================================="
 
-            DEPLOY_DIR="/opt/mobile-vault-backend"
+            DEPLOY_DIR="/opt/novasafe/mobile-api"
             SERVICE="mobile_vault"
             CONTAINER="\${CONTAINER_NAME:-mobile-vault-backend}"
             IMAGE="\${MOBILE_VAULT_IMAGE:-ghcr.io/novasafe-org/novasafe-mobile-vault:latest}"

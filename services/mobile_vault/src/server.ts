@@ -2,7 +2,8 @@ import app from './app';
 import Database from './database/connection';
 import { DB_CONFIG } from './config/dbConfig';
 import logger from './logger';
-import { ensureSubscriptionIndexes } from './services/subscriptionService';
+import { ensureSubscriptionIndexes } from './subscription/subscriptionRepository';
+import { isWebhookSecretConfigured } from './subscription/revenueCatWebhookAuth';
 
 const PORT = process.env.MOBILE_VAULT_PORT || process.env.PORT || 3124;
 const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
@@ -15,6 +16,11 @@ const initializeDatabase = async () => {
     await bootstrap.connect();
     await ensureSubscriptionIndexes();
     logger.info('MongoDB connection status: connected');
+    if (!isWebhookSecretConfigured()) {
+      logger.warn(
+        'REVENUECAT_WEBHOOK_SECRET is not set — subscription renewals/cancellations will not sync via webhooks until configured',
+      );
+    }
   } catch (error: any) {
     logger.error({ error: error?.message }, 'MongoDB connection status: failed');
     throw error;
