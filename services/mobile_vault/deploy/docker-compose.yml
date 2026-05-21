@@ -1,0 +1,30 @@
+# Canonical compose for /opt/novasafe/mobile-api on the production server.
+# Synced by .github/workflows/mobile-vault-service.yml (does not overwrite .env).
+# Public HTTPS: https://mobile-api.novasafe.io (nginx → novasafe-mobile-vault:3124).
+
+version: "3.9"
+
+services:
+  mobile_vault:
+    image: ghcr.io/novasafe-org/novasafe-mobile-vault:latest
+    pull_policy: always
+    container_name: novasafe-mobile-vault
+    env_file:
+      - .env
+    environment:
+      MOBILE_VAULT_PORT: "3124"
+    ports:
+      - "127.0.0.1:8085:3124"
+    networks:
+      - novasafe-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3124/mobile/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+networks:
+  novasafe-network:
+    external: true
