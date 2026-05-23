@@ -79,22 +79,30 @@ jobs:
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Sync docker-compose.yml to server
+      - name: Sync docker-compose and nginx config to server
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
         run: |
           DEPLOY_DIR="${{ secrets.MOBILE_VAULT_DEPLOY_DIR }}"
+          NGINX_CONF_DIR="${{ secrets.MOBILE_VAULT_NGINX_CONF_DIR }}"
           if [ -z "$DEPLOY_DIR" ]; then
             DEPLOY_DIR="/opt/novasafe/mobile-api"
           fi
+          if [ -z "$NGINX_CONF_DIR" ]; then
+            NGINX_CONF_DIR="/opt/novasafe/infra/nginx/conf.d"
+          fi
           sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no "${SSH_USER}@${SSH_HOST}" \
-            "mkdir -p ${DEPLOY_DIR}"
+            "mkdir -p ${DEPLOY_DIR} ${NGINX_CONF_DIR}"
           sshpass -p "${SSH_PASSWORD}" scp -o StrictHostKeyChecking=no \
             services/mobile_vault/deploy/docker-compose.yml \
             "${SSH_USER}@${SSH_HOST}:${DEPLOY_DIR}/docker-compose.yml"
-          echo "Synced compose to ${DEPLOY_DIR}/docker-compose.yml (server .env is preserved)"
+          sshpass -p "${SSH_PASSWORD}" scp -o StrictHostKeyChecking=no \
+            services/mobile_vault/deploy/nginx/mobile-api.conf \
+            "${SSH_USER}@${SSH_HOST}:${NGINX_CONF_DIR}/mobile-api.conf"
+          echo "Synced compose → ${DEPLOY_DIR}/docker-compose.yml"
+          echo "Synced nginx   → ${NGINX_CONF_DIR}/mobile-api.conf (server .env preserved)"
 
       - name: Deploy Mobile Vault via docker compose
         env:
@@ -132,6 +140,8 @@ jobs:
             fi
 
             docker network create novasafe-network 2>/dev/null || true
+            docker network connect novasafe-network novasafe-nginx 2>/dev/null || true
+            docker network connect novasafe-network "\${CONTAINER}" 2>/dev/null || true
 
             cd "\${DEPLOY_DIR}"
 
@@ -175,14 +185,30 @@ jobs:
             curl -fsS "http://127.0.0.1:8085/mobile/health" | head -c 200
             echo ""
 
+            NGINX_DIR="/opt/novasafe/infra/nginx"
+            if [ ! -f "\${NGINX_DIR}/conf.d/mobile-api.conf" ]; then
+              echo "ERROR: \${NGINX_DIR}/conf.d/mobile-api.conf missing after sync"
+              exit 1
+            fi
+            if ! grep -q novasafe-mobile-vault "\${NGINX_DIR}/conf.d/mobile-api.conf"; then
+              echo "ERROR: mobile-api.conf must proxy to novasafe-mobile-vault"
+              exit 1
+            fi
+
             if docker ps --format '{{.Names}}' | grep -Fxq novasafe-nginx; then
+              echo "Reload nginx"
+              cd "\${NGINX_DIR}"
+              docker compose exec -T nginx nginx -t
+              docker compose exec -T nginx nginx -s reload
               echo "Nginx → mobile vault probe"
-              docker exec novasafe-nginx wget -qO- "http://novasafe-mobile-vault:3124/mobile/health" | head -c 200
+              docker exec novasafe-nginx wget -qO- "http://novasafe-mobile-vault:3124/mobile/health"
               echo ""
-              echo "Reload nginx (picks up mobile-api.conf if updated on server)"
-              (cd /opt/novasafe/infra/nginx && docker compose exec -T nginx nginx -t && docker compose exec -T nginx nginx -s reload) || true
+              echo "Origin HTTPS probe"
+              curl -fsSk "https://127.0.0.1/mobile/health" -H "Host: mobile-api.novasafe.io" | head -c 200
+              echo ""
             else
-              echo "WARNING: novasafe-nginx not running — skip proxy probe"
+              echo "ERROR: novasafe-nginx is not running"
+              exit 1
             fi
 
             docker ps --filter "name=\${CONTAINER}"
