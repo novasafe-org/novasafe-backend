@@ -4,3 +4,11 @@ export { categorizeError, parseStack } from './stack-parser.util';
 export type { ParsedStackFrame } from './stack-parser.util';
 export { formatLocalTimestamp, formatTimestamp } from './timestamp.util';
 export { redactSensitive } from './sanitize.util';
+export {
+  formatHostUrl,
+  getLocalNetworkAddresses,
+  getStartupHostLabels,
+  getStartupHostUrls,
+  printServerStartupBanner,
+} from './startup-banner.util';
+export type { StartupBannerDatabase, StartupBannerOptions } from './startup-banner.util';

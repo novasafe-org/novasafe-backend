@@ -1,6 +1,6 @@
 import type winston from 'winston';
 import { loadLoggerConfig, type LoggerConfig } from '../config';
-import { colorize, pc } from '../utils/color.util';
+import { printServerStartupBanner } from '../utils/startup-banner.util';
 import { AuditLoggerService, LoggerService, RequestLoggerService } from '../services';
 import { TransportManager } from './transport.manager';
 
@@ -65,23 +65,31 @@ export class LoggerManager {
   }
 
   printStartupBanner(meta: Record<string, unknown> = {}): void {
-    const logger = this.getLogger();
-    const line = colorize('cyan', '═'.repeat(56), this.config.enableColors);
-    logger.success(line);
-    logger.success(
-      colorize('bold', `  ${this.config.serviceName.toUpperCase()} — ${this.config.environment}`, this.config.enableColors),
-    );
-    logger.info('Logging initialized', {
-      level: this.config.level,
+    const port = typeof meta.port === 'number' ? meta.port : Number(process.env.CORE_PORT || process.env.PORT || 3125);
+    const bind = typeof meta.bind === 'string' ? meta.bind : process.env.BIND_HOST || '0.0.0.0';
+    const database =
+      meta.database && typeof meta.database === 'object'
+        ? (meta.database as { state?: string; ready?: boolean; dbName?: string; host?: string })
+        : undefined;
+
+    printServerStartupBanner({
+      port,
+      bind,
+      serviceName: this.config.serviceName,
+      environment: this.config.environment,
+      enableColors: this.config.enableColors,
+      database,
+      logLevel: this.config.level,
+    });
+
+    this.getLogger().debug('Logging transports ready', {
       transports: this.transportManager?.getRegisteredTransportNames(),
       console: this.config.enableConsole,
       file: this.config.enableFile,
       fileOutputMode: this.config.fileOutputMode,
       logDir: this.config.logDir,
       json: this.config.jsonFormat,
-      ...meta,
     });
-    logger.success(line);
   }
 
   async shutdown(): Promise<void> {
