@@ -28,6 +28,8 @@ services:
       LOG_ENABLE_ERROR_STACK: "true"
     ports:
       - "127.0.0.1:8085:3124"
+    volumes:
+      - /opt/novasafe/mobile-api/logs:/app/logs
     networks:
       - novasafe-network
     healthcheck:
