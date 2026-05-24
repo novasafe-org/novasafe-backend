@@ -21,12 +21,22 @@ const SESSIONS = DB_CONFIG.collections.sessions;
 const sanitizeDeviceKey = (value: string): string =>
   value.trim().slice(0, 128).replace(/[^\w.\-:@+/=]/g, '_');
 
-const sessionDeviceKey = (row: Record<string, unknown>): string => {
+const legacySessionFingerprint = (platform: string, userAgent: string): string =>
+  crypto.createHash('sha256').update(`${platform}|${userAgent}`).digest('hex').slice(0, 40);
+
+const fullDeviceFingerprint = (platform: string, userAgent: string, deviceName: string): string =>
+  crypto.createHash('sha256').update(`${platform}|${userAgent}|${deviceName}`).digest('hex').slice(0, 40);
+
+const sessionDeviceKeys = (row: Record<string, unknown>): string[] => {
   const platform = String(row.platform || 'unknown');
   const userAgent = String(row.userAgent || '');
+  const deviceName = String(row.deviceName || '');
+  const keys = new Set<string>();
   const deviceId = row.deviceId ? String(row.deviceId) : '';
-  if (deviceId) return sanitizeDeviceKey(deviceId);
-  return crypto.createHash('sha256').update(`${platform}|${userAgent}`).digest('hex').slice(0, 40);
+  if (deviceId) keys.add(sanitizeDeviceKey(deviceId));
+  keys.add(legacySessionFingerprint(platform, userAgent));
+  if (deviceName) keys.add(fullDeviceFingerprint(platform, userAgent, deviceName));
+  return [...keys];
 };
 
 const dryRun = process.argv.includes('--dry-run');
@@ -61,7 +71,8 @@ async function main(): Promise<void> {
     let userDeviceCount = 0;
 
     for (const row of sessions) {
-      const key = sessionDeviceKey(row as Record<string, unknown>);
+      const record = row as Record<string, unknown>;
+      for (const key of sessionDeviceKeys(record)) {
       if (seen.has(key)) continue;
       seen.add(key);
       index += 1;
@@ -92,6 +103,7 @@ async function main(): Promise<void> {
         );
       }
       devicesUpserted += 1;
+      }
     }
 
     if (userDeviceCount > 0) usersUpdated += 1;

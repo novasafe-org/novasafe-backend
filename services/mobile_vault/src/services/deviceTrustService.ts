@@ -41,6 +41,18 @@ export const shouldRelaxDeviceLimits = (): boolean => {
 const sanitizeDeviceKey = (value: string): string =>
   value.trim().slice(0, 128).replace(/[^\w.\-:@+/=]/g, '_');
 
+/** Matches keys seeded from historical sessions (no deviceName in hash). */
+export const legacySessionFingerprint = (platform: string, userAgent: string): string =>
+  crypto.createHash('sha256').update(`${platform}|${userAgent}`).digest('hex').slice(0, 40);
+
+/** Fallback when no X-Device-Id header is sent. */
+export const fullDeviceFingerprint = (
+  platform: string,
+  userAgent: string,
+  deviceName: string,
+): string =>
+  crypto.createHash('sha256').update(`${platform}|${userAgent}|${deviceName}`).digest('hex').slice(0, 40);
+
 export const resolveDeviceKey = (req: Request, device: { platform: string; userAgent: string; deviceName: string }): string => {
   const fromHeader = req.headers['x-device-id'];
   if (typeof fromHeader === 'string' && fromHeader.trim()) {
@@ -55,17 +67,30 @@ export const resolveDeviceKey = (req: Request, device: { platform: string; userA
     return sanitizeDeviceKey(bodyDeviceId);
   }
 
-  const fingerprint = `${device.platform}|${device.userAgent}|${device.deviceName}`;
-  return crypto.createHash('sha256').update(fingerprint).digest('hex').slice(0, 40);
+  return fullDeviceFingerprint(device.platform, device.userAgent, device.deviceName);
 };
 
-const sessionDeviceKey = (row: Record<string, unknown>): string => {
+/** All keys that may represent the same physical device across app versions. */
+const sessionDeviceKeys = (row: Record<string, unknown>): string[] => {
   const platform = String(row.platform || 'unknown');
   const userAgent = String(row.userAgent || '');
+  const deviceName = String(row.deviceName || '');
+  const keys = new Set<string>();
   const deviceId = row.deviceId ? String(row.deviceId) : '';
-  if (deviceId) return sanitizeDeviceKey(deviceId);
-  return crypto.createHash('sha256').update(`${platform}|${userAgent}`).digest('hex').slice(0, 40);
+  if (deviceId) keys.add(sanitizeDeviceKey(deviceId));
+  keys.add(legacySessionFingerprint(platform, userAgent));
+  if (deviceName) keys.add(fullDeviceFingerprint(platform, userAgent, deviceName));
+  return [...keys];
 };
+
+const loginDeviceKeys = (
+  deviceKey: string,
+  device: { platform: string; userAgent: string; deviceName: string },
+): string[] => [...new Set([
+  deviceKey,
+  legacySessionFingerprint(device.platform, device.userAgent),
+  fullDeviceFingerprint(device.platform, device.userAgent, device.deviceName),
+])];
 
 const countActiveTrustedDevices = async (userId: string): Promise<number> =>
   db.getDb().collection(DEVICES()).countDocuments({
@@ -82,13 +107,60 @@ const findTrustedByKey = async (userId: string, deviceKey: string) =>
     trusted: true,
   });
 
+const upsertTrustedDevice = async (
+  userId: string,
+  deviceKey: string,
+  row: Record<string, unknown>,
+  isPrimary: boolean,
+): Promise<void> => {
+  const now = new Date();
+  await db.getDb().collection(DEVICES()).updateOne(
+    { userId: new ObjectId(userId), deviceKey },
+    {
+      $set: {
+        deviceName: String(row.deviceName || 'Unknown Device'),
+        platform: String(row.platform || 'unknown'),
+        userAgent: String(row.userAgent || ''),
+        source: String(row.source || 'mobile'),
+        trusted: true,
+        isActive: true,
+        lastSeenAt: now,
+        updatedAt: now,
+      },
+      $setOnInsert: {
+        userId: new ObjectId(userId),
+        deviceKey,
+        isPrimary,
+        createdAt: now,
+      },
+    },
+    { upsert: true },
+  );
+};
+
+/** True if this login matches a trusted row or any historical session for same platform + UA. */
+const isLoginDeviceTrusted = async (
+  userId: string,
+  deviceKey: string,
+  device: { platform: string; userAgent: string; deviceName: string },
+): Promise<boolean> => {
+  for (const key of loginDeviceKeys(deviceKey, device)) {
+    if (await findTrustedByKey(userId, key)) return true;
+  }
+
+  const session = await db.findOne(DB_CONFIG.collections.sessions, {
+    userId: new ObjectId(userId),
+    platform: device.platform,
+    userAgent: device.userAgent,
+  });
+  return Boolean(session);
+};
+
 /**
  * Grandfather existing production users: seed from all historical sessions (active + revoked).
+ * Always merges — does not skip when devices already exist (fixes partial migrations).
  */
 export const seedTrustedDevicesFromSessions = async (userId: string): Promise<number> => {
-  const existing = await countActiveTrustedDevices(userId);
-  if (existing > 0) return existing;
-
   const sessions = await db.findMany(
     DB_CONFIG.collections.sessions,
     { userId: new ObjectId(userId) },
@@ -97,36 +169,15 @@ export const seedTrustedDevicesFromSessions = async (userId: string): Promise<nu
 
   const seen = new Set<string>();
   let index = 0;
-  const now = new Date();
 
   for (const row of sessions) {
-    const key = sessionDeviceKey(row as Record<string, unknown>);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    index += 1;
-
-    await db.getDb().collection(DEVICES()).updateOne(
-      { userId: new ObjectId(userId), deviceKey: key },
-      {
-        $set: {
-          deviceName: String((row as { deviceName?: string }).deviceName || 'Unknown Device'),
-          platform: String((row as { platform?: string }).platform || 'unknown'),
-          userAgent: String((row as { userAgent?: string }).userAgent || ''),
-          source: String((row as { source?: string }).source || 'mobile'),
-          trusted: true,
-          isActive: true,
-          lastSeenAt: now,
-          updatedAt: now,
-        },
-        $setOnInsert: {
-          userId: new ObjectId(userId),
-          deviceKey: key,
-          isPrimary: index === 1,
-          createdAt: now,
-        },
-      },
-      { upsert: true },
-    );
+    const record = row as Record<string, unknown>;
+    for (const key of sessionDeviceKeys(record)) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+      index += 1;
+      await upsertTrustedDevice(userId, key, record, index === 1);
+    }
   }
 
   return countActiveTrustedDevices(userId);
@@ -147,7 +198,7 @@ export const evaluateDeviceLogin = async (
 
   const deviceKey = resolveDeviceKey(req, device);
   const trustedDeviceCount = await countActiveTrustedDevices(userId);
-  const alreadyTrusted = Boolean(await findTrustedByKey(userId, deviceKey));
+  const alreadyTrusted = await isLoginDeviceTrusted(userId, deviceKey, device);
 
   const policy: DeviceLoginPolicy = {
     canRegisterNewDevice: isPro || trustedDeviceCount < maxTrustedDevices || alreadyTrusted,
