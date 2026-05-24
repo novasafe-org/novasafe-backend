@@ -5,18 +5,7 @@
 name: Build & Deploy Backend
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - 'services/vault/**'
-      - 'common/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'Dockerfile'
-      - '.github/workflows/docker-build.yml'
+  workflow_dispatch:
 
 jobs:
   build:
