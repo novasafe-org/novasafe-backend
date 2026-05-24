@@ -1,6 +1,8 @@
 import type winston from 'winston';
 import { loadLoggerConfig, type LoggerConfig } from '../config';
+import { resetLogContextFieldCache } from '../core/logger.context';
 import { printServerStartupBanner } from '../utils/startup-banner.util';
+import { registerProcessErrorHandlers } from '../utils/process-error.handlers';
 import { AuditLoggerService, LoggerService, RequestLoggerService } from '../services';
 import { TransportManager } from './transport.manager';
 
@@ -33,11 +35,13 @@ export class LoggerManager {
 
   initialize(config: LoggerConfig = loadLoggerConfig()): LoggerService {
     this.config = config;
+    resetLogContextFieldCache();
     this.transportManager = new TransportManager(config);
     this.winstonLogger = this.transportManager.buildWinstonLogger();
     this.loggerService = new LoggerService(this.winstonLogger, config);
     this.requestLogger = new RequestLoggerService(this.loggerService, config);
     this.auditLogger = new AuditLoggerService(this.loggerService);
+    registerProcessErrorHandlers(this.loggerService);
     return this.loggerService;
   }
 

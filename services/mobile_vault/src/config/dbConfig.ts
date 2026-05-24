@@ -9,6 +9,7 @@ export const DB_CONFIG = {
     vaultItems: 'vaultItems',
     vaultUsers: 'vaultUsers',
     sessions: 'sessions',
+    devices: 'devices',
     passwordVersions: 'mobilePasswordVersions',
     customFields: 'mobileCustomFields',
     otpCodes: 'mobileOtpCodes',

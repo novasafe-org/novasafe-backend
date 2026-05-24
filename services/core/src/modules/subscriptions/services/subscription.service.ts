@@ -1,4 +1,4 @@
-import { ObjectId } from "mongodb";
+import { ObjectId } from "../../../database/object-id";
 import { COLLECTIONS } from "../../../database/collections";
 import type { EntitlementKey } from "../config/subscription.config";
 import { SUBSCRIPTION_CONFIG } from "../config/subscription.config";

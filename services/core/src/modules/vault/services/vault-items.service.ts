@@ -1,4 +1,4 @@
-import { ObjectId } from 'mongodb';
+import { ObjectId } from '../../../database/object-id';
 import { COLLECTIONS } from '../../../database/collections';
 import { decryptPayload, decryptText, encryptPayload, encryptText } from '../../../shared/crypto';
 import { getNativeMongo } from '../../../database/adapters/native-mongo.adapter';

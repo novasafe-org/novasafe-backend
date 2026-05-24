@@ -4,6 +4,7 @@ import type { DatabaseConfig } from '../config';
 import type { IDatabaseConnection } from '../core/database.interface';
 import { ConnectionState, type ConnectionEventName } from '../core/database.types';
 import { logger } from '../../shared/logger';
+import { toReadableError } from '../../shared/logger/utils/readable-error.util';
 import { MongooseConnection } from './mongoose.connection';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -79,7 +80,11 @@ export class DatabaseConnection extends EventEmitter implements IDatabaseConnect
     connection.on('error', (error: Error) => {
       this.setState(ConnectionState.ERROR);
       this.emit('error', error);
-      logger.error({ err: error.message }, 'Database event: error');
+      const readable = toReadableError(error);
+      logger.error(`Database event: ${readable.message}`, {
+        code: readable.code,
+        category: readable.category,
+      });
     });
   }
 

@@ -1,4 +1,4 @@
-import { ObjectId } from "mongodb";
+import { ObjectId } from "../../../database/object-id";
 import type { RevenueCatWebhookEventBody, RevenueCatWebhookPayload } from "./types";
 
 export type ParsedRevenueCatWebhook = {

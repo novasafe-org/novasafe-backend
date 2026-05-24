@@ -2,6 +2,7 @@ import type { Request } from 'express';
 import { Types } from 'mongoose';
 import { OtpPurpose } from '../../../database/schemas/auth/auth.enums';
 import { logger } from '../../../shared/logger';
+import { toReadableError } from '../../../shared/logger/utils/readable-error.util';
 import { isNovaSafeEmailVerified } from '../helpers/auth-user.helper';
 import { getGoogleAuthProvider } from '../providers/google.provider';
 import { getUserRepository } from '../repositories/user.repository';
@@ -113,9 +114,17 @@ export class OAuthGoogleService {
       });
       return { status: 200, body: authResult };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Google authentication failed';
-      logger.error('OAuth Google verification failed', { message });
-      return { status: 401, body: { success: false, message: 'Invalid or expired Google token' } };
+      const readable = toReadableError(error);
+      logger.error(`OAuth Google failed: ${readable.message}`, {
+        code: readable.code,
+        category: readable.category,
+      });
+      const clientMessage =
+        readable.code === 'DATABASE_UNAVAILABLE'
+          ? readable.message
+          : 'Invalid or expired Google token';
+      const status = readable.code === 'DATABASE_UNAVAILABLE' ? 503 : 401;
+      return { status, body: { success: false, message: clientMessage, code: readable.code } };
     }
   }
 

@@ -38,5 +38,11 @@
   },
   "dependencies": {
     
+  },
+  "pnpm": {
+    "overrides": {
+      "core-service>bson": "6.10.4",
+      "core-service>mongodb": "6.20.0"
+    }
   }
 }

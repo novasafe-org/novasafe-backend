@@ -39,7 +39,7 @@ export abstract class AbstractLogger implements ILogger {
       ...meta,
     });
 
-    this.winston.log(level, message, payload);
+    this.winston.log({ level, message, ...payload });
   }
 
   info(first: LogArg, second?: LogArg): void {

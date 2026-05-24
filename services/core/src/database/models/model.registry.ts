@@ -42,6 +42,10 @@ import {
   VaultUserSchema,
   VAULT_USER_MODEL_NAME,
 } from '../schemas/users';
+import {
+  DeviceSchema,
+  DEVICE_MODEL_NAME,
+} from '../schemas/devices';
 
 export interface ModelRegistration {
   modelName: string;
@@ -55,6 +59,7 @@ const registrations: ModelRegistration[] = [
   { modelName: PASSWORD_HISTORY_MODEL_NAME, schema: PasswordHistorySchema, collection: COLLECTIONS.passwordVersions },
   { modelName: CUSTOM_FIELD_MODEL_NAME, schema: CustomFieldSchema, collection: COLLECTIONS.customFields },
   { modelName: SESSION_MODEL_NAME, schema: SessionSchema, collection: COLLECTIONS.sessions },
+  { modelName: DEVICE_MODEL_NAME, schema: DeviceSchema, collection: COLLECTIONS.devices },
   { modelName: OTP_CODE_MODEL_NAME, schema: OtpCodeSchema, collection: COLLECTIONS.otpCodes },
   { modelName: TWO_FACTOR_CHALLENGE_MODEL_NAME, schema: TwoFactorChallengeSchema, collection: COLLECTIONS.twoFactorChallenges },
   { modelName: SHARE_RECORD_MODEL_NAME, schema: ShareRecordSchema, collection: COLLECTIONS.shareRecords },

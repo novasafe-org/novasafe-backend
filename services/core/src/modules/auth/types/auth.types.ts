@@ -7,6 +7,13 @@ export interface AuthUserDto {
   picture?: string;
 }
 
+export interface DevicePolicyDto {
+  canRegisterNewDevice: boolean;
+  trustedDeviceCount: number;
+  maxTrustedDevices: number;
+  isPro: boolean;
+}
+
 export interface AuthSuccessResponse {
   success: true;
   source?: string;
@@ -17,15 +24,28 @@ export interface AuthSuccessResponse {
   requiresMasterPasswordSetup?: boolean;
   requiresVaultSetup?: boolean;
   oauthIntent?: string;
+  devicePolicy?: DevicePolicyDto;
 }
 
+/** @deprecated Use AuthDeviceBlockedResponse — kept for client compatibility */
 export interface AuthSubscriptionBlockedResponse {
   success: false;
   source?: string;
-  code: 'NOVASAFE_SUBSCRIPTION_REQUIRED';
+  code: 'NOVASAFE_SUBSCRIPTION_REQUIRED' | 'NOVASAFE_DEVICE_LIMIT';
   message: string;
   entitlement: string;
   subscription: unknown;
+  devicePolicy?: DevicePolicyDto;
+}
+
+export interface AuthDeviceBlockedResponse {
+  success: false;
+  source?: string;
+  code: 'NOVASAFE_DEVICE_LIMIT';
+  message: string;
+  entitlement: 'canUseMultiDevice';
+  subscription: unknown;
+  devicePolicy: DevicePolicyDto;
 }
 
 export type VaultOAuthUserRow = {

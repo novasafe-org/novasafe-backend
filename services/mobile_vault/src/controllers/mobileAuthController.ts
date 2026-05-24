@@ -6,7 +6,11 @@ import { DB_CONFIG } from '../config/dbConfig';
 import Database from '../database/connection';
 import { verifyAppleIdentityToken } from '../services/appleIdentityToken';
 import { sendSignupOTPEmail, sendTwoFactorEmail } from '../services/emailService';
-import { assertEntitlement } from '../services/subscriptionService';
+import {
+  evaluateDeviceLogin,
+  registerTrustedDeviceForLogin,
+  touchSessionDeviceId,
+} from '../services/deviceTrustService';
 import { generateOauthPendingToken, generateToken } from '../utils/token';
 import type { OauthOtpProvider } from '../utils/token';
 
@@ -129,27 +133,23 @@ const buildAuthResponse = async (
   const device = resolveDeviceInfo(req);
 
   const userId = user._id?.toString?.();
+  let deviceKey: string | undefined;
+  let devicePolicy: Record<string, unknown> | undefined;
+
   if (userId) {
-    const multiDevice = await assertEntitlement(userId, 'canUseMultiDevice');
-    if (!multiDevice.ok) {
-      const activeSessions = await db
-        .getDb()
-        .collection(DB_CONFIG.collections.sessions)
-        .countDocuments({
-          userId: new ObjectId(user._id),
-          revoked: { $ne: true },
-        });
-      if (activeSessions >= 1) {
-        return {
-          success: false,
-          source: req.source,
-          code: 'NOVASAFE_SUBSCRIPTION_REQUIRED',
-          message: 'Multiple device sessions require NovaSafe Pro.',
-          entitlement: 'canUseMultiDevice',
-          subscription: multiDevice.state,
-        };
-      }
+    const deviceDecision = await evaluateDeviceLogin(req, userId, device);
+    if (deviceDecision.allowed === false) {
+      return {
+        success: false,
+        source: req.source,
+        code: deviceDecision.code,
+        message: deviceDecision.message,
+        subscription: deviceDecision.subscription,
+        devicePolicy: deviceDecision.policy,
+      };
     }
+    deviceKey = deviceDecision.deviceKey;
+    devicePolicy = deviceDecision.policy;
   }
 
   await db.insertOne(DB_CONFIG.collections.sessions, {
@@ -161,9 +161,15 @@ const buildAuthResponse = async (
     deviceName: device.deviceName,
     platform: device.platform,
     userAgent: device.userAgent,
+    ...(deviceKey ? { deviceId: deviceKey } : {}),
     createdAt: new Date(),
     lastActivity: new Date(),
   });
+
+  if (userId && deviceKey) {
+    await registerTrustedDeviceForLogin(req, userId, deviceKey, device);
+    await touchSessionDeviceId(tokenResult.tokenId, deviceKey);
+  }
 
   return {
     success: true,
@@ -174,6 +180,7 @@ const buildAuthResponse = async (
     user: toAuthUser(user),
     requiresMasterPasswordSetup: Boolean(options?.requiresMasterPasswordSetup),
     requiresVaultSetup: Boolean(options?.requiresVaultSetup),
+    ...(devicePolicy ? { devicePolicy } : {}),
   };
 };
 

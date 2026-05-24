@@ -1,4 +1,13 @@
-export { createConsoleFormat, formatConsoleLine } from './console.formatter';
+export {
+  createConsoleFormat,
+  createConsolePrettyFormat,
+  formatConsoleLine,
+} from './console.formatter';
 export { formatErrorMeta } from './error.formatter';
-export { createJsonFormat } from './json.formatter';
-export { formatRequestLine } from './request.formatter';
+export { createJsonFormat, createStructuredJsonFormat } from './json.formatter';
+export {
+  buildPlainRequestMessage,
+  formatColoredRequestLine,
+  formatColoredRequestSummary,
+  formatRequestLine,
+} from './request.formatter';

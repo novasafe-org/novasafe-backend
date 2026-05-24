@@ -22,6 +22,8 @@ import {
 } from './vault';
 import { applyVaultUserIndexes } from './users';
 import { VAULT_USER_MODEL_NAME } from './users';
+import { applyDeviceIndexes } from './devices';
+import { DEVICE_MODEL_NAME } from './devices';
 
 /**
  * Ensures MongoDB indexes for all registered schemas.
@@ -44,6 +46,7 @@ export const ensureAllSchemaIndexes = async (): Promise<void> => {
   );
 
   await applySessionIndexes(ModelRegistry.get(SESSION_MODEL_NAME));
+  await applyDeviceIndexes(ModelRegistry.get(DEVICE_MODEL_NAME));
   await applySharingIndexes(ModelRegistry.get(SHARE_RECORD_MODEL_NAME));
   await applyAuditIndexes(ModelRegistry.get(EXPORT_HISTORY_MODEL_NAME));
 

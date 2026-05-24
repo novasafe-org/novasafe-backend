@@ -1,20 +1,37 @@
 import { NextFunction, Request, Response } from 'express';
 import { logger } from '../shared/logger';
+import { toReadableError } from '../shared/logger/utils/readable-error.util';
 
 export const errorHandler = (
   err: Error,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ): void => {
-  if (!res.headersSent) {
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-    });
-  }
+  const readable = toReadableError(err);
+
+  logger.error(readable.message, {
+    code: readable.code,
+    category: readable.category,
+    method: req.method,
+    url: req.originalUrl,
+    err: err.message,
+  });
 
   if (res.headersSent) {
-    logger.error('Error after headers sent', { err: err.message });
+    return;
   }
+
+  const status =
+    readable.code === 'DATABASE_UNAVAILABLE'
+      ? 503
+      : readable.code === 'INVALID_TOKEN'
+        ? 401
+        : 500;
+
+  res.status(status).json({
+    success: false,
+    message: readable.message,
+    code: readable.code,
+  });
 };

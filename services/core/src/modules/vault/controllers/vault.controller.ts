@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { ObjectId } from 'mongodb';
+import { ObjectId } from '../../../database/object-id';
 import { assertCanCreateVaultItem } from '../../auth/adapters/subscription.adapter';
 import {
   addCustomField,

@@ -1,5 +1,11 @@
 import fs from 'node:fs';
 import { LOGGER_DEFAULTS } from './logger.constants';
+import {
+  resolveLogContextFields,
+  resolveLogHttpFields,
+  type LogContextFieldKey,
+  type LogHttpFieldKey,
+} from './log-context-fields.config';
 import { resolveLogLevel, type LogLevelName } from './logger.levels';
 
 export type AppEnvironment = 'development' | 'staging' | 'production' | 'test' | string;
@@ -18,7 +24,10 @@ export interface LoggerConfig {
   enableErrorStack: boolean;
   enableColors: boolean;
   prettyPrint: boolean;
+  /** When true, file/rotate transports emit JSON (never used for pretty console). */
   jsonFormat: boolean;
+  /** Force JSON on stdout (e.g. container without TTY); disables ANSI console formatting. */
+  consoleStructured: boolean;
   logDir: string;
   maxSize: string;
   maxFiles: string;
@@ -26,6 +35,14 @@ export interface LoggerConfig {
   requestBody: boolean;
   responseBody: boolean;
   sensitiveFields: string[];
+  /** Fields merged from request context (LOG_CONTEXT_FIELDS). */
+  contextFields: LogContextFieldKey[];
+  /** Fields on HTTP access logs (LOG_HTTP_FIELDS). */
+  httpFields: LogHttpFieldKey[];
+  /** Print extra metadata block under console lines (LOG_CONSOLE_META). */
+  consoleMeta: boolean;
+  /** Include stack traces on console (file logs still use enableErrorStack). */
+  consoleErrorStack: boolean;
 }
 
 const parseBoolean = (value: string | undefined, fallback: boolean): boolean => {
@@ -84,6 +101,7 @@ const applyEnvironmentDefaults = (
       enableColors: parseBoolean(process.env.LOG_ENABLE_COLORS, false),
       prettyPrint: parseBoolean(process.env.LOG_PRETTY_PRINT, false),
       jsonFormat: parseBoolean(process.env.LOG_JSON_FORMAT, true),
+      consoleStructured: parseBoolean(process.env.LOG_CONSOLE_STRUCTURED, true),
       logDir: resolveLogDirectory(env),
     };
   }
@@ -97,6 +115,7 @@ const applyEnvironmentDefaults = (
       enableColors: parseBoolean(process.env.LOG_ENABLE_COLORS, true),
       prettyPrint: parseBoolean(process.env.LOG_PRETTY_PRINT, true),
       jsonFormat: parseBoolean(process.env.LOG_JSON_FORMAT, false),
+      consoleStructured: parseBoolean(process.env.LOG_CONSOLE_STRUCTURED, false),
     };
   }
 
@@ -109,6 +128,7 @@ const applyEnvironmentDefaults = (
     enableColors: parseBoolean(process.env.LOG_ENABLE_COLORS, true),
     prettyPrint: parseBoolean(process.env.LOG_PRETTY_PRINT, true),
     jsonFormat: parseBoolean(process.env.LOG_JSON_FORMAT, false),
+    consoleStructured: parseBoolean(process.env.LOG_CONSOLE_STRUCTURED, false),
     logDir: resolveLogDirectory(env),
   };
 };
@@ -128,6 +148,7 @@ export const loadLoggerConfig = (): LoggerConfig => {
     enableColors: true,
     prettyPrint: true,
     jsonFormat: false,
+    consoleStructured: false,
     logDir: resolveLogDirectory(environment),
     maxSize: process.env.LOG_MAX_SIZE || LOGGER_DEFAULTS.LOG_MAX_SIZE,
     maxFiles: process.env.LOG_MAX_FILES || LOGGER_DEFAULTS.LOG_MAX_FILES,
@@ -138,6 +159,10 @@ export const loadLoggerConfig = (): LoggerConfig => {
       process.env.LOG_SENSITIVE_FIELDS,
       [...LOGGER_DEFAULTS.SENSITIVE_FIELDS],
     ),
+    contextFields: resolveLogContextFields(),
+    httpFields: resolveLogHttpFields(),
+    consoleMeta: parseBoolean(process.env.LOG_CONSOLE_META, false),
+    consoleErrorStack: parseBoolean(process.env.LOG_CONSOLE_ERROR_STACK, false),
   };
 
   return applyEnvironmentDefaults(environment, base);

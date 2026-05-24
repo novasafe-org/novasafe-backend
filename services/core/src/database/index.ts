@@ -1,3 +1,4 @@
+export * from './object-id';
 export * from './adapters/native-mongo.adapter';
 export * from './collections';
 export * from './config';

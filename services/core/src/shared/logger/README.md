@@ -48,10 +48,33 @@ In containers, logs are written under `LOG_DIR` (default `/app/logs`). Mount a v
 | `LOG_DIR` | File log directory |
 | `LOG_MAX_SIZE` / `LOG_MAX_FILES` / `LOG_DATE_PATTERN` | Rotation |
 | `LOG_PRETTY_PRINT` | Human-readable console |
-| `LOG_JSON_FORMAT` | JSON console/file |
+| `LOG_JSON_FORMAT` | JSON file logs (console uses pretty format in dev) |
+| `LOG_CONSOLE_STRUCTURED` | JSON stdout in containers (no ANSI) |
+| `LOG_CONTEXT_FIELDS` | Comma-separated request-context fields on every log |
+| `LOG_HTTP_FIELDS` | Comma-separated fields on HTTP access logs |
+| `LOG_CONSOLE_META` | Print extra JSON block under console lines (default: false) |
+| `LOG_CONSOLE_ERROR_STACK` | Stack traces on console (default: false; use file logs for stacks) |
 | `LOG_REQUEST_BODY` / `LOG_RESPONSE_BODY` | Body logging |
 | `LOG_SENSITIVE_FIELDS` | Redaction list (comma-separated) |
 | `NODE_ENV` | development / staging / production presets |
+
+## Metadata pipeline (where fields come from)
+
+1. **Request context middleware** (`shared/request-context/`) parses headers → `RequestContext.toLogMeta()`.
+2. **Logger bridge** (`request-context/bridge/logger-context.bridge.ts`) stores fields in AsyncLocalStorage.
+3. **`LoggerContext.mergeMeta()`** (`logger/core/logger.context.ts`) merges store + platform context + call-site meta, then **filters** via `LOG_CONTEXT_FIELDS`.
+4. **HTTP access logs** (`RequestLoggerService`) attach only fields listed in `LOG_HTTP_FIELDS`.
+5. **Console** shows a single pretty line; **file/JSON** uses the same field allowlists.
+
+Available context keys: see `config/log-context-fields.config.ts` (`LOG_CONTEXT_FIELD_KEYS`).
+
+Example `.env`:
+
+```env
+LOG_CONTEXT_FIELDS=requestId,traceId,source,platform,userId
+LOG_HTTP_FIELDS=requestId,method,url,statusCode,durationMs,ip
+LOG_CONSOLE_META=false
+```
 
 ## Architecture
 

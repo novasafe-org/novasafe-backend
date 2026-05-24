@@ -30,6 +30,18 @@ export class SessionRepository {
       { $set: { revoked: true, revokedAt: new Date() } },
     );
   }
+
+  async updateActivityByTokenId(tokenId: string, fields: { deviceId?: string }): Promise<void> {
+    await this.model.updateOne(
+      { tokenId },
+      {
+        $set: {
+          lastActivity: new Date(),
+          ...(fields.deviceId ? { deviceId: fields.deviceId } : {}),
+        },
+      },
+    );
+  }
 }
 
 let sessionRepo: SessionRepository | null = null;

@@ -22,6 +22,8 @@ export const COLLECTIONS = {
   notes: 'notes',
   /** Reserved for document attachments module. */
   documents: 'documents',
+  /** Trusted device registry (multi-device policy). */
+  devices: 'devices',
   /** Reserved for in-app / push notification records. */
   notifications: 'notifications',
   /** Reserved for platform audit trail (separate from export history). */

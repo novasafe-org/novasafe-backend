@@ -4,7 +4,7 @@ import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import { LOG_FILES, type LoggerConfig } from '../config';
 import type { ILoggerTransport } from '../core/logger.interface';
-import { createJsonFormat } from '../formatters';
+import { createStructuredJsonFormat } from '../formatters';
 
 const ensureLogDir = (logDir: string): string => {
   const resolved = path.isAbsolute(logDir) ? logDir : path.resolve(process.cwd(), logDir);
@@ -32,7 +32,7 @@ export class FileTransport implements ILoggerTransport {
       maxSize: this.config.maxSize,
       maxFiles: this.config.maxFiles,
       level: this.level || this.config.level,
-      format: createJsonFormat(this.config),
+      format: createStructuredJsonFormat(this.config),
       zippedArchive: true,
     });
   }

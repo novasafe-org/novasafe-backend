@@ -1,15 +1,24 @@
 import type { Request } from 'express';
-import { Types } from 'mongoose';
+import { ObjectId } from '../../../database/object-id';
 import { authConfig } from '../../../config/auth.config';
 import { getRequestContext } from '../../../shared/request-context';
 import { logger } from '../../../shared/logger';
 import { resolveClientIp, resolveDeviceInfo } from '../helpers/device.helper';
-import { assertEntitlement } from '../adapters/subscription.adapter';
 import { toAuthUser } from '../helpers/auth-user.helper';
 import type { ISession } from '../../../database/schemas/sessions';
 import { getSessionRepository } from '../repositories/session.repository';
 import { getJwtTokenService } from '../tokens/jwt.token.service';
-import type { AuthSubscriptionBlockedResponse, AuthSuccessResponse, VaultOAuthUserRow } from '../types/auth.types';
+import type {
+  AuthDeviceBlockedResponse,
+  AuthSuccessResponse,
+  VaultOAuthUserRow,
+} from '../types/auth.types';
+import {
+  evaluateDeviceLogin,
+  registerTrustedDeviceForLogin,
+  resolveDeviceKey,
+  touchSessionDeviceId,
+} from './device-trust.service';
 
 export class AuthResponseService {
   constructor(
@@ -21,35 +30,40 @@ export class AuthResponseService {
     req: Request,
     user: VaultOAuthUserRow,
     options?: { requiresMasterPasswordSetup?: boolean; requiresVaultSetup?: boolean; oauthIntent?: string },
-  ): Promise<AuthSuccessResponse | AuthSubscriptionBlockedResponse> {
+  ): Promise<AuthSuccessResponse | AuthDeviceBlockedResponse> {
+    const userId = user._id.toString();
+    const deviceDecision = await evaluateDeviceLogin(req, userId);
+
+    if (deviceDecision.allowed === false) {
+      logger.warn('Login blocked — new device over free plan limit', {
+        userId,
+        code: deviceDecision.code,
+        trustedDeviceCount: deviceDecision.policy.trustedDeviceCount,
+      });
+      return {
+        success: false,
+        source: req.source,
+        code: deviceDecision.code,
+        message: deviceDecision.message,
+        entitlement: 'canUseMultiDevice',
+        subscription: deviceDecision.subscription,
+        devicePolicy: deviceDecision.policy,
+      };
+    }
+
+    const deviceKey = deviceDecision.deviceKey;
     const tokenResult = this.tokens.generateAccessToken({
-      id: user._id.toString(),
+      id: userId,
       email: user.email,
       name: user.name,
       picture: user.picture || user.avatar_url,
     });
 
-    const userId = user._id.toString();
-    const multiDevice = await assertEntitlement(userId, 'canUseMultiDevice');
-    if (!multiDevice.ok) {
-      const activeSessions = await this.sessions.countActiveByUserId(userId);
-      if (activeSessions >= 1) {
-        return {
-          success: false,
-          source: req.source,
-          code: 'NOVASAFE_SUBSCRIPTION_REQUIRED',
-          message: 'Multiple device sessions require NovaSafe Pro.',
-          entitlement: 'canUseMultiDevice',
-          subscription: multiDevice.state,
-        };
-      }
-    }
-
     const ipAddress = resolveClientIp(req);
     const device = resolveDeviceInfo(req);
     const platformCtx = getRequestContext();
     const sessionPayload: Record<string, unknown> = {
-      userId: new Types.ObjectId(user._id.toString()),
+      userId: new ObjectId(userId),
       tokenId: tokenResult.tokenId,
       revoked: false,
       source: platformCtx?.legacySource ?? req.source ?? 'mobile',
@@ -57,13 +71,21 @@ export class AuthResponseService {
       deviceName: device.deviceName,
       platform: device.platform,
       userAgent: device.userAgent,
+      deviceId: deviceKey,
       createdAt: new Date(),
       lastActivity: new Date(),
       ...(platformCtx ? platformCtx.toSessionFields() : {}),
     };
     await this.sessions.create(sessionPayload as Partial<ISession>);
+    await registerTrustedDeviceForLogin(req, userId, deviceKey);
+    await touchSessionDeviceId(tokenResult.tokenId, deviceKey);
 
-    logger.info('Auth session created', { userId, platform: device.platform });
+    logger.info('Auth session created', {
+      userId,
+      platform: device.platform,
+      deviceKey,
+      trustedDeviceCount: deviceDecision.policy.trustedDeviceCount,
+    });
 
     return {
       success: true,
@@ -75,6 +97,7 @@ export class AuthResponseService {
       requiresMasterPasswordSetup: Boolean(options?.requiresMasterPasswordSetup),
       requiresVaultSetup: Boolean(options?.requiresVaultSetup),
       oauthIntent: options?.oauthIntent,
+      devicePolicy: deviceDecision.policy,
     };
   }
 
@@ -118,3 +141,6 @@ export const getAuthResponseService = (): AuthResponseService => {
   if (!authResponseService) authResponseService = new AuthResponseService();
   return authResponseService;
 };
+
+// Re-export for callers that need device key before session exists
+export { resolveDeviceKey };

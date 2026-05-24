@@ -4,11 +4,11 @@
   "private": true,
   "main": "dist/index.js",
   "scripts": {
-    "predev": "node ../../scripts/free-port.mjs ${PLAYGROUND_PORT:-5200}",
+    "predev": "node ../../scripts/free-port.mjs PLAYGROUND_PORT 5200",
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "stop": "node ../../scripts/free-port.mjs ${PLAYGROUND_PORT:-5200}"
+    "stop": "node ../../scripts/free-port.mjs PLAYGROUND_PORT 5200"
   },
   "dependencies": {
     "@scalar/express-api-reference": "^0.9.16",

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { ObjectId } from 'mongodb';
+import { ObjectId } from '../../../database/object-id';
 import { COLLECTIONS } from '../../../database/collections';
 import { getNativeMongo } from '../../../database/adapters/native-mongo.adapter';
 import { sendShareInviteEmail } from '../../auth/services/email.service';
