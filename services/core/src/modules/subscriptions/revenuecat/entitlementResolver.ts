@@ -1,4 +1,5 @@
 import { SUBSCRIPTION_CONFIG } from "../config/subscription.config";
+import type { RevenueCatSubscriptionRow } from '../services/revenue-cat.service';
 
 export type ResolvedRevenueCatEntitlement = {
   entitlementId: string;
@@ -17,33 +18,93 @@ type RevenueCatEntitlementRow = {
 
 const FALLBACK_ENTITLEMENT_IDS = ["pro", "novasafe_pro"] as const;
 
+const toResolved = (
+  entitlementId: string,
+  row: RevenueCatEntitlementRow,
+): ResolvedRevenueCatEntitlement => ({
+  entitlementId,
+  expiresDate: row.expires_date ?? null,
+  gracePeriodExpiresDate: row.grace_period_expires_date ?? null,
+  productIdentifier: row.product_identifier ?? null,
+  purchaseDate: row.purchase_date ?? null,
+});
+
+const preferredEntitlementIds = (): string[] =>
+  [SUBSCRIPTION_CONFIG.entitlementPro, ...FALLBACK_ENTITLEMENT_IDS].filter(
+    (id, index, arr) => id && arr.indexOf(id) === index,
+  );
+
 /**
- * Resolves the NovaSafe Pro entitlement row from RevenueCat subscriber entitlements.
- * Configured id first, then known fallbacks — extensible via REVENUECAT_ENTITLEMENT_PRO.
+ * Preferred entitlement id first, then any entitlement row (matches native SDK scanning).
  */
 export function resolveProEntitlement(
   entitlementsMap: Record<string, RevenueCatEntitlementRow> | undefined | null,
 ): ResolvedRevenueCatEntitlement | null {
   if (!entitlementsMap || typeof entitlementsMap !== "object") return null;
 
-  const preferred = [
-    SUBSCRIPTION_CONFIG.entitlementPro,
-    ...FALLBACK_ENTITLEMENT_IDS,
-  ].filter((id, index, arr) => id && arr.indexOf(id) === index);
-
-  for (const id of preferred) {
+  for (const id of preferredEntitlementIds()) {
     const row = entitlementsMap[id];
     if (!row) continue;
-    return {
-      entitlementId: id,
-      expiresDate: row.expires_date ?? null,
-      gracePeriodExpiresDate: row.grace_period_expires_date ?? null,
-      productIdentifier: row.product_identifier ?? null,
-      purchaseDate: row.purchase_date ?? null,
-    };
+    const resolved = toResolved(id, row);
+    if (isEntitlementCurrentlyActive(resolved)) return resolved;
+  }
+
+  for (const [id, row] of Object.entries(entitlementsMap)) {
+    if (!row || typeof row !== "object") continue;
+    const resolved = toResolved(id, row);
+    if (isEntitlementCurrentlyActive(resolved)) return resolved;
   }
 
   return null;
+}
+
+/** Active store subscription when entitlement rows lag (common on Android sandbox). */
+export function resolveActiveStoreSubscription(
+  subscriptions: Record<string, RevenueCatSubscriptionRow> | undefined | null,
+  now = Date.now(),
+): ResolvedRevenueCatEntitlement | null {
+  if (!subscriptions || typeof subscriptions !== "object") return null;
+
+  for (const [productId, row] of Object.entries(subscriptions)) {
+    if (!row || typeof row !== "object") continue;
+    const grace = row.grace_period_expires_date
+      ? new Date(row.grace_period_expires_date).getTime()
+      : NaN;
+    if (!Number.isNaN(grace) && grace > now) {
+      return {
+        entitlementId: SUBSCRIPTION_CONFIG.entitlementPro,
+        expiresDate: row.expires_date ?? row.grace_period_expires_date ?? null,
+        gracePeriodExpiresDate: row.grace_period_expires_date ?? null,
+        productIdentifier: productId,
+        purchaseDate: row.purchase_date ?? row.original_purchase_date ?? null,
+      };
+    }
+    const exp = row.expires_date ? new Date(row.expires_date).getTime() : NaN;
+    if (!row.expires_date || (!Number.isNaN(exp) && exp > now)) {
+      return {
+        entitlementId: SUBSCRIPTION_CONFIG.entitlementPro,
+        expiresDate: row.expires_date ?? null,
+        gracePeriodExpiresDate: row.grace_period_expires_date ?? null,
+        productIdentifier: productId,
+        purchaseDate: row.purchase_date ?? row.original_purchase_date ?? null,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Best-effort Pro resolution from RevenueCat REST subscriber (entitlements + subscriptions).
+ */
+export function resolveProFromSubscriber(input: {
+  entitlements?: Record<string, RevenueCatEntitlementRow> | null;
+  subscriptions?: Record<string, RevenueCatSubscriptionRow> | null;
+}): ResolvedRevenueCatEntitlement | null {
+  return (
+    resolveProEntitlement(input.entitlements) ||
+    resolveActiveStoreSubscription(input.subscriptions)
+  );
 }
 
 export function isEntitlementCurrentlyActive(

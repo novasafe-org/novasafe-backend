@@ -45,12 +45,7 @@ export async function getPersistedSubscriptionStateForUser(userId: string): Prom
 
 export { hasEntitlement };
 
-export async function assertEntitlement(
-  userId: string,
-  entitlement: EntitlementKey,
-): Promise<{ ok: true; state: SubscriptionState } | { ok: false; state: SubscriptionState; message: string }> {
-  const state = await getSubscriptionStateForUser(userId);
-  if (hasEntitlement(state, entitlement)) return { ok: true, state };
+const entitlementDeniedMessage = (entitlement: EntitlementKey): string => {
   const messages: Record<EntitlementKey, string> = {
     canUseCloudSync: "Cloud sync requires NovaSafe Pro",
     canUseCSVImportExport: "CSV import/export requires NovaSafe Pro",
@@ -60,7 +55,37 @@ export async function assertEntitlement(
     canUseAdvancedSecurity: "Advanced security analytics require NovaSafe Pro",
     canUseMultiDevice: "Multiple devices require NovaSafe Pro",
   };
-  return { ok: false, state, message: messages[entitlement] };
+  return messages[entitlement];
+};
+
+export async function assertEntitlement(
+  userId: string,
+  entitlement: EntitlementKey,
+): Promise<{ ok: true; state: SubscriptionState } | { ok: false; state: SubscriptionState; message: string }> {
+  const state = await getSubscriptionStateForUser(userId);
+  if (hasEntitlement(state, entitlement)) return { ok: true, state };
+  return { ok: false, state, message: entitlementDeniedMessage(entitlement) };
+}
+
+/**
+ * Re-check entitlement after a live RevenueCat sync (e.g. user just purchased Pro in-app).
+ */
+export async function assertEntitlementWithRefresh(
+  userId: string,
+  entitlement: EntitlementKey,
+): Promise<{ ok: true; state: SubscriptionState } | { ok: false; state: SubscriptionState; message: string }> {
+  const first = await assertEntitlement(userId, entitlement);
+  if (first.ok) return first;
+
+  try {
+    const refreshed = await refreshSubscriptionStateFromRevenueCat(userId);
+    if (hasEntitlement(refreshed, entitlement)) {
+      return { ok: true, state: refreshed };
+    }
+    return { ok: false, state: refreshed, message: entitlementDeniedMessage(entitlement) };
+  } catch {
+    return first;
+  }
 }
 
 export async function assertCanCreateVaultItem(

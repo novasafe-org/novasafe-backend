@@ -40,6 +40,10 @@ export interface RequestLogContext {
   source?: string;
   platform?: string;
   legacySource?: string;
+  userId?: string;
+  context?: string;
+  responseMessage?: string;
+  responseCode?: string;
 }
 
 export interface AuditLogEntry extends LogEntry {

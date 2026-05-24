@@ -22,12 +22,16 @@ export const formatColoredRequestSummary = (
   ctx: RequestLogContext,
   config: LoggerConfig,
 ): string => {
+  const statusNum = ctx.statusCode || 0;
+  const lineColor = statusNum >= 500 ? 'red' : statusNum >= 400 ? 'yellow' : null;
+
   const method = colorize('bold', ctx.method.padEnd(7), config.enableColors);
-  const url = colorize('white', ctx.url, config.enableColors);
-  const status = statusColor(ctx.statusCode || 0, config.enableColors);
+  const url = colorize(lineColor || 'white', ctx.url, config.enableColors);
+  const status = statusColor(statusNum, config.enableColors);
   const duration = colorize('gray', `${ctx.durationMs ?? 0}ms`, config.enableColors);
   const ip = ctx.ip ? colorize('gray', ctx.ip, config.enableColors) : '';
-  return `${method} ${url} ${status} ${duration} ${ip}`.trim();
+  const line = `${method} ${url} ${status} ${duration} ${ip}`.trim();
+  return lineColor && config.enableColors ? colorize(lineColor, line, true) : line;
 };
 
 /** @deprecated Use formatColoredRequestSummary */

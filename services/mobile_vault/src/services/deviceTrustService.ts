@@ -234,8 +234,9 @@ export const registerTrustedDeviceForLogin = async (
   const userObjectId = new ObjectId(userId);
   const activeCount = await countActiveTrustedDevices(userId);
 
+  const filter = { userId: userObjectId, deviceKey };
   await db.getDb().collection(DEVICES()).updateOne(
-    { userId: userObjectId, deviceKey },
+    filter,
     {
       $set: {
         deviceName: device.deviceName,
@@ -246,7 +247,6 @@ export const registerTrustedDeviceForLogin = async (
         isActive: true,
         lastSeenAt: now,
         updatedAt: now,
-        ...(activeCount === 0 ? { isPrimary: true } : {}),
       },
       $setOnInsert: {
         userId: userObjectId,
@@ -257,6 +257,10 @@ export const registerTrustedDeviceForLogin = async (
     },
     { upsert: true },
   );
+
+  if (activeCount === 0) {
+    await db.getDb().collection(DEVICES()).updateOne(filter, { $set: { isPrimary: true } });
+  }
 };
 
 export const touchSessionDeviceId = async (tokenId: string, deviceKey: string): Promise<void> => {

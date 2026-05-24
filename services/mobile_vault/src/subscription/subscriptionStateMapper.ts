@@ -7,7 +7,7 @@ import {
 import type { RevenueCatSubscriberResponse } from "../services/revenueCatService";
 import {
   isEntitlementCurrentlyActive,
-  resolveProEntitlement,
+  resolveProFromSubscriber,
 } from "./entitlementResolver";
 import type {
   PlanTier,
@@ -58,19 +58,21 @@ export function withTierEntitlements(
   state: SubscriptionState,
   tier: PlanTier,
 ): SubscriptionState {
-  const isPro = tier === "pro" && state.isActive;
+  const grantPro = tier === "pro" && (state.isActive || state.inGracePeriod);
+  const isPro = grantPro;
+  const effectiveTier: PlanTier = grantPro ? "pro" : "free";
   return {
     ...state,
-    tier,
+    tier: effectiveTier,
     isPro,
-    entitlements: tier === "pro" ? { ...PRO_ENTITLEMENTS } : { ...FREE_ENTITLEMENTS },
+    entitlements: grantPro ? { ...PRO_ENTITLEMENTS } : { ...FREE_ENTITLEMENTS },
     limits: {
       maxPasswords:
-        tier === "pro" ? Number.MAX_SAFE_INTEGER : SUBSCRIPTION_CONFIG.freeLimits.maxPasswords,
+        grantPro ? Number.MAX_SAFE_INTEGER : SUBSCRIPTION_CONFIG.freeLimits.maxPasswords,
       maxSecureNotes:
-        tier === "pro" ? Number.MAX_SAFE_INTEGER : SUBSCRIPTION_CONFIG.freeLimits.maxSecureNotes,
+        grantPro ? Number.MAX_SAFE_INTEGER : SUBSCRIPTION_CONFIG.freeLimits.maxSecureNotes,
       maxDevices:
-        tier === "pro" ? Number.MAX_SAFE_INTEGER : SUBSCRIPTION_CONFIG.freeLimits.maxDevices,
+        grantPro ? Number.MAX_SAFE_INTEGER : SUBSCRIPTION_CONFIG.freeLimits.maxDevices,
     },
   };
 }
@@ -107,7 +109,10 @@ export function mapRevenueCatSubscriberToState(
   const base = defaultSubscriptionState();
   if (!rc?.subscriber) return base;
 
-  const resolved = resolveProEntitlement(rc.subscriber.entitlements);
+  const resolved = resolveProFromSubscriber({
+    entitlements: rc.subscriber.entitlements,
+    subscriptions: rc.subscriber.subscriptions,
+  });
   const isActive = isEntitlementCurrentlyActive(resolved);
   const productId = resolved?.productIdentifier || null;
   const subscriptionRecord = productId ? rc.subscriber.subscriptions?.[productId] : undefined;
@@ -143,7 +148,7 @@ export function mapRevenueCatSubscriberToState(
     expiresAt,
   });
 
-  const tier: PlanTier = isActive ? "pro" : "free";
+  const tier: PlanTier = isActive || inGracePeriod ? "pro" : "free";
   return withTierEntitlements(
     {
       ...base,
@@ -167,5 +172,7 @@ export function mapRevenueCatSubscriberToState(
 }
 
 export function hasEntitlement(state: SubscriptionState, key: EntitlementKey): boolean {
+  if (state.inGracePeriod) return Boolean(PRO_ENTITLEMENTS[key]);
+  if (isProFromState(state)) return Boolean(PRO_ENTITLEMENTS[key]);
   return Boolean(state.entitlements[key]);
 }

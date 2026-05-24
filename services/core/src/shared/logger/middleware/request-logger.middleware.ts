@@ -31,6 +31,21 @@ export const createRequestLoggerMiddleware = () => {
       platformCtx?.correlationId ?? extractCorrelationId(req.headers as Record<string, unknown>);
     const startedAt = process.hrtime.bigint();
 
+    const originalJson = res.json.bind(res);
+    res.json = function captureJsonBody(this: Response, body: unknown) {
+      const status = res.statusCode;
+      if (status >= 400 && body && typeof body === 'object') {
+        const payload = body as Record<string, unknown>;
+        if (typeof payload.message === 'string') {
+          res.locals.responseMessage = payload.message;
+        }
+        if (typeof payload.code === 'string') {
+          res.locals.responseCode = payload.code;
+        }
+      }
+      return originalJson(body);
+    };
+
     if (!platformCtx) {
       res.setHeader('x-request-id', requestId);
       if (correlationId) {
@@ -44,6 +59,11 @@ export const createRequestLoggerMiddleware = () => {
         config.requestBody && req.body
           ? redactSensitive(req.body, config.sensitiveFields)
           : undefined;
+      const isSyncSettingsPath = req.path.endsWith('/sync') || req.originalUrl.includes('/settings/sync');
+      const responseMessage =
+        typeof res.locals?.responseMessage === 'string' ? res.locals.responseMessage : undefined;
+      const responseCode =
+        typeof res.locals?.responseCode === 'string' ? res.locals.responseCode : undefined;
 
       requestLogger.logCompleted({
         requestId,
@@ -59,6 +79,10 @@ export const createRequestLoggerMiddleware = () => {
         source: platformCtx?.source,
         platform: platformCtx?.platform,
         legacySource: platformCtx?.legacySource,
+        userId: platformCtx?.userId,
+        ...(isSyncSettingsPath ? { context: 'settings-sync' } : {}),
+        responseMessage,
+        responseCode,
         ...(body ? { body } : {}),
       });
     };

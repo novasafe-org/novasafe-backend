@@ -91,6 +91,12 @@ app.get('/api/v1/health', async (_req, res) => {
   res.status(payload.success ? 200 : 503).json({ ...payload, version: 'v1' });
 });
 
+/** Legacy mobile_vault path — used by production nginx / docker healthcheck. */
+app.get('/mobile/health', async (_req, res) => {
+  const payload = await buildHealthPayload();
+  res.status(payload.success ? 200 : 503).json({ ...payload, source: 'mobile' });
+});
+
 registerModuleRoutes(app);
 
 app.use(notFoundHandler);

@@ -29,10 +29,23 @@ export class RequestLoggerService {
         declaredSource: context.source,
         source: context.source,
         platform: context.platform,
+        userId: context.userId,
+        context: context.context,
+        responseMessage: context.responseMessage,
+        responseCode: context.responseCode,
       },
       this.config.httpFields,
     );
 
+    const status = context.statusCode ?? 0;
+    if (status >= 500) {
+      this.logger.error(message, httpMeta);
+      return;
+    }
+    if (status >= 400) {
+      this.logger.warn(message, httpMeta);
+      return;
+    }
     this.logger.request(message, httpMeta);
   }
 }

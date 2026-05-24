@@ -18,6 +18,14 @@ export const LOG_CONTEXT_FIELD_KEYS = [
   'userId',
   'sessionId',
   'deviceId',
+  'tier',
+  'isPro',
+  'isActive',
+  'expiresAt',
+  'canUseCloudSync',
+  'canUseMultiDevice',
+  'responseMessage',
+  'responseCode',
   'appVersion',
   'buildVersion',
   'apiVersion',
@@ -43,6 +51,10 @@ export const LOG_HTTP_FIELD_KEYS = [
   'declaredSource',
   'source',
   'platform',
+  'userId',
+  'context',
+  'responseMessage',
+  'responseCode',
 ] as const;
 
 export type LogHttpFieldKey = (typeof LOG_HTTP_FIELD_KEYS)[number];

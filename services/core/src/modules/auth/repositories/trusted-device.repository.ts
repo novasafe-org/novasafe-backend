@@ -58,9 +58,11 @@ export class TrustedDeviceRepository {
     }
 
     const activeCount = await this.countActiveByUserId(input.userId);
+    const filter = { userId: userObjectId, deviceKey: input.deviceKey };
 
+    // isPrimary must not appear in both $set and $setOnInsert (Mongo upsert conflict).
     await this.model.updateOne(
-      { userId: userObjectId, deviceKey: input.deviceKey },
+      filter,
       {
         $set: {
           deviceName: input.deviceName,
@@ -70,17 +72,20 @@ export class TrustedDeviceRepository {
           trusted: true,
           isActive: true,
           lastSeenAt: now,
-          ...(input.makePrimary ? { isPrimary: true } : {}),
         },
         $setOnInsert: {
           userId: userObjectId,
           deviceKey: input.deviceKey,
-          isPrimary: activeCount === 0 || Boolean(input.makePrimary),
+          isPrimary: activeCount === 0,
           createdAt: now,
         },
       },
       { upsert: true },
     );
+
+    if (input.makePrimary) {
+      await this.model.updateOne(filter, { $set: { isPrimary: true } });
+    }
   }
 }
 

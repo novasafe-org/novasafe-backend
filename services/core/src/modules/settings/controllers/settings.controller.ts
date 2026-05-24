@@ -5,7 +5,12 @@ import { COLLECTIONS } from '../../../database/collections';
 import { getNativeMongo } from '../../../database/adapters/native-mongo.adapter';
 import { decryptPayload } from '../../../shared/crypto';
 import { bumpVaultDataRevision, createItem, listItems, updateItemById } from '../../vault/services/vault-items.service';
-import { assertEntitlement } from '../../subscriptions/services/subscription.service';
+import { assertEntitlementWithRefresh } from '../../subscriptions/services/subscription.service';
+import {
+  applySyncSettingsCacheHeaders,
+  logSettingsSync,
+  subscriptionSnapshot,
+} from '../utils/settings-sync-log.util';
 
 const db = getNativeMongo();
 
@@ -111,11 +116,19 @@ export const getSettings = async (req: Request, res: Response): Promise<void> =>
 export const getSyncSettings = async (req: Request, res: Response): Promise<void> => {
   const userObjectId = getUserObjectId(req);
   if (!userObjectId) return void res.status(401).json({ success: false, message: 'Authentication required' });
+  applySyncSettingsCacheHeaders(res);
   const user = await db.findOne(COLLECTIONS.vaultUsers, { _id: userObjectId });
+  const cloudSyncEnabled = Boolean(user?.cloudSyncEnabled);
+  logSettingsSync('get', {
+    userId: userObjectId.toString(),
+    cloudSyncEnabled,
+    lastSyncedAt: user?.lastVaultSyncedAt || null,
+    storedValue: user?.cloudSyncEnabled,
+  });
   res.status(200).json({
     success: true,
     source: req.source,
-    cloudSyncEnabled: user?.cloudSyncEnabled ?? true,
+    cloudSyncEnabled,
     lastSyncedAt: user?.lastVaultSyncedAt || null,
   });
 };
@@ -123,12 +136,27 @@ export const getSyncSettings = async (req: Request, res: Response): Promise<void
 export const updateSyncSettings = async (req: Request, res: Response): Promise<void> => {
   const userObjectId = getUserObjectId(req);
   if (!userObjectId) return void res.status(401).json({ success: false, message: 'Authentication required' });
+  applySyncSettingsCacheHeaders(res);
+
+  const userId = userObjectId.toString();
   const cloudSyncEnabled = Boolean(req.body?.cloudSyncEnabled);
   const deleteCloudOnDisable = Boolean(req.body?.deleteCloudOnDisable);
 
+  logSettingsSync('update_request', {
+    userId,
+    requestedCloudSyncEnabled: cloudSyncEnabled,
+    deleteCloudOnDisable,
+  });
+
   if (cloudSyncEnabled) {
-    const entitlement = await assertEntitlement(userObjectId.toString(), 'canUseCloudSync');
-    if (!entitlement.ok && "message" in entitlement) {
+    const entitlement = await assertEntitlementWithRefresh(userId, 'canUseCloudSync');
+    if (entitlement.ok === false) {
+      const snap = subscriptionSnapshot(entitlement.state);
+      logSettingsSync('update_denied', {
+        userId,
+        reason: 'entitlement',
+        ...snap,
+      });
       return void res.status(403).json({
         success: false,
         code: 'NOVASAFE_SUBSCRIPTION_REQUIRED',
@@ -137,6 +165,10 @@ export const updateSyncSettings = async (req: Request, res: Response): Promise<v
         subscription: entitlement.state,
       });
     }
+    logSettingsSync('update_entitlement_ok', {
+      userId,
+      subscription: subscriptionSnapshot(entitlement.state),
+    });
   }
 
   await db.updateOne(
@@ -158,13 +190,20 @@ export const updateSyncSettings = async (req: Request, res: Response): Promise<v
     );
   }
 
-  await bumpVaultDataRevision(userObjectId.toString());
+  await bumpVaultDataRevision(userId);
 
   const updated = await db.findOne(COLLECTIONS.vaultUsers, { _id: userObjectId });
+  const resolvedEnabled = Boolean(updated?.cloudSyncEnabled);
+  logSettingsSync('update_success', {
+    userId,
+    cloudSyncEnabled: resolvedEnabled,
+    lastSyncedAt: updated?.lastVaultSyncedAt || null,
+  });
+
   res.status(200).json({
     success: true,
     source: req.source,
-    cloudSyncEnabled: updated?.cloudSyncEnabled ?? cloudSyncEnabled,
+    cloudSyncEnabled: resolvedEnabled,
     lastSyncedAt: updated?.lastVaultSyncedAt || null,
   });
 };

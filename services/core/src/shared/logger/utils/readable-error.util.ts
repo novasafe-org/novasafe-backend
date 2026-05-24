@@ -4,15 +4,21 @@ export type ReadableError = {
   category: string;
 };
 
-const isMongoError = (error: Error): boolean =>
-  error.name.includes('Mongo') ||
+const isMongoConnectivityError = (error: Error): boolean =>
   error.message.includes('MongoServerSelectionError') ||
-  error.message.includes('MongoNetworkError');
+  error.message.includes('MongoNetworkError') ||
+  error.message.includes('connection timed out') ||
+  error.message.includes('ECONNREFUSED');
 
 const isTlsError = (error: Error): boolean =>
   error.message.includes('SSL routines') ||
   error.message.includes('ERR_SSL') ||
   error.message.includes('tlsv1 alert');
+
+const isMongoWriteError = (error: Error): boolean =>
+  error.name.includes('Mongo') &&
+  !isMongoConnectivityError(error) &&
+  !isTlsError(error);
 
 /**
  * Short, operator-friendly error text for console and API responses.
@@ -23,12 +29,22 @@ export const toReadableError = (error: unknown): ReadableError => {
     return { category: 'unknown', message: String(error) };
   }
 
-  if (isMongoError(error) || isTlsError(error)) {
+  if (isTlsError(error) || isMongoConnectivityError(error)) {
+    const detail = error.message.split('\n')[0]?.trim() || error.name;
     return {
       category: 'database',
       code: 'DATABASE_UNAVAILABLE',
       message:
-        'Database is unreachable (TLS/network). Verify Atlas IP allowlist, VPN, and MONGO_* / VAULT_DB_* credentials.',
+        `Database is unreachable (TLS/network). ${detail} — verify Atlas IP allowlist, VPN, and MONGO_* / VAULT_DB_* credentials.`,
+    };
+  }
+
+  if (isMongoWriteError(error)) {
+    const detail = error.message.split('\n')[0]?.trim() || error.name;
+    return {
+      category: 'database_write',
+      code: 'DATABASE_WRITE_ERROR',
+      message: detail.slice(0, 500),
     };
   }
 

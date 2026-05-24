@@ -19,16 +19,18 @@ const stringifyMeta = (meta: unknown): string => {
   }
 };
 
-const isHttpRequestMeta = (info: winston.Logform.TransformableInfo): info is winston.Logform.TransformableInfo & {
+const isHttpRequestMeta = (
+  info: winston.Logform.TransformableInfo,
+): info is winston.Logform.TransformableInfo & {
   method: string;
   url: string;
   statusCode: number;
   durationMs: number;
   requestId: string;
 } =>
-  info.level === 'http' &&
   typeof info.method === 'string' &&
   typeof info.url === 'string' &&
+  typeof info.statusCode === 'number' &&
   typeof info.requestId === 'string';
 
 export const formatConsoleLine = (

@@ -15,7 +15,12 @@ export const errorHandler = (
     category: readable.category,
     method: req.method,
     url: req.originalUrl,
+    path: req.path,
     err: err.message,
+    errName: err.name,
+    ...(err.stack && process.env.LOG_ENABLE_ERROR_STACK === 'true'
+      ? { stack: err.stack.split('\n').slice(0, 5).join('\n') }
+      : {}),
   });
 
   if (res.headersSent) {

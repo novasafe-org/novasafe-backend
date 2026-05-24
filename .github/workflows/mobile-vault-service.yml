@@ -1,7 +1,8 @@
-# Build and push Mobile Vault image, then deploy via docker compose on the server.
-# Server path: /opt/novasafe/mobile-api/ (compose synced from services/mobile_vault/deploy/)
+# Build and push Mobile API image (core service), deploy via docker compose on the server.
+# Server path: /opt/novasafe/mobile-api/ (compose synced from services/core/deploy/)
+# Container name unchanged: novasafe-mobile-vault — nginx → :3124
 
-name: Build & Deploy Mobile Vault
+name: Build & Deploy Mobile API
 
 on:
   push:
@@ -9,8 +10,7 @@ on:
       - main
       - master
     paths:
-      - 'services/mobile_vault/**'
-      - 'common/**'
+      - 'services/core/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
@@ -40,11 +40,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & Push Mobile Vault Docker image
+      - name: Build & Push Mobile API Docker image (core)
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./services/mobile_vault/Dockerfile
+          file: ./services/core/Dockerfile
           push: true
           tags: ghcr.io/novasafe-org/novasafe-mobile-vault:latest
           cache-from: type=gha
@@ -96,15 +96,15 @@ jobs:
           sshpass -p "${SSH_PASSWORD}" ssh -o StrictHostKeyChecking=no "${SSH_USER}@${SSH_HOST}" \
             "mkdir -p ${DEPLOY_DIR} ${NGINX_CONF_DIR}"
           sshpass -p "${SSH_PASSWORD}" scp -o StrictHostKeyChecking=no \
-            services/mobile_vault/deploy/docker-compose.yml \
+            services/core/deploy/docker-compose.yml \
             "${SSH_USER}@${SSH_HOST}:${DEPLOY_DIR}/docker-compose.yml"
           sshpass -p "${SSH_PASSWORD}" scp -o StrictHostKeyChecking=no \
-            services/mobile_vault/deploy/nginx/mobile-api.conf \
+            services/core/deploy/nginx/mobile-api.conf \
             "${SSH_USER}@${SSH_HOST}:${NGINX_CONF_DIR}/mobile-api.conf"
           echo "Synced compose → ${DEPLOY_DIR}/docker-compose.yml"
           echo "Synced nginx   → ${NGINX_CONF_DIR}/mobile-api.conf (server .env preserved)"
 
-      - name: Deploy Mobile Vault via docker compose
+      - name: Deploy Mobile API via docker compose
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -126,7 +126,7 @@ jobs:
             SERVICE="${SERVICE}"
 
             echo "============================================="
-            echo "NovaSafe Mobile Vault Deployment"
+            echo "NovaSafe Mobile API Deployment (core)"
             echo "Deploy dir: \${DEPLOY_DIR}"
             echo "============================================="
 
@@ -200,7 +200,7 @@ jobs:
               cd "\${NGINX_DIR}"
               docker compose exec -T nginx nginx -t
               docker compose exec -T nginx nginx -s reload
-              echo "Nginx → mobile vault probe"
+              echo "Nginx → mobile API probe"
               docker exec novasafe-nginx wget -qO- "http://novasafe-mobile-vault:3124/mobile/health"
               echo ""
               echo "Origin HTTPS probe"
@@ -216,6 +216,6 @@ jobs:
             docker image prune -f || true
 
             echo "============================================="
-            echo "Mobile Vault deployment completed"
+            echo "Mobile API deployment completed"
             echo "============================================="
           EOF

@@ -42,7 +42,7 @@ RUN pnpm install --prod --ignore-workspace
 RUN mkdir -p /app/logs && chmod 755 /app/logs
 
 ENV NODE_ENV=production
-ENV CORE_PORT=5100
+ENV CORE_PORT=3124
 # Production/container: file-only JSON logs (no stdout noise)
 ENV LOG_ENABLE_CONSOLE=false
 ENV LOG_ENABLE_FILE=true
@@ -52,7 +52,7 @@ ENV LOG_JSON_FORMAT=true
 ENV LOG_ENABLE_COLORS=false
 ENV LOG_PRETTY_PRINT=false
 
-EXPOSE 5100
+EXPOSE 3124
 VOLUME ["/app/logs"]
 
 CMD ["node", "dist/index.js"]
