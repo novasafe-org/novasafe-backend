@@ -15,6 +15,17 @@ services:
     environment:
       CORE_PORT: "3124"
       PORT: "3124"
+      # Override server .env — production: file logs only, no stdout noise
+      NODE_ENV: production
+      LOG_ENABLE_CONSOLE: "false"
+      LOG_ENABLE_FILE: "true"
+      LOG_FILE_MODE: single
+      LOG_DIR: /app/logs
+      LOG_JSON_FORMAT: "true"
+      LOG_ENABLE_COLORS: "false"
+      LOG_PRETTY_PRINT: "false"
+      LOG_ENABLE_REQUEST: "true"
+      LOG_ENABLE_ERROR_STACK: "true"
     ports:
       - "127.0.0.1:8085:3124"
     networks:
