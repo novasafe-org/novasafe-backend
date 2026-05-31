@@ -10,6 +10,7 @@ import {
   googleVerifyOtp,
   login,
   logout,
+  pairExtension,
   validateSession,
   verifyTwoFactor,
 } from '../controllers/auth.controller';
@@ -32,6 +33,7 @@ export const createAuthRoutes = (): Router => {
   router.post('/oauth/apple/resend-otp', oauthPendingAuthMiddleware, asyncHandler(appleResendOtp));
   router.post('/2fa/verify', asyncHandler(verifyTwoFactor));
   router.post('/logout', sessionOrPendingAuthMiddleware, asyncHandler(logout));
+  router.post('/extension/pair', authMiddleware, asyncHandler(pairExtension));
   router.get('/validate-session', sessionOrPendingAuthMiddleware, asyncHandler(validateSession));
 
   return router;

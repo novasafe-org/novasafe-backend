@@ -3,6 +3,7 @@ import { getSignInService } from '../services/sign-in.service';
 import { getSessionService } from '../services/session.service';
 import { getOAuthGoogleService } from '../services/oauth-google.service';
 import { getOAuthAppleService } from '../services/oauth-apple.service';
+import { getExtensionPairService } from '../services/extension-pair.service';
 
 const send = (res: Response, result: { status: number; body: unknown }) => {
   res.status(result.status).json(result.body);
@@ -104,4 +105,12 @@ export const appleResendOtp = async (req: Request, res: Response): Promise<void>
     res,
     await getOAuthAppleService().resendOtp(req, req.user.email, req.oauthOtpProvider || 'google'),
   );
+};
+
+export const pairExtension = async (req: Request, res: Response): Promise<void> => {
+  if (!req.user?.id) {
+    res.status(401).json({ success: false, message: 'Authentication required' });
+    return;
+  }
+  send(res, await getExtensionPairService().pair(req, req.user.id));
 };
