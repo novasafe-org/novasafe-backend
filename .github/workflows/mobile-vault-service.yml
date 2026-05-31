@@ -204,7 +204,8 @@ jobs:
               docker exec novasafe-nginx wget -qO- "http://novasafe-mobile-vault:3124/mobile/health"
               echo ""
               echo "Origin HTTPS probe"
-              curl -fsSk "https://127.0.0.1/mobile/health" -H "Host: mobile-api.novasafe.io" | head -c 200
+              curl -fsSk "https://mobile-api.novasafe.io/mobile/health" \
+                --resolve mobile-api.novasafe.io:443:127.0.0.1 | head -c 200
               echo ""
             else
               echo "ERROR: novasafe-nginx is not running"
