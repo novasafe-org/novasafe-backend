@@ -2,6 +2,11 @@ import { ObjectId } from '../../../database/object-id';
 import { COLLECTIONS } from '../../../database/collections';
 import { decryptPayload, decryptText, encryptPayload, encryptText } from '../../../shared/crypto';
 import { getNativeMongo } from '../../../database/adapters/native-mongo.adapter';
+import {
+  redactPasswordVersionsForEntitlement,
+  userCanAccessPasswordHistory,
+  type PasswordVersionRecord,
+} from '../utils/password-version-access';
 
 const collection = COLLECTIONS;
 const db = getNativeMongo();
@@ -172,7 +177,7 @@ const getPasswordStrength = (password?: string): 'weak' | 'medium' | 'strong' =>
   return 'strong';
 };
 
-const getPasswordVersions = async (userId: string, credentialId: ObjectId) => {
+const getPasswordVersions = async (userId: string, credentialId: ObjectId): Promise<PasswordVersionRecord[]> => {
   const docs = await db.findMany(collection.passwordVersions, {
     credentialId,
     ...userFilter(userId),
@@ -186,6 +191,15 @@ const getPasswordVersions = async (userId: string, credentialId: ObjectId) => {
     created_at: v.createdAt,
     updated_at: v.updatedAt,
   }));
+};
+
+const resolvePasswordVersionsForResponse = async (
+  userId: string,
+  credentialId: ObjectId,
+): Promise<PasswordVersionRecord[]> => {
+  const versions = await getPasswordVersions(userId, credentialId);
+  const canAccess = await userCanAccessPasswordHistory(userId);
+  return redactPasswordVersionsForEntitlement(versions, canAccess);
 };
 
 const getActivePasswordVersion = async (userId: string, credentialId: ObjectId) => {
@@ -354,7 +368,7 @@ export const getItemById = async (userId: string, id: string, revealSensitive = 
   if (!item) return null;
   const decrypted = decryptPayload(item as any) || {};
   const activePassword = await getActivePasswordVersion(userId, item._id);
-  const passwordVersions = await getPasswordVersions(userId, item._id);
+  const passwordVersions = await resolvePasswordVersionsForResponse(userId, item._id);
   const customFields = await getCustomFields(userId, item._id, revealSensitive);
   return {
     ...item,
@@ -409,7 +423,8 @@ export const createItem = async (userId: string, payload: any) => {
     await replaceCredentialCustomFields(userId, result.insertedId, incomingCustomFields);
   }
   const inserted = await db.findOne(collection.vaultItems, { _id: result.insertedId });
-  const versions = await getPasswordVersions(userId, result.insertedId);
+  const activePassword = await getActivePasswordVersion(userId, result.insertedId);
+  const versions = await resolvePasswordVersionsForResponse(userId, result.insertedId);
   const customFields = await getCustomFields(userId, result.insertedId, true);
   await bumpVaultDataRevision(userId);
   return {
@@ -417,7 +432,7 @@ export const createItem = async (userId: string, payload: any) => {
     ...normalizedPayload,
     tags,
     logoUrl,
-    password: versions.find((v: any) => !v.is_expired)?.password,
+    password: activePassword?.password,
     password_versions: versions,
     custom_fields: customFields,
   };
@@ -467,7 +482,8 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
     await replaceCredentialCustomFields(userId, new ObjectId(id), incomingCustomFields);
   }
   const updated = await db.findOne(collection.vaultItems, filter);
-  const versions = await getPasswordVersions(userId, new ObjectId(id));
+  const activePassword = await getActivePasswordVersion(userId, new ObjectId(id));
+  const versions = await resolvePasswordVersionsForResponse(userId, new ObjectId(id));
   const customFields = await getCustomFields(userId, new ObjectId(id), true);
   await bumpVaultDataRevision(userId);
   return {
@@ -475,7 +491,7 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
     ...mergedPlain,
     tags,
     logoUrl,
-    password: versions.find((v: any) => !v.is_expired)?.password,
+    password: activePassword?.password,
     password_versions: versions,
     custom_fields: customFields,
   };

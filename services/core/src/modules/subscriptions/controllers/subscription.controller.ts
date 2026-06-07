@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import {
   getMembershipOverviewForUser,
+  getPurchaseHistoryForUser,
   getSubscriptionDebugSnapshot,
   getSubscriptionOfferings,
   getSubscriptionStateForUser,
@@ -88,6 +89,19 @@ export const getMembershipOverview = async (
   }
   const data = await getMembershipOverviewForUser(userId);
   res.status(200).json({ success: true, source: req.source, data });
+};
+
+export const getSubscriptionPurchases = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ success: false, message: "Authentication required" });
+    return;
+  }
+  const purchases = await getPurchaseHistoryForUser(userId, 25);
+  res.status(200).json({ success: true, source: req.source, data: { purchases } });
 };
 
 export const getSubscriptionDebugState = async (

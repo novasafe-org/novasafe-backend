@@ -15,6 +15,7 @@ import {
 } from "../revenuecat/subscriptionStateMapper";
 import {
   getPersistedSubscriptionState,
+  listPurchaseHistoryForUser,
   listSubscriptionEventsForUser,
 } from "../revenuecat/subscriptionRepository";
 import type { SubscriptionState } from "../revenuecat/types";
@@ -191,9 +192,21 @@ export async function getSubscriptionDebugSnapshot(userId: string): Promise<{
 export async function getMembershipOverviewForUser(userId: string): Promise<{
   subscription: SubscriptionState;
   recentActivity: Array<{ eventType: string; processedAt: string | null; status?: string }>;
+  purchases: Array<{
+    eventId: string;
+    eventType: string;
+    productId: string | null;
+    transactionId: string | null;
+    store: string | null;
+    environment: string | null;
+    purchasedAt: string | null;
+  }>;
 }> {
-  const subscription = await getSubscriptionStateForUser(userId, { forceRefresh: false });
-  const recentActivity = await listSubscriptionEventsForUser(userId, 25);
+  const [subscription, recentActivity, purchases] = await Promise.all([
+    getSubscriptionStateForUser(userId, { forceRefresh: false }),
+    listSubscriptionEventsForUser(userId, 25),
+    listPurchaseHistoryForUser(userId, 25),
+  ]);
   return {
     subscription,
     recentActivity: recentActivity.map((e) => ({
@@ -201,5 +214,10 @@ export async function getMembershipOverviewForUser(userId: string): Promise<{
       processedAt: e.processedAt,
       status: e.status,
     })),
+    purchases,
   };
+}
+
+export async function getPurchaseHistoryForUser(userId: string, limit = 25) {
+  return listPurchaseHistoryForUser(userId, limit);
 }

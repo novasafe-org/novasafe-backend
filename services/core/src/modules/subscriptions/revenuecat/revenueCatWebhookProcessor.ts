@@ -5,6 +5,7 @@ import { refreshSubscriptionStateFromRevenueCat } from "./revenueCatSubscriberSy
 import { webhookLog } from "./subscriptionLogger";
 import {
   claimWebhookEvent,
+  claimWebhookEventForProcessing,
   finalizeWebhookEvent,
   findVaultUserById,
 } from "./subscriptionRepository";
@@ -16,13 +17,15 @@ export async function processRevenueCatWebhook(
 ): Promise<WebhookProcessResult> {
   const auth = verifyRevenueCatWebhookAuth(authorizationHeader);
   if (auth.ok === false) {
-    webhookLog.warn({ status: auth.status }, auth.message);
+    webhookLog.warn({ phase: "validation", status: auth.status }, auth.message);
     return { status: auth.status, message: auth.message, duplicate: false };
   }
 
+  webhookLog.info({ phase: "validation" }, "RevenueCat webhook authorization passed");
+
   const parsed = parseRevenueCatWebhookBody(body);
   if (!parsed) {
-    webhookLog.warn("Malformed RevenueCat webhook payload");
+    webhookLog.warn({ phase: "validation" }, "Malformed RevenueCat webhook payload");
     return { status: 400, message: "Invalid webhook payload" };
   }
 
@@ -50,6 +53,7 @@ export async function processRevenueCatWebhook(
 
   webhookLog.info(
     {
+      phase: "received",
       eventId: parsed.eventId,
       eventType: parsed.eventType,
       userId,
@@ -59,7 +63,7 @@ export async function processRevenueCatWebhook(
     "RevenueCat webhook received",
   );
 
-  const claim = await claimWebhookEvent({
+  const claim = await claimWebhookEventForProcessing({
     eventId: parsed.eventId,
     eventType: parsed.eventType,
     userId,
@@ -69,7 +73,10 @@ export async function processRevenueCatWebhook(
   });
 
   if (claim === "duplicate") {
-    webhookLog.info({ eventId: parsed.eventId }, "Duplicate webhook ignored");
+    webhookLog.info(
+      { phase: "claim", eventId: parsed.eventId, claimOutcome: claim },
+      "Duplicate webhook skipped",
+    );
     return {
       status: 200,
       message: "Duplicate ignored",
@@ -78,6 +85,16 @@ export async function processRevenueCatWebhook(
       duplicate: true,
     };
   }
+
+  webhookLog.info(
+    {
+      phase: "claim",
+      eventId: parsed.eventId,
+      claimOutcome: claim,
+      isRetry: claim === "retry",
+    },
+    claim === "retry" ? "Webhook retry claim acquired" : "Webhook claim acquired",
+  );
 
   try {
     const user = await findVaultUserById(userId);
@@ -95,8 +112,14 @@ export async function processRevenueCatWebhook(
       };
     }
 
+    webhookLog.info(
+      { phase: "processing", eventId: parsed.eventId, userId, eventType: parsed.eventType },
+      "Webhook processing started",
+    );
+
     const state = await refreshSubscriptionStateFromRevenueCat(userId, {
       lastEventType: parsed.eventType,
+      source: "webhook",
     });
 
     const email = user?.email ? String(user.email) : null;
@@ -109,6 +132,18 @@ export async function processRevenueCatWebhook(
 
     await finalizeWebhookEvent(parsed.eventId, { status: "completed", errorMessage: null });
 
+    webhookLog.info(
+      {
+        phase: "complete",
+        eventId: parsed.eventId,
+        userId,
+        tier: state.tier,
+        isActive: state.isActive,
+        subscriptionStatus: state.subscriptionStatus,
+      },
+      "Webhook processing succeeded",
+    );
+
     return {
       status: 200,
       message: "Webhook processed",
@@ -119,11 +154,13 @@ export async function processRevenueCatWebhook(
     const errorMessage = error instanceof Error ? error.message : String(error);
     webhookLog.error(
       {
+        phase: "failure",
         err: error instanceof Error ? error.message : String(error),
         eventId: parsed.eventId,
         userId,
+        willRetry: true,
       },
-      'Webhook processing failed',
+      "Webhook processing failed",
     );
     await finalizeWebhookEvent(parsed.eventId, {
       status: "failed",

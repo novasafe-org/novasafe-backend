@@ -7,9 +7,13 @@ import {
 import { findVaultUserById, getPersistedSubscriptionState, persistSubscriptionState } from "./subscriptionRepository";
 import type { SubscriptionState } from "./types";
 
+function subscriptionStateFingerprint(state: SubscriptionState): string {
+  return `${state.tier}|${state.isActive}|${state.subscriptionStatus}|${state.expiresAt ?? ""}`;
+}
+
 export async function refreshSubscriptionStateFromRevenueCat(
   userId: string,
-  options?: { lastEventType?: string | null },
+  options?: { lastEventType?: string | null; source?: "webhook" | "api" | "entitlement-check" },
 ): Promise<SubscriptionState> {
   const user = await findVaultUserById(userId);
   if (!user) {
@@ -33,16 +37,33 @@ export async function refreshSubscriptionStateFromRevenueCat(
   });
 
   await persistSubscriptionState(userId, next);
+
+  const previousFingerprint = previous ? subscriptionStateFingerprint(previous) : null;
+  const nextFingerprint = subscriptionStateFingerprint(next);
+  const stateChanged = previousFingerprint !== nextFingerprint;
+
   syncLog.info(
     {
+      phase: "sync",
+      source: options?.source ?? "api",
       userId,
       tier: next.tier,
       isActive: next.isActive,
       subscriptionStatus: next.subscriptionStatus,
       expiresAt: next.expiresAt,
       eventType: options?.lastEventType,
+      stateChanged,
+      ...(stateChanged && previous
+        ? {
+            previousTier: previous.tier,
+            previousStatus: previous.subscriptionStatus,
+            previousIsActive: previous.isActive,
+          }
+        : {}),
     },
-    "RevenueCat subscription state synced",
+    stateChanged
+      ? "RevenueCat subscription state changed"
+      : "RevenueCat subscription state synced",
   );
 
   return next;
