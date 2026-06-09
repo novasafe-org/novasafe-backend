@@ -198,30 +198,16 @@ export const evaluateDeviceLogin = async (
 
   const deviceKey = resolveDeviceKey(req, device);
   const trustedDeviceCount = await countActiveTrustedDevices(userId);
-  const alreadyTrusted = await isLoginDeviceTrusted(userId, deviceKey, device);
 
   const policy: DeviceLoginPolicy = {
-    canRegisterNewDevice: isPro || trustedDeviceCount < maxTrustedDevices || alreadyTrusted,
+    canRegisterNewDevice: true,
     trustedDeviceCount,
     maxTrustedDevices: isPro ? trustedDeviceCount : maxTrustedDevices,
     isPro,
   };
 
-  if (shouldRelaxDeviceLimits()) {
-    return { allowed: true, policy, deviceKey };
-  }
-  if (isPro || alreadyTrusted || trustedDeviceCount < maxTrustedDevices) {
-    return { allowed: true, policy, deviceKey };
-  }
-
-  return {
-    allowed: false,
-    code: 'NOVASAFE_DEVICE_LIMIT',
-    message:
-      'Free plan allows one trusted device for new sign-ins. Devices you have used before can still sign in. Upgrade to NovaSafe Pro to add new devices.',
-    policy: { ...policy, canRegisterNewDevice: false },
-    subscription: state,
-  };
+  // Device count is tracked for analytics/display only — login is never gated by plan tier.
+  return { allowed: true, policy, deviceKey };
 };
 
 export const registerTrustedDeviceForLogin = async (
