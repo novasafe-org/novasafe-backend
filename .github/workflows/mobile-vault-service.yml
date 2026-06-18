@@ -1,5 +1,11 @@
-# Build and push Mobile API image, deploy via novasafe-deployment.
-# Fresh VPS: first deploy auto-runs initial-setup + first-boot on the server.
+# Build and push Mobile API image (services/core), deploy via novasafe-deployment.
+#
+# This is the only backend-repo deploy workflow. It deploys mobile-api only —
+# not landing, auth, app, or nginx (those deploy from their own repos).
+#
+# Env/config: set values in /opt/novasafe-deployment/mobile-api/.env on the VPS.
+#
+# Required secrets: SSH_USER, SSH_HOST, SSH_PASSWORD, DEPLOY_PATH
 
 name: Build & Deploy Mobile API
 
@@ -8,12 +14,6 @@ on:
     branches:
       - main
       - master
-    paths:
-      - 'services/core/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - '.github/workflows/mobile-vault-service.yml'
 
   workflow_dispatch:
 
@@ -65,7 +65,7 @@ jobs:
       - name: "━━━ Build complete ━━━"
         run: |
           echo "  OK Image pushed to GHCR"
-          echo "  OK Starting remote deploy for mobile-api"
+          echo "  OK Starting remote deploy for mobile-api only"
 
   deploy:
     needs: build
