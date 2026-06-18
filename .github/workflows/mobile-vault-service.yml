@@ -18,7 +18,35 @@ on:
   workflow_dispatch:
 
 jobs:
+  validate-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate deploy secrets
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          missing=0
+          for name in SSH_USER SSH_HOST SSH_PASSWORD DEPLOY_PATH; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing secret: ${name}"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "::error::Add org secrets with access to novasafe-backend, or add repo secrets on novasafe-backend."
+            echo "::error::Required: SSH_USER, SSH_HOST, SSH_PASSWORD, DEPLOY_PATH"
+            exit 1
+          fi
+          if ! printf '%s' "${SSH_HOST}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::warning::SSH_HOST is not an IPv4 address — use the Hostinger VPS public IP"
+          fi
+          echo "  OK All required deploy secrets are set on novasafe-backend"
+
   build:
+    needs: validate-secrets
     runs-on: ubuntu-latest
 
     permissions:
