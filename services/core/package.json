@@ -9,6 +9,7 @@
     "prestart": "node ../../scripts/free-port.mjs CORE_PORT 3125",
     "build": "tsc",
     "test": "node --import tsx --test 'src/**/*.test.ts'",
+    "seed:status": "tsx src/scripts/seed-status-page.ts",
     "start": "node dist/index.js",
     "stop": "node ../../scripts/free-port.mjs CORE_PORT 3125"
   },

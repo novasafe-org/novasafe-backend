@@ -8,6 +8,7 @@ import { registerSharingModule } from './sharing';
 import { registerSubscriptionsModule } from './subscriptions';
 import { registerUsersModule } from './users';
 import { registerVaultModule } from './vault';
+import { registerStatusPageModule } from './status-page';
 import { appConfig } from '../config';
 
 /**
@@ -25,4 +26,5 @@ export const registerModuleRoutes = (app: Express): void => {
   registerDashboardModule(app, prefix);
   registerSharingModule(app, prefix);
   registerSubscriptionsModule(app, prefix);
+  registerStatusPageModule(app, prefix);
 };

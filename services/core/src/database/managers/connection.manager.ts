@@ -74,6 +74,14 @@ export class ConnectionManager implements IConnectionManager {
         err: error instanceof Error ? error.message : String(error),
       });
     }
+    try {
+      const { ensureStatusPageReady } = await import('../../modules/status-page');
+      await ensureStatusPageReady();
+    } catch (error) {
+      logger.warn('Status page bootstrap skipped or failed', {
+        err: error instanceof Error ? error.message : String(error),
+      });
+    }
     logger.info(
       { ping: pingOk, state: this.databaseConnection.getState(), models: ModelRegistry.listModelNames() },
       'Database health check',

@@ -28,6 +28,12 @@ export const COLLECTIONS = {
   notifications: 'notifications',
   /** Reserved for platform audit trail (separate from export history). */
   auditLogs: 'audit_logs',
+  /** Status page — monitorable services (API, Web Vault, …). */
+  statusServices: 'services',
+  /** Status page — incidents, degradations, maintenance. */
+  statusIncidents: 'incidents',
+  /** Status page — daily uptime snapshots per service. */
+  statusSnapshots: 'service_status_snapshots',
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
