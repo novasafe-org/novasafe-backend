@@ -37,7 +37,16 @@ export function createRbacRoutes(): Router {
   router.get('/auth/me', authMiddleware, async (req, res, next) => {
     try {
       const permissions = await getRolePermissions(req.admin!.roleKey);
-      res.json({ success: true, data: { user: req.admin, permissions } });
+      res.json({
+        success: true,
+        data: {
+          user: {
+            ...req.admin,
+            role: req.admin!.roleKey,
+          },
+          permissions,
+        },
+      });
     } catch (err) {
       next(err);
     }
