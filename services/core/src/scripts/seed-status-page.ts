@@ -1,4 +1,4 @@
-import '../../loadEnv';
+import '../loadEnv';
 
 import { ConnectionManager } from '../database';
 import { ObjectId } from '../database/object-id';
