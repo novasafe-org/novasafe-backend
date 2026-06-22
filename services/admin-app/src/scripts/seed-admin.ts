@@ -16,3 +16,4 @@ main().catch((err) => {
   logger.error('Admin seed failed', { err });
   process.exit(1);
 });
+
