@@ -1,0 +1,115 @@
+# Main backend deploy orchestrator.
+# Detects which service(s) changed and runs only the matching deploy workflow(s).
+#
+#   push → detect → mobile-api-deploy (if core changed)
+#                 → admin-api-deploy  (if admin-app changed)
+#
+# Manual run: pick service(s) or leave both unchecked to auto-detect from latest commit.
+
+name: Backend Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'services/core/**'
+      - 'services/admin-app/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'tsconfig.json'
+      - '.github/workflows/backend-deploy.yml'
+      - '.github/workflows/mobile-api-deploy.yml'
+      - '.github/workflows/admin-api-deploy.yml'
+
+  workflow_dispatch:
+    inputs:
+      deploy_mobile_api:
+        description: Force deploy Mobile API (core)
+        type: boolean
+        default: false
+      deploy_admin_api:
+        description: Force deploy Admin API (admin-app)
+        type: boolean
+        default: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      mobile_api: ${{ steps.resolve.outputs.mobile_api }}
+      admin_api: ${{ steps.resolve.outputs.admin_api }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            mobile_api:
+              - 'services/core/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'tsconfig.json'
+              - '.github/workflows/backend-deploy.yml'
+              - '.github/workflows/mobile-api-deploy.yml'
+            admin_api:
+              - 'services/admin-app/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'tsconfig.json'
+              - '.github/workflows/backend-deploy.yml'
+              - '.github/workflows/admin-api-deploy.yml'
+
+      - name: Resolve deploy targets
+        id: resolve
+        env:
+          FILTER_MOBILE: ${{ steps.filter.outputs.mobile_api }}
+          FILTER_ADMIN: ${{ steps.filter.outputs.admin_api }}
+          FORCE_MOBILE: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_mobile_api }}
+          FORCE_ADMIN: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_admin_api }}
+        run: |
+          mobile="$FILTER_MOBILE"
+          admin="$FILTER_ADMIN"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "$FORCE_MOBILE" = "true" ]; then mobile=true; fi
+            if [ "$FORCE_ADMIN" = "true" ]; then admin=true; fi
+            if [ "$FORCE_MOBILE" != "true" ] && [ "$FORCE_ADMIN" != "true" ]; then
+              mobile="$FILTER_MOBILE"
+              admin="$FILTER_ADMIN"
+            fi
+          fi
+
+          echo "mobile_api=$mobile" >> "$GITHUB_OUTPUT"
+          echo "admin_api=$admin" >> "$GITHUB_OUTPUT"
+          echo "Deploy mobile-api: $mobile"
+          echo "Deploy admin-api:  $admin"
+
+  mobile-api:
+    needs: detect
+    if: needs.detect.outputs.mobile_api == 'true'
+    uses: ./.github/workflows/mobile-api-deploy.yml
+    secrets:
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      DEPLOY_REPO_PATH: ${{ secrets.DEPLOY_REPO_PATH }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+
+  admin-api:
+    needs: detect
+    if: needs.detect.outputs.admin_api == 'true'
+    uses: ./.github/workflows/admin-api-deploy.yml
+    secrets:
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      DEPLOY_REPO_PATH: ${{ secrets.DEPLOY_REPO_PATH }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}

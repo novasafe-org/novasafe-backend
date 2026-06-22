@@ -1,73 +1,14 @@
-# Build and push Admin API image (services/admin-app), deploy via novasafe-deployment.
-#
-# Required secrets: SSH_USER, SSH_HOST, SSH_PASSWORD, DEPLOY_PATH
+# Deprecated — use backend-deploy.yml (auto-detects changes).
+# Kept for manual one-off runs only.
 
-name: Build & Deploy Admin API
+name: Build & Deploy Admin API (manual)
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - 'services/admin-app/**'
-      - '.github/workflows/admin-app-service.yml'
-
   workflow_dispatch:
 
 jobs:
-  validate-secrets:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Validate deploy secrets
-        env:
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-        run: |
-          missing=0
-          for name in SSH_USER SSH_HOST SSH_PASSWORD DEPLOY_PATH; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::Missing secret: ${name}"
-              missing=1
-            fi
-          done
-          [ "$missing" -eq 0 ] || exit 1
-
-  build:
-    needs: validate-secrets
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./services/admin-app/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/novasafe-org/novasafe-admin-api:latest
-            ghcr.io/novasafe-org/novasafe-admin-api:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   deploy:
-    needs: build
-    if: success()
-    uses: novasafe-org/novasafe-deployment/.github/workflows/deploy-service.yml@master
-    with:
-      service: admin-api
-      caller_repo: ${{ github.repository }}
-      caller_ref: ${{ github.ref_name }}@${{ github.sha }}
+    uses: ./.github/workflows/admin-api-deploy.yml
     secrets:
       SSH_USER: ${{ secrets.SSH_USER }}
       SSH_HOST: ${{ secrets.SSH_HOST }}

@@ -79,7 +79,14 @@ export async function seedRbac(): Promise<void> {
   for (const perm of PERMISSION_DEFINITIONS) {
     await db.collection(ADMIN_COLLECTIONS.permissions).updateOne(
       { key: perm.key },
-      { $setOnInsert: { ...perm }, $set: { label: perm.label, module: perm.module, description: perm.description } },
+      {
+        $set: {
+          key: perm.key,
+          label: perm.label,
+          module: perm.module,
+          description: perm.description,
+        },
+      },
       { upsert: true },
     );
   }
