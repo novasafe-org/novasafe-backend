@@ -29,12 +29,21 @@ on:
 
   workflow_dispatch:
     inputs:
+      deploy_target:
+        description: 'What to deploy'
+        type: choice
+        options:
+          - auto-detect
+          - admin-api only
+          - mobile-api only
+          - both services
+        default: admin-api only
       deploy_mobile_api:
-        description: '📱 Force deploy Mobile API (core)'
+        description: '📱 (legacy) Force Mobile API — use deploy_target instead'
         type: boolean
         default: false
       deploy_admin_api:
-        description: '🛡️  Force deploy Admin API (admin-app)'
+        description: '🛡️  (legacy) Force Admin API — use deploy_target instead'
         type: boolean
         default: false
 
@@ -91,31 +100,25 @@ jobs:
       - name: Resolve deployment targets
         id: resolve
         env:
-          FORCE_MOBILE: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_mobile_api }}
-          FORCE_ADMIN: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_admin_api }}
+          DEPLOY_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_target || '' }}
+          FORCE_MOBILE: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_mobile_api == true }}
+          FORCE_ADMIN: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_admin_api == true }}
         run: |
           set -euo pipefail
           mobile=false
           admin=false
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ "$FORCE_MOBILE" = "true" ]; then mobile=true; fi
-            if [ "$FORCE_ADMIN" = "true" ]; then admin=true; fi
-            if [ "$FORCE_MOBILE" != "true" ] && [ "$FORCE_ADMIN" != "true" ]; then
-              echo "::notice::Manual run with no force flags — nothing to deploy. Check a force box or push service code."
-            fi
-          else
-            BEFORE="${{ github.event.before }}"
-            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-              CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
+          detect_from_git() {
+            local before="$1"
+            local changed
+            if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+              changed=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || true)
             else
-              CHANGED=$(git diff --name-only "$BEFORE" HEAD)
+              changed=$(git diff --name-only "$before" HEAD)
             fi
-
-            echo "── Files changed in this push ──"
-            echo "$CHANGED" | sed '/^$/d' | sed 's/^/  /'
+            echo "── Files in diff ──"
+            echo "$changed" | sed '/^$/d' | sed 's/^/  /' || true
             echo ""
-
             while IFS= read -r file; do
               [ -z "$file" ] && continue
               case "$file" in
@@ -123,9 +126,29 @@ jobs:
                 services/admin-app/*) admin=true ;;
                 .github/workflows/mobile-api-deploy.yml|.github/workflows/mobile-vault-service.yml) mobile=true ;;
                 .github/workflows/admin-api-deploy.yml|.github/workflows/admin-app-service.yml) admin=true ;;
-                .github/workflows/backend-deploy.yml) ;; # orchestrator only — does not deploy either service
               esac
-            done <<< "$CHANGED"
+            done <<< "$changed"
+          }
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "── Manual deploy target: ${DEPLOY_TARGET:-auto-detect} ──"
+            case "${DEPLOY_TARGET}" in
+              "admin-api only") admin=true ;;
+              "mobile-api only") mobile=true ;;
+              "both services") mobile=true; admin=true ;;
+              *)
+                detect_from_git "HEAD~1"
+                if [ "$mobile" != "true" ] && [ "$admin" != "true" ]; then
+                  echo "::notice::Auto-detect found no service changes — defaulting to admin-api only for manual run."
+                  admin=true
+                fi
+                ;;
+            esac
+            # Legacy boolean overrides (if someone still uses them)
+            if [ "$FORCE_MOBILE" = "true" ]; then mobile=true; fi
+            if [ "$FORCE_ADMIN" = "true" ]; then admin=true; fi
+          else
+            detect_from_git "${{ github.event.before }}"
           fi
 
           echo "mobile_api=$mobile" >> "$GITHUB_OUTPUT"
