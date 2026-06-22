@@ -21,11 +21,11 @@ on:
     paths:
       - 'services/core/**'
       - 'services/admin-app/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'tsconfig.json'
-      - '.github/workflows/**'
+      - '.github/workflows/backend-deploy.yml'
+      - '.github/workflows/mobile-api-deploy.yml'
+      - '.github/workflows/admin-api-deploy.yml'
+      - '.github/workflows/mobile-vault-service.yml'
+      - '.github/workflows/admin-app-service.yml'
 
   workflow_dispatch:
     inputs:
@@ -85,45 +85,47 @@ jobs:
       admin_api: ${{ steps.resolve.outputs.admin_api }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: dorny/paths-filter@v3
-        id: filter
         with:
-          filters: |
-            mobile_api:
-              - 'services/core/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-              - 'tsconfig.json'
-              - '.github/workflows/**'
-            admin_api:
-              - 'services/admin-app/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-              - 'tsconfig.json'
-              - '.github/workflows/**'
+          fetch-depth: 0
 
       - name: Resolve deployment targets
         id: resolve
         env:
-          FILTER_MOBILE: ${{ steps.filter.outputs.mobile_api }}
-          FILTER_ADMIN: ${{ steps.filter.outputs.admin_api }}
           FORCE_MOBILE: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_mobile_api }}
           FORCE_ADMIN: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_admin_api }}
         run: |
-          echo "── Scanning commit diff ──"
-          mobile="$FILTER_MOBILE"
-          admin="$FILTER_ADMIN"
+          set -euo pipefail
+          mobile=false
+          admin=false
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ "$FORCE_MOBILE" = "true" ]; then mobile=true; fi
             if [ "$FORCE_ADMIN" = "true" ]; then admin=true; fi
             if [ "$FORCE_MOBILE" != "true" ] && [ "$FORCE_ADMIN" != "true" ]; then
-              mobile="$FILTER_MOBILE"
-              admin="$FILTER_ADMIN"
+              echo "::notice::Manual run with no force flags — nothing to deploy. Check a force box or push service code."
             fi
+          else
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
+            else
+              CHANGED=$(git diff --name-only "$BEFORE" HEAD)
+            fi
+
+            echo "── Files changed in this push ──"
+            echo "$CHANGED" | sed '/^$/d' | sed 's/^/  /'
+            echo ""
+
+            while IFS= read -r file; do
+              [ -z "$file" ] && continue
+              case "$file" in
+                services/core/*) mobile=true ;;
+                services/admin-app/*) admin=true ;;
+                .github/workflows/mobile-api-deploy.yml|.github/workflows/mobile-vault-service.yml) mobile=true ;;
+                .github/workflows/admin-api-deploy.yml|.github/workflows/admin-app-service.yml) admin=true ;;
+                .github/workflows/backend-deploy.yml) ;; # orchestrator only — does not deploy either service
+              esac
+            done <<< "$CHANGED"
           fi
 
           echo "mobile_api=$mobile" >> "$GITHUB_OUTPUT"
@@ -161,10 +163,41 @@ jobs:
             echo "::notice::No service targets — pipeline will complete without deploy jobs."
           fi
 
+  # ─── Stage 3b: VPS gate (fail fast before Docker builds) ───────────────────
+  vps-connectivity-gate:
+    name: '🛰️ VPS connectivity gate'
+    needs: change-intelligence
+    if: |
+      needs.change-intelligence.outputs.mobile_api == 'true' ||
+      needs.change-intelligence.outputs.admin_api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test SSH port 22 reachability
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          HOST="$(printf '%s' "${SSH_HOST}" | tr -d '[:space:]')"
+          HOST="${HOST#*@}"
+          HOST="${HOST#*://}"
+          HOST="${HOST%%/*}"
+          if [ -z "$HOST" ]; then
+            echo "::error::SSH_HOST secret is empty"
+            exit 1
+          fi
+          echo "Testing TCP port 22 on ${HOST}..."
+          if timeout 15 bash -c "echo >/dev/tcp/${HOST}/22" 2>/dev/null; then
+            echo "  ✓ Port 22 reachable — safe to build & deploy"
+          else
+            echo "::error::Cannot reach ${HOST} on port 22 from GitHub Actions."
+            echo "::error::Hostinger hPanel → Security → Firewall → allow inbound TCP 22 from 0.0.0.0/0"
+            echo "::error::GitHub runners use random cloud IPs; IP allowlists will block deploys."
+            exit 1
+          fi
+
   # ─── Stage 4a: Mobile API pipeline ─────────────────────────────────────────
   mobile-api:
     name: '📱 Mobile API pipeline'
-    needs: [change-intelligence, deployment-matrix]
+    needs: [change-intelligence, deployment-matrix, vps-connectivity-gate]
     if: needs.change-intelligence.outputs.mobile_api == 'true'
     permissions:
       contents: read
@@ -175,7 +208,7 @@ jobs:
   # ─── Stage 4b: Admin API pipeline ──────────────────────────────────────────
   admin-api:
     name: '🛡️ Admin API pipeline'
-    needs: [change-intelligence, deployment-matrix]
+    needs: [change-intelligence, deployment-matrix, vps-connectivity-gate]
     if: needs.change-intelligence.outputs.admin_api == 'true'
     permissions:
       contents: read
