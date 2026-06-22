@@ -1,12 +1,17 @@
-# Main backend deploy orchestrator.
-# Detects which service(s) changed and runs only the matching deploy workflow(s).
+# ═══════════════════════════════════════════════════════════════════════════════
+#  NovaSafe Backend — Production Deployment Pipeline
+# ═══════════════════════════════════════════════════════════════════════════════
 #
-#   push → detect → mobile-api-deploy (if core changed)
-#                 → admin-api-deploy  (if admin-app changed)
+#  Flow:
+#    preflight → change-intelligence → deployment-matrix
+#         ├─► mobile-api pipeline (if core changed)
+#         └─► admin-api pipeline  (if admin-app changed)
+#                    └─► mission-complete
 #
-# Manual run: pick service(s) or leave both unchecked to auto-detect from latest commit.
+#  Push: auto-detects which service(s) changed.
+#  Manual: Run workflow → optionally force one or both services.
 
-name: Backend Deploy
+name: NovaSafe Backend Deploy
 
 on:
   push:
@@ -20,23 +25,60 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - 'tsconfig.json'
-      - '.github/workflows/backend-deploy.yml'
-      - '.github/workflows/mobile-api-deploy.yml'
-      - '.github/workflows/admin-api-deploy.yml'
+      - '.github/workflows/**'
 
   workflow_dispatch:
     inputs:
       deploy_mobile_api:
-        description: Force deploy Mobile API (core)
+        description: '📱 Force deploy Mobile API (core)'
         type: boolean
         default: false
       deploy_admin_api:
-        description: Force deploy Admin API (admin-app)
+        description: '🛡️  Force deploy Admin API (admin-app)'
         type: boolean
         default: false
 
 jobs:
-  detect:
+  # ─── Stage 1: Pre-flight ───────────────────────────────────────────────────
+  preflight:
+    name: '🚀 Pre-flight checks'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pipeline banner
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║        NovaSafe Backend — Deployment Pipeline v2             ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo "  Trigger  : ${{ github.event_name }}"
+          echo "  Ref      : ${{ github.ref_name }}"
+          echo "  Commit   : ${{ github.sha }}"
+          echo "  Actor    : ${{ github.actor }}"
+          echo "──────────────────────────────────────────────────────────────"
+
+      - name: Validate orchestrator secrets
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          missing=0
+          for name in SSH_USER SSH_HOST SSH_PASSWORD DEPLOY_PATH; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing secret: ${name}"
+              missing=1
+            else
+              echo "  ✓ ${name}"
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          echo "  ✓ Pre-flight passed"
+
+  # ─── Stage 2: Change intelligence ──────────────────────────────────────────
+  change-intelligence:
+    name: '🔍 Change intelligence'
+    needs: preflight
     runs-on: ubuntu-latest
     outputs:
       mobile_api: ${{ steps.resolve.outputs.mobile_api }}
@@ -54,18 +96,16 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'tsconfig.json'
-              - '.github/workflows/backend-deploy.yml'
-              - '.github/workflows/mobile-api-deploy.yml'
+              - '.github/workflows/**'
             admin_api:
               - 'services/admin-app/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'tsconfig.json'
-              - '.github/workflows/backend-deploy.yml'
-              - '.github/workflows/admin-api-deploy.yml'
+              - '.github/workflows/**'
 
-      - name: Resolve deploy targets
+      - name: Resolve deployment targets
         id: resolve
         env:
           FILTER_MOBILE: ${{ steps.filter.outputs.mobile_api }}
@@ -73,6 +113,7 @@ jobs:
           FORCE_MOBILE: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_mobile_api }}
           FORCE_ADMIN: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_admin_api }}
         run: |
+          echo "── Scanning commit diff ──"
           mobile="$FILTER_MOBILE"
           admin="$FILTER_ADMIN"
 
@@ -87,29 +128,73 @@ jobs:
 
           echo "mobile_api=$mobile" >> "$GITHUB_OUTPUT"
           echo "admin_api=$admin" >> "$GITHUB_OUTPUT"
-          echo "Deploy mobile-api: $mobile"
-          echo "Deploy admin-api:  $admin"
+          echo ""
+          echo "  Mobile API (core)      : $([ "$mobile" = "true" ] && echo "DEPLOY" || echo "skip")"
+          echo "  Admin API (admin-app)  : $([ "$admin" = "true" ] && echo "DEPLOY" || echo "skip")"
 
+  # ─── Stage 3: Deployment matrix (plan only) ───────────────────────────────
+  deployment-matrix:
+    name: '📋 Deployment matrix'
+    needs: change-intelligence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build execution plan
+        run: |
+          echo ""
+          echo "┌────────────────────┬──────────┬─────────────────────────────────────┐"
+          echo "│ Service            │ Action   │ Image                               │"
+          echo "├────────────────────┼──────────┼─────────────────────────────────────┤"
+          if [ "${{ needs.change-intelligence.outputs.mobile_api }}" = "true" ]; then
+            echo "│ mobile-api (core)  │ BUILD+DEPLOY │ ghcr.io/.../novasafe-mobile-vault │"
+          else
+            echo "│ mobile-api (core)  │ SKIP     │ —                                   │"
+          fi
+          if [ "${{ needs.change-intelligence.outputs.admin_api }}" = "true" ]; then
+            echo "│ admin-api          │ BUILD+DEPLOY │ ghcr.io/.../novasafe-admin-api    │"
+          else
+            echo "│ admin-api          │ SKIP     │ —                                   │"
+          fi
+          echo "└────────────────────┴──────────┴─────────────────────────────────────┘"
+          echo ""
+          if [ "${{ needs.change-intelligence.outputs.mobile_api }}" != "true" ] \
+          && [ "${{ needs.change-intelligence.outputs.admin_api }}" != "true" ]; then
+            echo "::notice::No service targets — pipeline will complete without deploy jobs."
+          fi
+
+  # ─── Stage 4a: Mobile API pipeline ─────────────────────────────────────────
   mobile-api:
-    needs: detect
-    if: needs.detect.outputs.mobile_api == 'true'
+    name: '📱 Mobile API pipeline'
+    needs: [change-intelligence, deployment-matrix]
+    if: needs.change-intelligence.outputs.mobile_api == 'true'
     uses: ./.github/workflows/mobile-api-deploy.yml
-    secrets:
-      SSH_USER: ${{ secrets.SSH_USER }}
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-      DEPLOY_REPO_PATH: ${{ secrets.DEPLOY_REPO_PATH }}
-      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+    secrets: inherit
 
+  # ─── Stage 4b: Admin API pipeline ──────────────────────────────────────────
   admin-api:
-    needs: detect
-    if: needs.detect.outputs.admin_api == 'true'
+    name: '🛡️ Admin API pipeline'
+    needs: [change-intelligence, deployment-matrix]
+    if: needs.change-intelligence.outputs.admin_api == 'true'
     uses: ./.github/workflows/admin-api-deploy.yml
-    secrets:
-      SSH_USER: ${{ secrets.SSH_USER }}
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-      DEPLOY_REPO_PATH: ${{ secrets.DEPLOY_REPO_PATH }}
-      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+    secrets: inherit
+
+  # ─── Stage 5: Mission complete ─────────────────────────────────────────────
+  mission-complete:
+    name: '✅ Mission complete'
+    needs: [change-intelligence, mobile-api, admin-api]
+    if: |
+      always() &&
+      !cancelled() &&
+      (needs.mobile-api.result == 'success' || needs.mobile-api.result == 'skipped') &&
+      (needs.admin-api.result == 'success' || needs.admin-api.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deployment summary
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║              NovaSafe Backend — Deploy Summary               ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo "  Mobile API : ${{ needs.mobile-api.result || 'skipped' }}"
+          echo "  Admin API  : ${{ needs.admin-api.result || 'skipped' }}"
+          echo "  Status     : SUCCESS"
+          echo "──────────────────────────────────────────────────────────────"

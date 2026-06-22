@@ -1,33 +1,66 @@
-# Reusable — build & deploy Admin API (services/admin-app).
-# Called from backend-deploy.yml (path-filtered) or workflow_dispatch.
+# Reusable — Admin API (services/admin-app) build & deploy pipeline.
+# Invoked by backend-deploy.yml when admin-app paths change.
 
 name: Admin API Deploy
 
 on:
   workflow_call:
+    secrets:
+      SSH_USER:
+        required: true
+      SSH_HOST:
+        required: true
+      SSH_PASSWORD:
+        required: true
+      DEPLOY_PATH:
+        required: true
+      DEPLOY_REPO_PATH:
+        required: false
+      SSH_PRIVATE_KEY:
+        required: false
 
 jobs:
-  validate-secrets:
+  validate-credentials:
+    name: '🔐 Validate credentials'
     runs-on: ubuntu-latest
     steps:
-      - name: Validate deploy secrets
+      - name: Check deploy secrets
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
+          echo "── Admin API credential gate ──"
           missing=0
           for name in SSH_USER SSH_HOST SSH_PASSWORD DEPLOY_PATH; do
             if [ -z "${!name:-}" ]; then
               echo "::error::Missing secret: ${name}"
               missing=1
+            else
+              echo "  ✓ ${name}"
             fi
           done
           [ "$missing" -eq 0 ] || exit 1
 
-  build:
-    needs: validate-secrets
+  prepare-build-environment:
+    name: '⚙️  Prepare build environment'
+    needs: validate-credentials
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Environment manifest
+        run: |
+          echo "── Build environment ──"
+          echo "  Service    : admin-api (admin-app)"
+          echo "  Dockerfile : services/admin-app/Dockerfile"
+          echo "  Registry   : ghcr.io/novasafe-org/novasafe-admin-api"
+          echo "  Commit     : ${{ github.sha }}"
+      - uses: docker/setup-buildx-action@v3
+
+  compile-container-image:
+    name: '🐳 Compile container image'
+    needs: prepare-build-environment
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -40,7 +73,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
+      - name: Build & push image
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: ./services/admin-app/Dockerfile
@@ -51,9 +85,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
-    needs: build
-    if: success()
+  publish-to-registry:
+    name: '📦 Publish to registry'
+    needs: compile-container-image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Registry confirmation
+        run: |
+          echo "── GHCR publish complete ──"
+          echo "  :latest  → ghcr.io/novasafe-org/novasafe-admin-api:latest"
+          echo "  :sha     → ghcr.io/novasafe-org/novasafe-admin-api:${{ github.sha }}"
+
+  provision-production:
+    name: '🌐 Provision production'
+    needs: publish-to-registry
     uses: novasafe-org/novasafe-deployment/.github/workflows/deploy-service.yml@master
     with:
       service: admin-api

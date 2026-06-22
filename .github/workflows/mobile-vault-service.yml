@@ -1,5 +1,5 @@
-# Deprecated — use backend-deploy.yml (auto-detects changes).
-# Kept for manual one-off runs only.
+# Manual one-off — delegates to the full Mobile API pipeline.
+# For everyday use: push to main or run "NovaSafe Backend Deploy".
 
 name: Build & Deploy Mobile API (manual)
 
@@ -9,10 +9,4 @@ on:
 jobs:
   deploy:
     uses: ./.github/workflows/mobile-api-deploy.yml
-    secrets:
-      SSH_USER: ${{ secrets.SSH_USER }}
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-      DEPLOY_REPO_PATH: ${{ secrets.DEPLOY_REPO_PATH }}
-      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+    secrets: inherit
