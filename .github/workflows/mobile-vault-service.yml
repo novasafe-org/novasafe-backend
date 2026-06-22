@@ -8,5 +8,8 @@ on:
 
 jobs:
   deploy:
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/mobile-api-deploy.yml
     secrets: inherit

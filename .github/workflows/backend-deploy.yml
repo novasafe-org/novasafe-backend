@@ -166,6 +166,9 @@ jobs:
     name: '📱 Mobile API pipeline'
     needs: [change-intelligence, deployment-matrix]
     if: needs.change-intelligence.outputs.mobile_api == 'true'
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/mobile-api-deploy.yml
     secrets: inherit
 
@@ -174,6 +177,9 @@ jobs:
     name: '🛡️ Admin API pipeline'
     needs: [change-intelligence, deployment-matrix]
     if: needs.change-intelligence.outputs.admin_api == 'true'
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/admin-api-deploy.yml
     secrets: inherit
 
