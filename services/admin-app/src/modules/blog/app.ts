@@ -3,6 +3,7 @@ import { createMiddleware } from "hono/factory";
 import { cors } from "hono/cors";
 import { HTTP } from "@/lib/constants";
 import { isAppError } from "@/lib/errors";
+import { slugify } from "@/lib/utils";
 import { isAdminFromHeader, verifyAdminFromHeader } from "@/lib/auth";
 import { ok } from "@/lib/utils";
 import { getConfig } from "@/types/config";
@@ -209,9 +210,15 @@ function createApiRouter(): Hono<{ Variables: AppVariables }> {
   api.post("/categories", withMongo, async (c) => {
     await verifyAdminFromHeader(c.req.header("Authorization"), c.get("config"));
     const parsed = createCategoryBodySchema.parse(await c.req.json());
-    const category = await c.get("repos")!.categories.create({
+    const slug = parsed.slug ?? slugify(parsed.name);
+    const repos = c.get("repos")!;
+    const existing = await repos.categories.findBySlug(slug);
+    if (existing) {
+      return c.json(ok(toCategoryDto(existing)), 200);
+    }
+    const category = await repos.categories.create({
       name: parsed.name,
-      slug: parsed.slug ?? parsed.name.toLowerCase().replace(/\s+/g, "-"),
+      slug,
       description: parsed.description ?? null,
     } as CreateCategoryInput);
     return c.json(ok(toCategoryDto(category)), 201);
@@ -225,9 +232,15 @@ function createApiRouter(): Hono<{ Variables: AppVariables }> {
   api.post("/tags", withMongo, async (c) => {
     await verifyAdminFromHeader(c.req.header("Authorization"), c.get("config"));
     const parsed = createTagBodySchema.parse(await c.req.json());
-    const tag = await c.get("repos")!.tags.create({
+    const slug = parsed.slug ?? slugify(parsed.name);
+    const repos = c.get("repos")!;
+    const existing = await repos.tags.findBySlug(slug);
+    if (existing) {
+      return c.json(ok(toTagDto(existing)), 200);
+    }
+    const tag = await repos.tags.create({
       name: parsed.name,
-      slug: parsed.slug ?? parsed.name.toLowerCase().replace(/\s+/g, "-"),
+      slug,
     } as CreateTagInput);
     return c.json(ok(toTagDto(tag)), 201);
   });
@@ -358,6 +371,16 @@ app.onError((err, c) => {
     return c.json(
       { success: false, error: { code: err.code, message: err.message } },
       err.status as 400,
+    );
+  }
+  if (err && typeof err === "object" && "name" in err && err.name === "ZodError") {
+    const zodErr = err as { issues?: Array<{ message: string; path: (string | number)[] }> };
+    const message =
+      zodErr.issues?.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") ||
+      "Validation failed";
+    return c.json(
+      { success: false, error: { code: ERROR_CODES.VALIDATION_ERROR, message } },
+      HTTP.UNPROCESSABLE,
     );
   }
   if (isAppError(err)) {

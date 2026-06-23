@@ -9,6 +9,7 @@ import type { IMongoClient } from "@/repositories/client/types";
 import { MongoDuplicateKeyError, MongoNotFoundError } from "@/repositories/client/errors";
 import type { ICategoriesRepository } from "./types";
 import { createCategorySchema, updateCategorySchema } from "@/types/schemas/category.schema";
+import { slugify } from "@/lib/utils";
 import { newObjectId, serializeDoc } from "./helpers";
 
 export class CategoriesRepository implements ICategoriesRepository {
@@ -36,7 +37,7 @@ export class CategoriesRepository implements ICategoriesRepository {
     const document: CategoryDocument = {
       _id: (input._id ?? newObjectId()) as ObjectIdString,
       name: parsed.name,
-      slug: parsed.slug ?? parsed.name.toLowerCase().replace(/\s+/g, "-"),
+      slug: parsed.slug ?? slugify(parsed.name),
       description: parsed.description ?? null,
       created_at: new Date(),
     };

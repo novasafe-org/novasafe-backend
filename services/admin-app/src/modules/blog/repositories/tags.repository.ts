@@ -5,6 +5,7 @@ import type { IMongoClient } from "@/repositories/client/types";
 import { MongoDuplicateKeyError, MongoNotFoundError } from "@/repositories/client/errors";
 import type { ITagsRepository } from "./types";
 import { createTagSchema, updateTagSchema } from "@/types/schemas/tag.schema";
+import { slugify } from "@/lib/utils";
 import { newObjectId, serializeDoc } from "./helpers";
 
 export class TagsRepository implements ITagsRepository {
@@ -32,7 +33,7 @@ export class TagsRepository implements ITagsRepository {
     const document: TagDocument = {
       _id: (input._id ?? newObjectId()) as ObjectIdString,
       name: parsed.name,
-      slug: parsed.slug ?? parsed.name.toLowerCase().replace(/\s+/g, "-"),
+      slug: parsed.slug ?? slugify(parsed.name),
       created_at: new Date(),
     };
 
