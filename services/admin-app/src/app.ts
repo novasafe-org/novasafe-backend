@@ -1,6 +1,7 @@
 import express from 'express';
 
 import { registerAdminModules } from './modules';
+import { isBlogApiPath } from './modules/blog/register';
 import { logger } from './shared/logger';
 
 const API_PREFIX = '/api/v1';
@@ -12,7 +13,11 @@ const corsOrigins = (process.env.ADMIN_CORS_ORIGINS || '*')
   .map((o) => o.trim())
   .filter(Boolean);
 
-app.use(express.json({ limit: '5mb' }));
+// Blog routes are served by Hono and read the raw body themselves — skip express.json there.
+app.use((req, res, next) => {
+  if (isBlogApiPath(req.path)) return next();
+  return express.json({ limit: '5mb' })(req, res, next);
+});
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
