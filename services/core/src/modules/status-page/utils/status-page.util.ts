@@ -36,3 +36,13 @@ export const addUtcDays = (date: Date, days: number): Date => {
   next.setUTCDate(next.getUTCDate() + days);
   return next;
 };
+
+/** First day public status monitoring is shown (YYYY-MM-DD, UTC). */
+export const STATUS_MONITORING_START_DATE =
+  process.env.STATUS_MONITORING_START_DATE?.trim() || '2026-06-20';
+
+export const getMonitoringStartDate = (): Date =>
+  startOfUtcDay(new Date(`${STATUS_MONITORING_START_DATE}T00:00:00.000Z`));
+
+export const isBeforeMonitoringStart = (dateKey: string): boolean =>
+  dateKey < STATUS_MONITORING_START_DATE;

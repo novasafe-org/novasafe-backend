@@ -7,6 +7,7 @@ import {
   getHistoryForService,
   getUptimeSummary,
 } from './uptime.service';
+import { isBeforeMonitoringStart } from '../utils/status-page.util';
 import { mapIncidentsToDtos } from './incident.service';
 
 const toServiceDto = async (service: StatusServiceRecord): Promise<StatusServiceDto> => {
@@ -81,6 +82,7 @@ export async function getServiceHistory(serviceKey: string, days: number) {
       date: s.date,
       status: s.status,
       uptimePercentage: s.uptimePercentage,
+      unavailable: isBeforeMonitoringStart(s.date),
     })),
   };
 }

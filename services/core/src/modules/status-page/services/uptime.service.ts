@@ -9,6 +9,7 @@ import {
   addUtcDays,
   endOfUtcDay,
   formatDateKey,
+  getMonitoringStartDate,
   startOfUtcDay,
 } from '../utils/status-page.util';
 import * as incidentRepo from '../repositories/incident.repository';
@@ -84,7 +85,16 @@ export async function computeUptimeForService(
   hours: number,
 ): Promise<number> {
   const windowEnd = new Date();
-  const windowStart = new Date(windowEnd.getTime() - hours * 60 * 60 * 1000);
+  const monitoringStart = getMonitoringStartDate();
+  let windowStart = new Date(windowEnd.getTime() - hours * 60 * 60 * 1000);
+
+  if (windowEnd.getTime() <= monitoringStart.getTime()) {
+    return 100;
+  }
+  if (windowStart.getTime() < monitoringStart.getTime()) {
+    windowStart = monitoringStart;
+  }
+
   const incidents = await incidentRepo.findIncidentsOverlappingWindow(serviceId, windowStart, windowEnd);
   return calculateUptimePercentage(incidents, windowStart, windowEnd);
 }

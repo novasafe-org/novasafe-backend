@@ -122,4 +122,6 @@ export interface StatusHistoryDayDto {
   date: string;
   status: DailySnapshotStatus;
   uptimePercentage: number;
+  /** True when monitoring had not started yet — show as neutral/grey in UI. */
+  unavailable?: boolean;
 }
