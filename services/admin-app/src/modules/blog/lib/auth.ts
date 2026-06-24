@@ -32,6 +32,7 @@ export async function verifyAdminFromHeader(
     return {
       id: result.claims.sub,
       email: result.claims.email,
+      name: result.claims.email,
       role: result.claims.role,
     };
   }
@@ -43,6 +44,7 @@ export async function verifyAdminFromHeader(
     return {
       id: payload.sub,
       email: payload.email,
+      name: payload.name?.trim() || payload.email,
       role: payload.roleKey === "owner" ? "super_admin" : "editor",
     };
   } catch {

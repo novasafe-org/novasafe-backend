@@ -17,6 +17,7 @@ export const COLLECTIONS = {
   CATEGORIES: "categories",
   TAGS: "tags",
   MEDIA: "media",
+  POST_VIEWS: "blog_post_views",
 } as const;
 
 export const MONGODB_INDEXES: MongoIndexSpec[] = [
@@ -56,6 +57,12 @@ export const MONGODB_INDEXES: MongoIndexSpec[] = [
     collection: COLLECTIONS.POSTS,
     name: "posts_previous_slugs",
     key: { previous_slugs: 1 },
+  },
+  {
+    collection: COLLECTIONS.POST_VIEWS,
+    name: "blog_post_views_post_visitor_unique",
+    key: { post_id: 1, visitor_key: 1 },
+    unique: true,
   },
   {
     collection: COLLECTIONS.POSTS,

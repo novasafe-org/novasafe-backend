@@ -5,6 +5,7 @@ export type AdminRole = "super_admin" | "admin" | "editor";
 export type AdminContext = {
   id: string;
   email: string;
+  name: string;
   role: AdminRole;
 };
 

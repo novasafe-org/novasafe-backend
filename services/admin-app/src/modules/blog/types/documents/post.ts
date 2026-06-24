@@ -16,6 +16,8 @@ export type PostDocument = {
   canonical_url: string | null;
   author: PostAuthor;
   published_at: Date | null;
+  view_count: number;
+  unique_view_count: number;
   created_at: Date;
   updated_at: Date;
 };
@@ -25,7 +27,7 @@ export type CreatePostInput = Omit<PostDocument, "_id" | "created_at" | "updated
 };
 
 export type UpdatePostInput = Partial<
-  Omit<PostDocument, "_id" | "created_at" | "updated_at" | "author">
+  Omit<PostDocument, "_id" | "created_at" | "updated_at">
 >;
 
 export type ListPostsFilter = {

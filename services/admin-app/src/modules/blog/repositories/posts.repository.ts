@@ -165,6 +165,8 @@ export class PostsRepository implements IPostsRepository {
       seo_description: parsed.seo_description ?? null,
       canonical_url: parsed.canonical_url ?? null,
       published_at: parsed.published_at ?? null,
+      view_count: parsed.view_count ?? 0,
+      unique_view_count: parsed.unique_view_count ?? 0,
       created_at: now,
       updated_at: now,
     } as PostDocument;
@@ -217,5 +219,46 @@ export class PostsRepository implements IPostsRepository {
 
   isPubliclyVisible(post: PostDocument): boolean {
     return isPostPubliclyVisible(post);
+  }
+
+  async recordView(
+    postId: string,
+    visitorKey: string,
+  ): Promise<{ view_count: number; unique_view_count: number }> {
+    const key = visitorKey.trim().slice(0, 128) || "anonymous";
+
+    await this.client.updateOne(
+      COLLECTIONS.POSTS,
+      { _id: postId },
+      { $inc: { view_count: 1 } },
+    );
+
+    let isNewVisitor = false;
+    try {
+      await this.client.insertOne(COLLECTIONS.POST_VIEWS, {
+        post_id: postId,
+        visitor_key: key,
+        created_at: new Date(),
+      });
+      isNewVisitor = true;
+    } catch (error) {
+      if (!(error instanceof MongoDuplicateKeyError)) {
+        throw error;
+      }
+    }
+
+    if (isNewVisitor) {
+      await this.client.updateOne(
+        COLLECTIONS.POSTS,
+        { _id: postId },
+        { $inc: { unique_view_count: 1 } },
+      );
+    }
+
+    const post = await this.findById(postId);
+    return {
+      view_count: post?.view_count ?? 0,
+      unique_view_count: post?.unique_view_count ?? 0,
+    };
   }
 }

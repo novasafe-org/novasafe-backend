@@ -1,9 +1,24 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request } from 'express';
 import { randomBytes } from 'crypto';
 
 import { ADMIN_COLLECTIONS, getDb, ObjectId } from '../../database/mongo';
-import { authMiddleware, requirePermission } from '../rbac/rbac.service';
-import type { ChangelogReleaseRecord } from '../rbac/rbac.types';
+import {
+  authMiddleware,
+  getPermissionAction,
+  requirePermission,
+  verifyAdminToken,
+} from '../rbac/rbac.service';
+import type { AdminJwtPayload, AdminRoleKey } from '../rbac/rbac.types';
+import {
+  type ChangelogCategory,
+  type ChangelogReleaseRecord,
+  type ChangelogStatus,
+  isChangelogPubliclyVisible,
+  toChangelogDto,
+} from './changelog.types';
+
+const CATEGORIES: ChangelogCategory[] = ['feature', 'improvement', 'security', 'bugfix', 'performance'];
+const STATUSES: ChangelogStatus[] = ['draft', 'published', 'scheduled'];
 
 function slugify(value: string): string {
   return value
@@ -14,35 +29,103 @@ function slugify(value: string): string {
     .slice(0, 80);
 }
 
+function parseNotes(body: unknown): string[] {
+  if (Array.isArray(body)) return body.map(String).filter(Boolean);
+  if (typeof body === 'string' && body.trim()) {
+    return body
+      .split(/\n+/)
+      .map((line) => line.replace(/^[-*]\s*/, '').trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeCategory(value: unknown): ChangelogCategory {
+  const raw = String(value ?? 'feature').toLowerCase();
+  if (raw === 'bug fix' || raw === 'bugfix') return 'bugfix';
+  if (CATEGORIES.includes(raw as ChangelogCategory)) return raw as ChangelogCategory;
+  return 'feature';
+}
+
+function normalizeStatus(value: unknown, fallback: ChangelogStatus = 'draft'): ChangelogStatus {
+  const raw = String(value ?? fallback).toLowerCase();
+  return STATUSES.includes(raw as ChangelogStatus) ? (raw as ChangelogStatus) : fallback;
+}
+
+async function resolveAdminReader(req: Request): Promise<AdminJwtPayload | null> {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) return null;
+  try {
+    const payload = await verifyAdminToken(header.slice(7));
+    const action = await getPermissionAction(payload.roleKey as AdminRoleKey, 'changelog.read');
+    if (action === 'none') return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function serializeLegacy(doc: ChangelogReleaseRecord): ChangelogReleaseRecord {
+  return {
+    ...doc,
+    notes: doc.notes ?? [],
+    content_markdown: doc.content_markdown ?? (doc.notes ?? []).join('\n'),
+    tags: doc.tags ?? [],
+    status: doc.status ?? (doc.isPublic !== false ? 'published' : 'draft'),
+    publishedAt: doc.publishedAt ?? doc.createdAt,
+  };
+}
+
 export function createChangelogRoutes(): Router {
   const router = Router();
-  router.use(authMiddleware);
 
-  router.get('/', requirePermission('changelog.read'), async (_req, res, next) => {
+  /** Public + admin list — unauthenticated callers only see published public releases. */
+  router.get('/', async (req, res, next) => {
     try {
+      const admin = await resolveAdminReader(req);
       const items = await getDb()
         .collection<ChangelogReleaseRecord>(ADMIN_COLLECTIONS.changelog)
         .find({})
-        .sort({ publishedAt: -1 })
+        .sort({ publishedAt: -1, createdAt: -1 })
         .toArray();
-      res.json({
-        success: true,
-        data: items.map((item) => ({
-          id: String(item._id),
-          version: item.version,
-          title: item.title,
-          category: item.category,
-          summary: item.summary,
-          notes: item.notes,
-          publishedAt: item.publishedAt.toISOString(),
-          isPublic: item.isPublic,
-          slug: item.slug,
-        })),
-      });
+
+      const mapped = items.map(serializeLegacy);
+      const visible = admin
+        ? mapped
+        : mapped.filter((item) => isChangelogPubliclyVisible(item));
+
+      res.json({ success: true, data: visible.map(toChangelogDto) });
     } catch (err) {
       next(err);
     }
   });
+
+  router.get('/:id', async (req, res, next) => {
+    try {
+      if (!ObjectId.isValid(req.params.id)) {
+        res.status(400).json({ success: false, message: 'Invalid id' });
+        return;
+      }
+      const admin = await resolveAdminReader(req);
+      const item = await getDb()
+        .collection<ChangelogReleaseRecord>(ADMIN_COLLECTIONS.changelog)
+        .findOne({ _id: new ObjectId(req.params.id) });
+      if (!item) {
+        res.status(404).json({ success: false, message: 'Release not found' });
+        return;
+      }
+      const doc = serializeLegacy(item);
+      if (!admin && !isChangelogPubliclyVisible(doc)) {
+        res.status(404).json({ success: false, message: 'Release not found' });
+        return;
+      }
+      res.json({ success: true, data: toChangelogDto(doc) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.use(authMiddleware);
 
   router.post('/', requirePermission('changelog.manage', 'manage'), async (req, res, next) => {
     try {
@@ -54,20 +137,39 @@ export function createChangelogRoutes(): Router {
         res.status(400).json({ success: false, message: 'title and version are required' });
         return;
       }
+
+      const status = normalizeStatus(body.status, 'draft');
+      const publishedAt =
+        body.publishedAt != null && body.publishedAt !== ''
+          ? new Date(body.publishedAt)
+          : status === 'published'
+            ? now
+            : null;
+
+      const contentMarkdown = String(body.content_markdown ?? body.contentMarkdown ?? '');
+      const notes = parseNotes(body.notes).length ? parseNotes(body.notes) : parseNotes(contentMarkdown);
+
       const doc: Omit<ChangelogReleaseRecord, '_id'> = {
         version,
         title,
-        category: body.category || 'feature',
+        category: normalizeCategory(body.category),
         summary: String(body.summary || ''),
-        notes: Array.isArray(body.notes) ? body.notes.map(String) : [],
-        publishedAt: body.publishedAt ? new Date(body.publishedAt) : now,
+        notes,
+        content_markdown: contentMarkdown || notes.join('\n'),
+        tags: Array.isArray(body.tags) ? body.tags.map(String).filter(Boolean) : [],
+        status,
+        publishedAt,
         isPublic: body.isPublic !== false,
         slug: slugify(`${version}-${title}`) || randomBytes(4).toString('hex'),
         createdAt: now,
         updatedAt: now,
       };
+
       const result = await getDb().collection(ADMIN_COLLECTIONS.changelog).insertOne(doc);
-      res.status(201).json({ success: true, data: { id: String(result.insertedId), ...doc } });
+      res.status(201).json({
+        success: true,
+        data: toChangelogDto({ _id: result.insertedId, ...doc }),
+      });
     } catch (err) {
       next(err);
     }
@@ -79,20 +181,37 @@ export function createChangelogRoutes(): Router {
         res.status(400).json({ success: false, message: 'Invalid id' });
         return;
       }
-      const patch = req.body ?? {};
+      const body = req.body ?? {};
       const update: Record<string, unknown> = { updatedAt: new Date() };
-      if (patch.title !== undefined) update.title = String(patch.title);
-      if (patch.version !== undefined) update.version = String(patch.version);
-      if (patch.category !== undefined) update.category = patch.category;
-      if (patch.summary !== undefined) update.summary = String(patch.summary);
-      if (patch.notes !== undefined) update.notes = patch.notes;
-      if (patch.isPublic !== undefined) update.isPublic = Boolean(patch.isPublic);
-      if (patch.publishedAt !== undefined) update.publishedAt = new Date(patch.publishedAt);
+
+      if (body.title !== undefined) update.title = String(body.title);
+      if (body.version !== undefined) update.version = String(body.version);
+      if (body.category !== undefined) update.category = normalizeCategory(body.category);
+      if (body.summary !== undefined) update.summary = String(body.summary);
+      if (body.notes !== undefined) update.notes = parseNotes(body.notes);
+      if (body.content_markdown !== undefined || body.contentMarkdown !== undefined) {
+        const md = String(body.content_markdown ?? body.contentMarkdown ?? '');
+        update.content_markdown = md;
+        if (body.notes === undefined && md) update.notes = parseNotes(md);
+      }
+      if (body.tags !== undefined) {
+        update.tags = Array.isArray(body.tags) ? body.tags.map(String).filter(Boolean) : [];
+      }
+      if (body.status !== undefined) update.status = normalizeStatus(body.status);
+      if (body.isPublic !== undefined) update.isPublic = Boolean(body.isPublic);
+      if (body.publishedAt !== undefined) {
+        update.publishedAt = body.publishedAt ? new Date(body.publishedAt) : null;
+      }
 
       await getDb()
         .collection(ADMIN_COLLECTIONS.changelog)
         .updateOne({ _id: new ObjectId(req.params.id) }, { $set: update });
-      res.json({ success: true });
+
+      const item = await getDb()
+        .collection<ChangelogReleaseRecord>(ADMIN_COLLECTIONS.changelog)
+        .findOne({ _id: new ObjectId(req.params.id) });
+
+      res.json({ success: true, data: item ? toChangelogDto(serializeLegacy(item)) : null });
     } catch (err) {
       next(err);
     }

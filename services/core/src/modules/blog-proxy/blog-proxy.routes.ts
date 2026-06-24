@@ -54,6 +54,44 @@ async function proxyGet(
   }
 }
 
+async function proxyPost(
+  req: Request,
+  res: Response,
+  path: string,
+  body?: unknown,
+): Promise<void> {
+  const url = `${adminApiBase()}/api/v1${path}`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body ?? {}),
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    res.status(response.status);
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      res.json(JSON.parse(text));
+    } catch {
+      res.send(text);
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn('Blog proxy failed', { url, reason });
+    sendBlogUnavailable(res, reason);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function createBlogProxyRoutes(): Router {
   const router = Router();
 
@@ -87,6 +125,10 @@ export function createBlogProxyRoutes(): Router {
 
   router.get('/posts/:slug', (req, res) =>
     void proxyGet(req, res, `/posts/${encodeURIComponent(req.params.slug)}`),
+  );
+
+  router.post('/posts/:slug/view', (req, res) =>
+    void proxyPost(req, res, `/posts/${encodeURIComponent(req.params.slug)}/view`, req.body),
   );
 
   router.get('/media/:id', async (req, res) => {

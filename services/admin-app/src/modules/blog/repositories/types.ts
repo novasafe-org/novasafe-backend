@@ -30,6 +30,7 @@ export interface IPostsRepository {
   update(id: string, input: UpdatePostInput): Promise<PostDocument>;
   delete(id: string): Promise<void>;
   isPubliclyVisible(post: PostDocument): boolean;
+  recordView(postId: string, visitorKey: string): Promise<{ view_count: number; unique_view_count: number }>;
 }
 
 export interface ICategoriesRepository {

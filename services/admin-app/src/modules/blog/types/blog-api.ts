@@ -28,6 +28,8 @@ export type PostDto = {
   canonical_url: string | null;
   author: PostAuthorDto;
   published_at: string | null;
+  view_count: number;
+  unique_view_count: number;
   created_at: string;
   updated_at: string;
 };
@@ -115,6 +117,8 @@ export function toPostDto(doc: PostDocument): PostDto {
     canonical_url: doc.canonical_url,
     author: doc.author,
     published_at: doc.published_at?.toISOString() ?? null,
+    view_count: doc.view_count ?? 0,
+    unique_view_count: doc.unique_view_count ?? 0,
     created_at: doc.created_at.toISOString(),
     updated_at: doc.updated_at.toISOString(),
   };

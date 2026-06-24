@@ -83,20 +83,6 @@ export interface AdminPasswordResetRecord {
   createdAt: Date;
 }
 
-export interface ChangelogReleaseRecord {
-  _id: import('mongodb').ObjectId;
-  version: string;
-  title: string;
-  category: 'feature' | 'security' | 'bugfix';
-  summary: string;
-  notes: string[];
-  publishedAt: Date;
-  isPublic: boolean;
-  slug: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 export interface AdminJwtPayload {
   sub: string;
   email: string;

@@ -24,6 +24,8 @@ export const createPostSchema = z.object({
   canonical_url: urlSchema.nullable().optional(),
   author: postAuthorSchema,
   published_at: isoDateSchema.nullable().optional(),
+  view_count: z.number().int().min(0).default(0),
+  unique_view_count: z.number().int().min(0).default(0),
 });
 
 export const updatePostSchema = createPostSchema.partial();

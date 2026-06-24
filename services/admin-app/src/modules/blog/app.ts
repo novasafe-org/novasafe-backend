@@ -26,13 +26,26 @@ import {
 import { createAuthService } from "@/services/auth.service";
 import { createMediaService } from "@/services/media.service";
 import { createSeoFeedsService } from "@/services/seo-feeds.service";
+import { authorFromAdmin, resolveAuthorDisplay } from "@/services/author-display.service";
 import { toPostDto, toCategoryDto, toTagDto, toMediaDto } from "@/types/blog-api";
+import type { PostDocument } from "@/types/documents/post";
+import type { PostDto } from "@/types/blog-api";
 import { asObjectId } from "@/types/documents/common";
 import type { CreatePostInput, ListPostsFilter } from "@/types/documents/post";
 import type { CreateCategoryInput } from "@/types/documents/category";
 import type { CreateTagInput } from "@/types/documents/tag";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { buildHealthResponse, isReady } from "@/lib/health";
+
+async function toResolvedPostDto(doc: PostDocument): Promise<PostDto> {
+  const dto = toPostDto(doc);
+  dto.author = await resolveAuthorDisplay(dto.author);
+  return dto;
+}
+
+async function mapResolvedPosts(docs: PostDocument[]): Promise<PostDto[]> {
+  return Promise.all(docs.map((doc) => toResolvedPostDto(doc)));
+}
 
 type AppVariables = {
   config: AppConfig;
@@ -92,8 +105,10 @@ function createApiRouter(): Hono<{ Variables: AppVariables }> {
       ? await repos.posts.list(filter, pagination)
       : await repos.posts.listPublished(filter, pagination);
 
+    const items = await mapResolvedPosts(result.items);
+
     return c.json(
-      ok(result.items.map(toPostDto), {
+      ok(items, {
         page: result.page,
         perPage: result.perPage,
         total: result.total,
@@ -118,17 +133,13 @@ function createApiRouter(): Hono<{ Variables: AppVariables }> {
       seo_title: body.seo_title ?? null,
       seo_description: body.seo_description ?? null,
       canonical_url: body.canonical_url ?? null,
-      author: body.author ?? {
-        id: admin.id,
-        name: admin.email,
-        email: admin.email,
-      },
+      author: body.author ?? authorFromAdmin(admin),
       published_at: body.published_at ? new Date(body.published_at) : null,
       ...(body.slug ? { slug: body.slug } : {}),
     } as CreatePostInput;
 
     const post = await repos.posts.create(input);
-    return c.json(ok(toPostDto(post)), 201);
+    return c.json(ok(await toResolvedPostDto(post)), 201);
   });
 
   api.get("/posts/id/:id", withMongo, async (c) => {
@@ -142,14 +153,17 @@ function createApiRouter(): Hono<{ Variables: AppVariables }> {
       throw new NotFoundError("Post");
     }
 
-    return c.json(ok(toPostDto(post)));
+    return c.json(ok(await toResolvedPostDto(post)));
   });
 
   api.put("/posts/:id", withMongo, async (c) => {
     const repos = c.get("repos")!;
-    await verifyAdminFromHeader(c.req.header("Authorization"), c.get("config"));
+    const admin = await verifyAdminFromHeader(c.req.header("Authorization"), c.get("config"));
     const parsed = mongoIdParamSchema.parse({ id: c.req.param("id") });
     const body = updatePostBodySchema.parse(await c.req.json());
+    const existing = await repos.posts.findById(parsed.id);
+    if (!existing) throw new NotFoundError("Post");
+
     const patch: Parameters<typeof repos.posts.update>[1] = {};
 
     if (body.title !== undefined) patch.title = body.title;
@@ -168,9 +182,18 @@ function createApiRouter(): Hono<{ Variables: AppVariables }> {
     if (body.published_at !== undefined) {
       patch.published_at = body.published_at ? new Date(body.published_at) : null;
     }
+    if (body.author !== undefined) {
+      patch.author = {
+        id: body.author.id,
+        name: body.author.name,
+        email: body.author.email,
+      };
+    } else if (existing.author.id === admin.id) {
+      patch.author = authorFromAdmin(admin);
+    }
 
     const post = await repos.posts.update(parsed.id, patch);
-    return c.json(ok(toPostDto(post)));
+    return c.json(ok(await toResolvedPostDto(post)));
   });
 
   api.delete("/posts/:id", withMongo, async (c) => {
@@ -179,6 +202,29 @@ function createApiRouter(): Hono<{ Variables: AppVariables }> {
     const parsed = mongoIdParamSchema.parse({ id: c.req.param("id") });
     await repos.posts.delete(parsed.id);
     return c.body(null, 204);
+  });
+
+  api.post("/posts/:slug/view", withMongo, async (c) => {
+    const repos = c.get("repos")!;
+    const slug = c.req.param("slug");
+    if (slug === "id") throw new NotFoundError("Post");
+
+    const parsed = slugParamSchema.safeParse({ slug });
+    if (!parsed.success) throw new NotFoundError("Post");
+
+    const post = await repos.posts.findBySlugOrPrevious(parsed.data.slug);
+    if (!post || !repos.posts.isPubliclyVisible(post)) {
+      throw new NotFoundError("Post");
+    }
+
+    const body = (await c.req.json().catch(() => ({}))) as { visitor_id?: string };
+    const visitorKey =
+      typeof body.visitor_id === "string" && body.visitor_id.trim()
+        ? body.visitor_id.trim()
+        : c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "anonymous";
+
+    const counts = await repos.posts.recordView(post._id, visitorKey);
+    return c.json(ok(counts));
   });
 
   api.get("/posts/:slug", withMongo, async (c) => {
@@ -199,7 +245,7 @@ function createApiRouter(): Hono<{ Variables: AppVariables }> {
     }
 
     const meta = post.slug !== parsed.data.slug ? { redirect_slug: post.slug } : undefined;
-    return c.json(ok(toPostDto(post), meta));
+    return c.json(ok(await toResolvedPostDto(post), meta));
   });
 
   api.get("/categories", withMongo, async (c) => {
