@@ -59,6 +59,11 @@ RUN apt-get update \
 
 COPY --from=builder /prod/core/ ./
 
+# Runtime only needs node — drop bundled npm/corepack (Trivy flags their deps).
+RUN rm -rf /usr/local/lib/node_modules/npm \
+    /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+
 # Persistent log directory (mount a volume here in production)
 RUN mkdir -p /app/logs && chmod 755 /app/logs
 

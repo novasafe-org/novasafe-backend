@@ -59,6 +59,11 @@ RUN apt-get update \
 
 COPY --from=builder /prod/admin/ ./
 
+# Runtime only needs node — drop bundled npm/corepack (Trivy flags their deps).
+RUN rm -rf /usr/local/lib/node_modules/npm \
+    /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+
 RUN mkdir -p /app/logs /app/uploads && chmod 755 /app/logs /app/uploads
 
 ENV NODE_ENV=production
