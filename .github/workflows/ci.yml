@@ -122,7 +122,7 @@ jobs:
     needs: build-core-image
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: core-image
       - name: Load image
@@ -141,7 +141,7 @@ jobs:
     needs: build-admin-image
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: admin-image
       - name: Load image
