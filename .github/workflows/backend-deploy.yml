@@ -75,7 +75,7 @@ jobs:
       mobile_api: ${{ steps.resolve.outputs.mobile_api }}
       admin_api: ${{ steps.resolve.outputs.admin_api }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
