@@ -1,7 +1,7 @@
 # ---------------------------
 # Stage 1: Build
 # ---------------------------
-FROM node:20-alpine AS builder
+FROM node:26-alpine AS builder
 
 ARG APP_VERSION=1.0.0
 ARG BUILD_NUMBER=unknown
@@ -40,7 +40,7 @@ RUN pnpm --filter core-service deploy --prod --legacy /prod/core
 # ---------------------------
 # Stage 2: Production
 # ---------------------------
-FROM node:20-bookworm-slim
+FROM node:26-bookworm-slim
 
 ARG APP_VERSION=1.0.0
 ARG BUILD_NUMBER=unknown
