@@ -3,6 +3,7 @@ import express from 'express';
 import { registerAdminModules } from './modules';
 import { isBlogApiPath } from './modules/blog/register';
 import { logger } from './shared/logger';
+import { getBuildInfo, getVersionPayload } from './shared/build-info';
 
 const API_PREFIX = '/api/v1';
 
@@ -34,11 +35,29 @@ app.use((req, res, next) => {
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ success: true, service: 'admin-app', status: 'ok' });
+  res.json({
+    success: true,
+    service: 'admin-app',
+    status: 'ok',
+    version: getBuildInfo('novasafe-admin-api').version,
+  });
 });
 
 app.get(`${API_PREFIX}/health`, (_req, res) => {
-  res.json({ success: true, service: 'admin-app', status: 'ok' });
+  res.json({
+    success: true,
+    service: 'admin-app',
+    status: 'ok',
+    version: getBuildInfo('novasafe-admin-api').version,
+  });
+});
+
+app.get('/version', (_req, res) => {
+  res.json(getVersionPayload('novasafe-admin-api'));
+});
+
+app.get('/version.json', (_req, res) => {
+  res.json(getBuildInfo('novasafe-admin-api'));
 });
 
 let modulesReady = false;

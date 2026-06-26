@@ -1,0 +1,30 @@
+name: Ticket — Bug
+description: Something is broken
+title: "[Bug] "
+labels:
+  - type:fix
+  - status:backlog
+body:
+  - type: markdown
+    value: |
+      ## Ticket workflow
+      Move to **In Progress** on the project board → branch + PR are created automatically.
+      Merge PR → **patch** version bump from `type:fix` label.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: false

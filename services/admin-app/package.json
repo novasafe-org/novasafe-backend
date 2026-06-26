@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "node ../../scripts/free-port.mjs ADMIN_PORT 3130",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
+    "build": "REPOSITORY=novasafe-admin-api node ../../scripts/generate-build-metadata.mjs --package services/admin-app/package.json --out services/admin-app/src/generated && tsc -p tsconfig.json && tsc-alias -p tsconfig.json && REPOSITORY=novasafe-admin-api node ../../scripts/generate-build-metadata.mjs --package services/admin-app/package.json --out services/admin-app/dist",
     "start": "node dist/index.js",
     "stop": "node ../../scripts/free-port.mjs ADMIN_PORT 3130",
     "seed": "tsx src/scripts/seed-admin.ts"

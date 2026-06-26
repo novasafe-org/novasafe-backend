@@ -5,6 +5,7 @@ import { notFoundHandler } from './middleware/notFoundHandler';
 import { errorHandler } from './middleware/errorHandler';
 import { requestContextMiddleware } from './shared/request-context';
 import { registerModuleRoutes } from './modules';
+import { getBuildInfo, getVersionPayload } from './shared/build-info';
 
 const app = express();
 
@@ -71,6 +72,7 @@ const buildHealthPayload = async () => {
     success: db.ready && dbPing,
     service: 'core',
     status: db.ready && dbPing ? 'ok' : 'degraded',
+    version: getBuildInfo('novasafe-mobile-api').version,
     database: {
       state: db.state,
       ready: db.ready,
@@ -95,6 +97,14 @@ app.get('/api/v1/health', async (_req, res) => {
 app.get('/mobile/health', async (_req, res) => {
   const payload = await buildHealthPayload();
   res.status(payload.success ? 200 : 503).json({ ...payload, source: 'mobile' });
+});
+
+app.get('/version', (_req, res) => {
+  res.json(getVersionPayload('novasafe-mobile-api'));
+});
+
+app.get('/version.json', (_req, res) => {
+  res.json(getBuildInfo('novasafe-mobile-api'));
 });
 
 registerModuleRoutes(app);

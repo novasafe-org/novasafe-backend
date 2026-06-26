@@ -1,0 +1,12 @@
+# Changelog
+
+All notable changes to the NovaSafe Mobile API (`services/core`) are documented here.
+
+Release versions are managed automatically by [release-please](https://github.com/googleapis/release-please) from [Conventional Commits](https://www.conventionalcommits.org/).
+
+## v1.0.0
+
+### Added
+
+- Initial production Mobile API service
+- `GET /version` build metadata endpoint

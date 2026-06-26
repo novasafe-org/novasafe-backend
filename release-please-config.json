@@ -1,0 +1,25 @@
+{
+  "packages": {
+    "services/core": {
+      "release-type": "node",
+      "package-name": "novasafe-mobile-api",
+      "changelog-path": "services/core/CHANGELOG.md",
+      "component": "mobile-api"
+    },
+    "services/admin-app": {
+      "release-type": "node",
+      "package-name": "novasafe-admin-api",
+      "changelog-path": "services/admin-app/CHANGELOG.md",
+      "component": "admin-api"
+    }
+  },
+  "separate-pull-requests": true,
+  "changelog-sections": [
+    { "type": "feat", "section": "Added" },
+    { "type": "fix", "section": "Fixed" },
+    { "type": "perf", "section": "Improved" },
+    { "type": "refactor", "section": "Changed" },
+    { "type": "docs", "section": "Documentation" },
+    { "type": "chore", "section": "Maintenance", "hidden": true }
+  ]
+}

@@ -67,6 +67,11 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+      - id: version
+        uses: novasafe-org/novasafe-deployment/.github/actions/resolve-version@master
+        with:
+          package-json: services/admin-app/package.json
+          repository-name: novasafe-admin-api
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -79,9 +84,17 @@ jobs:
           context: .
           file: ./services/admin-app/Dockerfile
           push: true
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+            BUILD_NUMBER=${{ steps.version.outputs.build }}
+            GIT_COMMIT=${{ steps.version.outputs.commit }}
+            RELEASED_AT=${{ steps.version.outputs.released_at }}
+            GIT_BRANCH=${{ github.ref_name }}
+            REPOSITORY=novasafe-admin-api
           tags: |
             ghcr.io/novasafe-org/novasafe-admin-api:latest
             ghcr.io/novasafe-org/novasafe-admin-api:${{ github.sha }}
+            ghcr.io/novasafe-org/novasafe-admin-api:${{ steps.version.outputs.version_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

@@ -1,0 +1,50 @@
+# Backend monorepo — release bumped packages based on changed paths.
+
+name: Release on merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main, master]
+
+jobs:
+  changes:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      admin: ${{ steps.filter.outputs.admin }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            core:
+              - 'services/core/**'
+            admin:
+              - 'services/admin-app/**'
+
+  release-mobile-api:
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    uses: novasafe-org/novasafe-deployment/.github/workflows/release-on-merge.yml@master
+    with:
+      package-json: services/core/package.json
+      changelog-path: services/core/CHANGELOG.md
+      manifest-path: .release-please-manifest.json
+      manifest-key: services/core
+      default_branch: master
+    secrets: inherit
+
+  release-admin-api:
+    needs: changes
+    if: needs.changes.outputs.admin == 'true'
+    uses: novasafe-org/novasafe-deployment/.github/workflows/release-on-merge.yml@master
+    with:
+      package-json: services/admin-app/package.json
+      changelog-path: services/admin-app/CHANGELOG.md
+      manifest-path: .release-please-manifest.json
+      manifest-key: services/admin-app
+      default_branch: master
+    secrets: inherit
