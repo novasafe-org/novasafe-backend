@@ -1,5 +1,0 @@
-blank_issues_enabled: false
-contact_links:
-  - name: NovaSafe versioning docs
-    url: https://github.com/novasafe-org/novasafe-deployment/blob/master/docs/versioning.md
-    about: Ticket-based releases and GitHub Projects setup
