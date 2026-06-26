@@ -1,4 +1,4 @@
-# Gitleaks → Trivy → build → deploy (single pipeline)
+# Gitleaks → Build → Trivy → deploy (single pipeline)
 #
 # Push / manual: security gates, then backend-deploy (change-aware mobile-api + admin-api).
 # PR / schedule: security scans only.
@@ -65,15 +65,68 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/gitleaks-cli
 
-  trivy-core-image:
-    name: Trivy (core image)
+  build-core-image:
+    name: Build (core image)
     needs: gitleaks
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
       - name: Build core image
-        run: docker build -t novasafe-core:scan -f services/core/Dockerfile services/core
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./services/core/Dockerfile
+          load: true
+          tags: novasafe-core:scan
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Save image for Trivy
+        run: docker save novasafe-core:scan | gzip > core-image.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-image
+          path: core-image.tar.gz
+          retention-days: 1
+
+  build-admin-image:
+    name: Build (admin image)
+    needs: gitleaks
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build admin image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./services/admin-app/Dockerfile
+          load: true
+          tags: novasafe-admin:scan
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Save image for Trivy
+        run: docker save novasafe-admin:scan | gzip > admin-image.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: admin-image
+          path: admin-image.tar.gz
+          retention-days: 1
+
+  trivy-core-image:
+    name: Trivy (core image)
+    needs: build-core-image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-image
+      - name: Load image
+        run: docker load -i core-image.tar.gz
       - name: Scan core image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -85,13 +138,14 @@ jobs:
 
   trivy-admin-image:
     name: Trivy (admin image)
-    needs: gitleaks
-    if: github.actor != 'dependabot[bot]'
+    needs: build-admin-image
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Build admin image
-        run: docker build -t novasafe-admin:scan -f services/admin-app/Dockerfile services/admin-app
+      - uses: actions/download-artifact@v4
+        with:
+          name: admin-image
+      - name: Load image
+        run: docker load -i admin-image.tar.gz
       - name: Scan admin image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -138,7 +192,7 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: [gitleaks, trivy-core-image, trivy-admin-image]
+    needs: [trivy-core-image, trivy-admin-image]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
