@@ -34,10 +34,13 @@ COPY services/core ./services/core
 
 RUN pnpm --filter core-service run build
 
+ENV HUSKY=0
+RUN pnpm --filter core-service deploy --prod --legacy /prod/core
+
 # ---------------------------
 # Stage 2: Production
 # ---------------------------
-FROM node:20-slim
+FROM node:20-bookworm-slim
 
 ARG APP_VERSION=1.0.0
 ARG BUILD_NUMBER=unknown
@@ -48,18 +51,13 @@ ARG RELEASED_AT
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    curl \
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates
 
-RUN npm install -g pnpm --registry https://registry.npmjs.org/
-
-COPY --from=builder /app/services/core/dist ./dist
-COPY --from=builder /app/services/core/package.json ./package.json
-
-RUN pnpm install --prod --ignore-workspace
+COPY --from=builder /prod/core/ ./
 
 # Persistent log directory (mount a volume here in production)
 RUN mkdir -p /app/logs && chmod 755 /app/logs

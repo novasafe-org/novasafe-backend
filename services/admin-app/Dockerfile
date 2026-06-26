@@ -34,10 +34,13 @@ COPY services/admin-app ./services/admin-app
 
 RUN pnpm --filter admin-app-service run build
 
+ENV HUSKY=0
+RUN pnpm --filter admin-app-service deploy --prod --legacy /prod/admin
+
 # ---------------------------
 # Stage 2: Production
 # ---------------------------
-FROM node:20-slim
+FROM node:20-bookworm-slim
 
 ARG APP_VERSION=1.0.0
 ARG BUILD_NUMBER=unknown
@@ -48,18 +51,13 @@ ARG RELEASED_AT
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    curl \
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates
 
-RUN npm install -g pnpm --registry https://registry.npmjs.org/
-
-COPY --from=builder /app/services/admin-app/dist ./dist
-COPY --from=builder /app/services/admin-app/package.json ./package.json
-
-RUN pnpm install --prod --ignore-workspace
+COPY --from=builder /prod/admin/ ./
 
 RUN mkdir -p /app/logs /app/uploads && chmod 755 /app/logs /app/uploads
 
