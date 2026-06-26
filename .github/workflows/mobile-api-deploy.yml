@@ -74,7 +74,7 @@ jobs:
           repository-name: novasafe-mobile-api
       - uses: docker/setup-buildx-action@v3
       - name: Build image (local)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./services/core/Dockerfile
@@ -107,7 +107,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./services/core/Dockerfile
