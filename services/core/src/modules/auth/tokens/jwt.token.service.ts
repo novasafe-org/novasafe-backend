@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import jwt from 'jsonwebtoken';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import { assertAuthConfig, authConfig } from '../../../config/auth.config';
 import type { DecodedAuthToken, OauthOtpProvider, TokenPair, UserPayload } from './token.types';
 
@@ -7,14 +7,15 @@ import type { DecodedAuthToken, OauthOtpProvider, TokenPair, UserPayload } from 
  * JWT issuance and verification (compatible with mobile_vault tokens).
  */
 export class JwtTokenService {
-  generateAccessToken(user: UserPayload): TokenPair {
+  generateAccessToken(user: UserPayload, options?: { expiresIn?: string }): TokenPair {
     assertAuthConfig();
     const tokenId = crypto.randomBytes(16).toString('hex');
+    const expiresIn = (options?.expiresIn ?? authConfig.jwt.accessExpiresIn) as SignOptions['expiresIn'];
     const token = jwt.sign(
       { id: user.id, email: user.email, name: user.name, picture: user.picture },
       authConfig.jwt.secret,
       {
-        expiresIn: authConfig.jwt.accessExpiresIn,
+        expiresIn,
         issuer: authConfig.jwt.issuer,
         audience: authConfig.jwt.audience,
         jwtid: tokenId,

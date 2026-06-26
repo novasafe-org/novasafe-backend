@@ -6,7 +6,8 @@ export const authConfig = {
     secret: process.env.JWT_SECRET || '',
     issuer: 'vault-backend',
     audience: 'vault-frontend',
-    accessExpiresIn: '7d' as const,
+    accessExpiresIn: (process.env.JWT_ACCESS_EXPIRES_IN || '7d') as `${number}d` | `${number}m` | `${number}h`,
+    webAccessExpiresIn: (process.env.JWT_WEB_ACCESS_EXPIRES_IN || '30m') as `${number}d` | `${number}m` | `${number}h`,
     oauthPendingExpiresIn: '1h' as const,
   },
   google: {
@@ -35,6 +36,7 @@ export const authConfig = {
   },
   otp: {
     ttlMs: 10 * 60 * 1000,
+    signupProofTtlMs: 15 * 60 * 1000,
     resendCooldownMs: 30_000,
     maxVerifyAttempts: 8,
   },

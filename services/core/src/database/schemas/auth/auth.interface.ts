@@ -17,5 +17,6 @@ export interface ITwoFactorChallenge extends IBaseEntityDocument {
   code: string;
   expiresAt: Date;
   verified: boolean;
+  verifyAttempts?: number;
   source?: string;
 }

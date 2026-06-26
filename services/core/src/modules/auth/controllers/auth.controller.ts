@@ -4,6 +4,8 @@ import { getSessionService } from '../services/session.service';
 import { getOAuthGoogleService } from '../services/oauth-google.service';
 import { getOAuthAppleService } from '../services/oauth-apple.service';
 import { getExtensionPairService } from '../services/extension-pair.service';
+import { getExtensionPairingHandoffService } from '../services/extension-pairing-handoff.service';
+import { getPasswordResetService } from '../services/password-reset.service';
 
 const send = (res: Response, result: { status: number; body: unknown }) => {
   res.status(result.status).json(result.body);
@@ -113,4 +115,50 @@ export const pairExtension = async (req: Request, res: Response): Promise<void> 
     return;
   }
   send(res, await getExtensionPairService().pair(req, req.user.id));
+};
+
+export const createExtensionPairingHandoff = async (req: Request, res: Response): Promise<void> => {
+  if (!req.user?.id) {
+    res.status(401).json({ success: false, message: 'Authentication required' });
+    return;
+  }
+  const { installationId, state } = req.body || {};
+  send(
+    res,
+    await getExtensionPairingHandoffService().createHandoff(
+      req,
+      req.user.id,
+      String(installationId || ''),
+      String(state || ''),
+    ),
+  );
+};
+
+export const redeemExtensionPairing = async (req: Request, res: Response): Promise<void> => {
+  const { pairingCode, installationId, state } = req.body || {};
+  send(
+    res,
+    await getExtensionPairingHandoffService().redeemHandoff(
+      req,
+      String(pairingCode || ''),
+      String(installationId || ''),
+      String(state || ''),
+    ),
+  );
+};
+
+export const requestPasswordReset = async (req: Request, res: Response): Promise<void> => {
+  send(res, await getPasswordResetService().requestReset(req, String(req.body?.email || '')));
+};
+
+export const confirmPasswordReset = async (req: Request, res: Response): Promise<void> => {
+  send(
+    res,
+    await getPasswordResetService().confirmReset(
+      req,
+      String(req.body?.email || ''),
+      String(req.body?.otp || ''),
+      String(req.body?.newPassword || ''),
+    ),
+  );
 };

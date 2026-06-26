@@ -44,8 +44,6 @@ export const toMobileItemDetail = (item: Record<string, unknown>): Record<string
   notes: item.notes,
   cardNumber: item.cardNumber,
   apiKey: item.apiKey,
-  encrypted_data: item.encrypted_data,
-  iv: item.iv,
   tags: (item.tags as string[]) || [],
   password_versions: item.password_versions || [],
   custom_fields: item.custom_fields || [],

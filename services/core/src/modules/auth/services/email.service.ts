@@ -79,6 +79,23 @@ export const sendShareInviteEmail = async (
     `${senderName} shared ${itemName} with you on NovaSafe. Permission: ${permission}.`,
   );
 
+export const sendPasswordResetEmail = async (email: string, code: string): Promise<boolean> =>
+  sendMail(
+    email,
+    'Reset your NovaSafe password',
+    `<div style="font-family:Inter,Segoe UI,Arial,sans-serif;background:#f4f7fb;padding:24px;">
+      <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;padding:28px;border:1px solid #e8edf5;">
+        <h1 style="margin:0 0 8px;color:#0f172a;font-size:24px;">Password reset</h1>
+        <p style="margin:0 0 18px;color:#475569;">Use this code to set a new password for your account.</p>
+        <div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:16px;border-radius:12px;text-align:center;">
+          <span style="font-size:28px;letter-spacing:6px;font-weight:700;">${code}</span>
+        </div>
+        <p style="color:#64748b;font-size:13px;margin-top:16px;">Code expires in 10 minutes. If you did not request this, ignore this email.</p>
+      </div>
+    </div>`,
+    `Your NovaSafe password reset code is ${code}. This code expires in 10 minutes.`,
+  );
+
 export const sendTwoFactorEmail = async (email: string, code: string): Promise<boolean> =>
   sendMail(
     email,

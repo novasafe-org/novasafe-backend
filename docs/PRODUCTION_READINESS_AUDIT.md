@@ -4,6 +4,8 @@
 **Scope:** Full ecosystem — `services/core`, `services/mobile_vault`, `novasafe-app-v2`, `novasafe-auth-v2`, `novasafe-extension`, `novasafe-landing-v2`, RevenueCat, Paddle  
 **Method:** Read-only static analysis across auth, vault, extension, subscriptions, security, and performance. No code was modified.
 
+> **Security program:** Work fixes from the [security fix checklist](./security/SECURITY_FIX_CHECKLIST.md). Context: [overview](./security/SECURITY_OVERVIEW.md).
+
 ---
 
 ## Executive Summary

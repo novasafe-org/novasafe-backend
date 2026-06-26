@@ -1,5 +1,6 @@
 import express from 'express';
 import { ConnectionManager, type ConnectionManagerStatus } from './database';
+import { isOriginAllowed } from './config/cors.config';
 import { applyExpressLogging, getExpressErrorLogger } from './shared/logger/adapters';
 import { notFoundHandler } from './middleware/notFoundHandler';
 import { errorHandler } from './middleware/errorHandler';
@@ -14,7 +15,13 @@ app.use(express.json({ limit: '1mb' }));
 app.use(requestContextMiddleware);
 
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (origin) {
+    if (isOriginAllowed(origin)) {
+      res.header('Access-Control-Allow-Origin', origin);
+      res.header('Vary', 'Origin');
+    }
+  }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.header(
     'Access-Control-Allow-Headers',

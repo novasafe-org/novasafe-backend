@@ -7,6 +7,7 @@ import {
   userCanAccessPasswordHistory,
   type PasswordVersionRecord,
 } from '../utils/password-version-access';
+import { assertCanCreateVaultItem } from '../../subscriptions/services/subscription.service';
 
 const collection = COLLECTIONS;
 const db = getNativeMongo();
@@ -373,7 +374,7 @@ export const getItemById = async (userId: string, id: string, revealSensitive = 
   return {
     ...item,
     ...decrypted,
-    password: activePassword?.password,
+    password: revealSensitive ? activePassword?.password : undefined,
     tags: item.tags || [],
     logoUrl: item.logoUrl || null,
     password_versions: passwordVersions,
@@ -665,6 +666,11 @@ export const syncBulkUpload = async (
   for (const op of operations) {
     try {
       if (op.op === 'create') {
+        const category = String(op.payload?.category || op.payload?.type || 'login');
+        const allowed = await assertCanCreateVaultItem(userId, category);
+        if (!allowed.ok) {
+          continue;
+        }
         const created = await createItem(userId, { ...(op.payload || {}), deviceId: payload.deviceId, localVersion: op.payload?.localVersion || 1 });
         const createdId = (created as any)?.id || (created as any)?._id?.toString?.();
         if (createdId) syncedIds.push(String(createdId));

@@ -31,6 +31,13 @@ export class SessionRepository {
     );
   }
 
+  async revokeAllByUserId(userId: string): Promise<void> {
+    await this.model.updateMany(
+      { userId: new Types.ObjectId(userId), revoked: { $ne: true } },
+      { $set: { revoked: true, revokedAt: new Date() } },
+    );
+  }
+
   async updateActivityByTokenId(tokenId: string, fields: { deviceId?: string }): Promise<void> {
     await this.model.updateOne(
       { tokenId },

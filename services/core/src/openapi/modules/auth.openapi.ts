@@ -183,11 +183,12 @@ export const buildAuthOpenApiPaths = (): OpenApiDocument['paths'] => ({
       parameters: platformHeaders,
       requestBody: jsonBody({
         type: 'object',
-        required: ['email', 'fullName', 'password'],
+        required: ['email', 'fullName', 'password', 'signupProofToken'],
         properties: {
           email: { type: 'string' },
           fullName: { type: 'string' },
           password: { type: 'string', minLength: 8 },
+          signupProofToken: { type: 'string' },
         },
       }),
       responses: { '201': { description: 'Created' }, ...successEnvelope() },

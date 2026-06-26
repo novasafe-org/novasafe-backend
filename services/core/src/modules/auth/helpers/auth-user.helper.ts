@@ -12,7 +12,7 @@ export const isNovaSafeEmailVerified = (
 ): boolean => {
   if (user?.novasafeEmailVerified === true) return true;
   if (user?.novasafeEmailVerified === false) return false;
-  return true;
+  return false;
 };
 
 export const buildAppleDisplayName = (

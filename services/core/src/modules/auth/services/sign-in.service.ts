@@ -75,16 +75,22 @@ export class SignInService {
     const email = emailRaw.toLowerCase().trim();
     const user = await this.users.findByEmail(email, true);
     if (!user) {
-      return { status: 404, body: { success: false, message: 'User not found' } };
+      return { status: 404, body: { success: false, message: 'Invalid or expired verification code' } };
     }
-    const challenge = await this.twoFactor.findValidChallenge(
-      new Types.ObjectId(user._id.toString()),
-      code.trim(),
-    );
+    const userId = new Types.ObjectId(user._id.toString());
+    const challenge = await this.twoFactor.findActiveChallenge(userId);
     if (!challenge) {
       return { status: 400, body: { success: false, message: 'Invalid or expired verification code' } };
     }
-    await this.twoFactor.markVerified(challenge._id);
+    const attempts = Number(challenge.verifyAttempts ?? 0);
+    if (attempts >= authConfig.otp.maxVerifyAttempts) {
+      return { status: 429, body: { success: false, message: 'Too many attempts. Request a new code.' } };
+    }
+    if (String(challenge.code) !== code.trim()) {
+      await this.twoFactor.incrementAttempts(challenge._id);
+      return { status: 400, body: { success: false, message: 'Invalid or expired verification code' } };
+    }
+    await this.twoFactor.deleteChallenge(challenge._id);
     const authResponse = await this.authResponse.buildFullSession(req, user);
     return { status: 200, body: authResponse };
   }

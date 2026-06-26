@@ -1,0 +1,19 @@
+name: Gitleaks CLI scan
+description: Scan repository for secrets using the free open-source Gitleaks CLI (no license required).
+
+runs:
+  using: composite
+  steps:
+    - name: Install Gitleaks CLI
+      shell: bash
+      env:
+        GITLEAKS_VERSION: "8.22.1"
+      run: |
+        set -euo pipefail
+        curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+          | tar -xz
+        sudo install -m 755 gitleaks /usr/local/bin/gitleaks
+        gitleaks version
+    - name: Scan for secrets
+      shell: bash
+      run: gitleaks detect --source . --redact --verbose

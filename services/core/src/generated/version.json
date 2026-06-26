@@ -1,9 +1,9 @@
 {
   "version": "1.0.0",
-  "build": "20260625.0729",
+  "build": "20260626.1441",
   "commit": "unknown",
   "branch": "unknown",
   "environment": "production",
-  "releasedAt": "2026-06-25T07:29:45.788Z",
-  "repository": "novasafe-backend"
+  "releasedAt": "2026-06-26T14:41:39.504Z",
+  "repository": "novasafe-mobile-api"
 }

@@ -14,38 +14,20 @@
 name: NovaSafe Backend Deploy
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - 'services/core/**'
-      - 'services/admin-app/**'
-      - '.github/workflows/backend-deploy.yml'
-      - '.github/workflows/mobile-api-deploy.yml'
-      - '.github/workflows/admin-api-deploy.yml'
-      - '.github/workflows/mobile-vault-service.yml'
-      - '.github/workflows/admin-app-service.yml'
-
-  workflow_dispatch:
-    inputs:
-      deploy_target:
-        description: 'What to deploy'
-        type: choice
-        options:
-          - auto-detect
-          - admin-api only
-          - mobile-api only
-          - both services
-        default: admin-api only
-      deploy_mobile_api:
-        description: '📱 (legacy) Force Mobile API — use deploy_target instead'
-        type: boolean
-        default: false
-      deploy_admin_api:
-        description: '🛡️  (legacy) Force Admin API — use deploy_target instead'
-        type: boolean
-        default: false
+  workflow_call:
+    secrets:
+      SSH_USER:
+        required: true
+      SSH_HOST:
+        required: true
+      SSH_PASSWORD:
+        required: true
+      DEPLOY_PATH:
+        required: true
+      DEPLOY_REPO_PATH:
+        required: false
+      SSH_PRIVATE_KEY:
+        required: false
 
 jobs:
   # ─── Stage 1: Pre-flight ───────────────────────────────────────────────────
@@ -124,7 +106,7 @@ jobs:
               case "$file" in
                 services/core/*) mobile=true ;;
                 services/admin-app/*) admin=true ;;
-                .github/workflows/mobile-api-deploy.yml|.github/workflows/mobile-vault-service.yml) mobile=true ;;
+                .github/workflows/ci.yml|.github/workflows/mobile-api-deploy.yml|.github/workflows/mobile-vault-service.yml) mobile=true ;;
                 .github/workflows/admin-api-deploy.yml|.github/workflows/admin-app-service.yml) admin=true ;;
               esac
             done <<< "$changed"

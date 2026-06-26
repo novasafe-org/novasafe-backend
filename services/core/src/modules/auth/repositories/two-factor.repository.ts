@@ -11,6 +11,10 @@ export class TwoFactorRepository {
     ),
   ) {}
 
+  async invalidatePending(userId: Types.ObjectId): Promise<void> {
+    await this.model.deleteMany({ userId, verified: false });
+  }
+
   async createChallenge(data: {
     userId: Types.ObjectId;
     email: string;
@@ -18,11 +22,24 @@ export class TwoFactorRepository {
     expiresAt: Date;
     source?: string;
   }): Promise<void> {
+    await this.invalidatePending(data.userId);
     await this.model.create({
       ...data,
       verified: false,
+      verifyAttempts: 0,
       createdAt: new Date(),
     });
+  }
+
+  async findActiveChallenge(userId: Types.ObjectId): Promise<ITwoFactorChallenge | null> {
+    return this.model
+      .findOne({
+        userId,
+        verified: false,
+        expiresAt: { $gt: new Date() },
+      })
+      .sort({ createdAt: -1 })
+      .lean();
   }
 
   async findValidChallenge(
@@ -39,8 +56,19 @@ export class TwoFactorRepository {
       .lean();
   }
 
+  async incrementAttempts(id: unknown): Promise<void> {
+    await this.model.updateOne(
+      { _id: id },
+      { $inc: { verifyAttempts: 1 }, $set: { updatedAt: new Date() } },
+    );
+  }
+
   async markVerified(id: unknown): Promise<void> {
     await this.model.updateOne({ _id: id }, { $set: { verified: true, verifiedAt: new Date() } });
+  }
+
+  async deleteChallenge(id: unknown): Promise<void> {
+    await this.model.deleteOne({ _id: id });
   }
 }
 

@@ -7,9 +7,13 @@
   ],
   "devDependencies": {
     "eslint": "^8.50.0",
+    "husky": "^9.1.7",
     "typescript": "^5.2.2"
   },
   "scripts": {
+    "prepare": "husky",
+    "gitleaks": "bash scripts/run-gitleaks.sh",
+    "gitleaks:staged": "bash scripts/gitleaks-pre-commit.sh",
     "install:all": "pnpm install",
     "clean": "pnpm store prune && rm -rf node_modules **/node_modules",
     "build:all": "pnpm -r run build",

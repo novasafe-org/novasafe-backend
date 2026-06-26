@@ -25,6 +25,10 @@ export async function refreshSubscriptionStateFromRevenueCat(
   const rc = await fetchRevenueCatSubscriberByAppUserId(String(user._id));
 
   if (!rc?.subscriber) {
+    if (previous && (previous.isActive || previous.subscriptionStatus === 'active' || previous.inGracePeriod)) {
+      syncLog.warn({ userId }, "RevenueCat subscriber empty — retaining last-known-good state");
+      return previous;
+    }
     syncLog.info({ userId }, "RevenueCat subscriber empty — persisting free state");
     const free = defaultSubscriptionState();
     await persistSubscriptionState(userId, free);

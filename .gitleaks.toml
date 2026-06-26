@@ -1,0 +1,5 @@
+title = "NovaSafe backend"
+
+[[allowlists]]
+description = "CI smoke-test JWT in workflow env (not a real secret)"
+paths = ['''\.github/workflows/ci\.yml''']

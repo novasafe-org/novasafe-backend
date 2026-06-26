@@ -1,7 +1,9 @@
+import crypto from 'node:crypto';
 import type { Request } from 'express';
 import { ObjectId } from '../../../database/object-id';
 import { authConfig } from '../../../config/auth.config';
 import { getRequestContext } from '../../../shared/request-context';
+import { ClientPlatform, RequestSource } from '../../../shared/request-context/types/request-source.types';
 import { logger } from '../../../shared/logger';
 import { resolveClientIp, resolveDeviceInfo } from '../helpers/device.helper';
 import { toAuthUser } from '../helpers/auth-user.helper';
@@ -52,16 +54,22 @@ export class AuthResponseService {
     }
 
     const deviceKey = deviceDecision.deviceKey;
-    const tokenResult = this.tokens.generateAccessToken({
-      id: userId,
-      email: user.email,
-      name: user.name,
-      picture: user.picture || user.avatar_url,
-    });
+    const platformCtx = getRequestContext();
+    const snap = platformCtx?.snapshot;
+    const isWebClient =
+      snap?.platform === ClientPlatform.Web || snap?.declaredSource === RequestSource.WebApp;
+    const tokenResult = this.tokens.generateAccessToken(
+      {
+        id: userId,
+        email: user.email,
+        name: user.name,
+        picture: user.picture || user.avatar_url,
+      },
+      isWebClient ? { expiresIn: authConfig.jwt.webAccessExpiresIn } : undefined,
+    );
 
     const ipAddress = resolveClientIp(req);
     const device = resolveDeviceInfo(req);
-    const platformCtx = getRequestContext();
     const sessionPayload: Record<string, unknown> = {
       userId: new ObjectId(userId),
       tokenId: tokenResult.tokenId,
@@ -128,7 +136,7 @@ export class AuthResponseService {
   }
 
   static randomOtp(): string {
-    return `${Math.floor(100000 + Math.random() * 900000)}`;
+    return `${crypto.randomInt(100_000, 1_000_000)}`;
   }
 
   otpExpiresAt(): Date {

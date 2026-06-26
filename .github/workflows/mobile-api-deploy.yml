@@ -73,12 +73,40 @@ jobs:
           package-json: services/core/package.json
           repository-name: novasafe-mobile-api
       - uses: docker/setup-buildx-action@v3
+      - name: Build image (local)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./services/core/Dockerfile
+          load: true
+          tags: novasafe-mobile-vault:scan
+          push: false
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+            BUILD_NUMBER=${{ steps.version.outputs.build }}
+            GIT_COMMIT=${{ steps.version.outputs.commit }}
+            RELEASED_AT=${{ steps.version.outputs.released_at }}
+            GIT_BRANCH=${{ github.ref_name }}
+            REPOSITORY=novasafe-mobile-api
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: novasafe-mobile-vault:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build & push image
+
+      - name: Push image
         uses: docker/build-push-action@v5
         with:
           context: .

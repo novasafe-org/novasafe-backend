@@ -73,12 +73,40 @@ jobs:
           package-json: services/admin-app/package.json
           repository-name: novasafe-admin-api
       - uses: docker/setup-buildx-action@v3
+      - name: Build image (local)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./services/admin-app/Dockerfile
+          load: true
+          tags: novasafe-admin-api:scan
+          push: false
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+            BUILD_NUMBER=${{ steps.version.outputs.build }}
+            GIT_COMMIT=${{ steps.version.outputs.commit }}
+            RELEASED_AT=${{ steps.version.outputs.released_at }}
+            GIT_BRANCH=${{ github.ref_name }}
+            REPOSITORY=novasafe-admin-api
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: novasafe-admin-api:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build & push image
+
+      - name: Push image
         uses: docker/build-push-action@v5
         with:
           context: .

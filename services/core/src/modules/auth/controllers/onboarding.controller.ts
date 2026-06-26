@@ -18,6 +18,6 @@ export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
 };
 
 export const createAccount = async (req: Request, res: Response): Promise<void> => {
-  const { email, fullName, password } = req.body || {};
-  send(res, await getSignUpService().createAccount(req, email, fullName, password));
+  const { email, fullName, password, signupProofToken } = req.body || {};
+  send(res, await getSignUpService().createAccount(req, email, fullName, password, signupProofToken));
 };

@@ -1,0 +1,134 @@
+# Gitleaks → Trivy → build → deploy (single pipeline)
+#
+# Push / manual: security gates, then backend-deploy (change-aware mobile-api + admin-api).
+# PR / schedule: security scans only.
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'services/core/**'
+      - 'services/admin-app/**'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/backend-deploy.yml'
+      - '.github/workflows/mobile-api-deploy.yml'
+      - '.github/workflows/admin-api-deploy.yml'
+      - '.github/workflows/mobile-vault-service.yml'
+      - '.github/workflows/admin-app-service.yml'
+
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: 'What to deploy'
+        type: choice
+        options:
+          - auto-detect
+          - admin-api only
+          - mobile-api only
+          - both services
+        default: admin-api only
+      deploy_mobile_api:
+        description: '(legacy) Force Mobile API'
+        type: boolean
+        default: false
+      deploy_admin_api:
+        description: '(legacy) Force Admin API'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/gitleaks-cli
+
+  trivy-core-image:
+    name: Trivy (core image)
+    needs: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build core image
+        run: docker build -t novasafe-core:scan -f services/core/Dockerfile services/core
+      - name: Scan core image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: novasafe-core:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+  trivy-admin-image:
+    name: Trivy (admin image)
+    needs: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build admin image
+        run: docker build -t novasafe-admin:scan -f services/admin-app/Dockerfile services/admin-app
+      - name: Scan admin image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: novasafe-admin:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+  security-api-smoke:
+    name: API security smoke
+    needs: gitleaks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: services/core/package-lock.json
+      - name: Install and start API
+        working-directory: services/core
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/novasafe_security_smoke
+          JWT_SECRET: smoke-test-secret-min-32-chars-long
+          NODE_ENV: test
+          PORT: 8085
+        run: |
+          npm ci
+          npm run build
+          nohup node dist/index.js > /tmp/core.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8085/api/v1/health && break
+            sleep 2
+          done
+      - name: Run security smoke
+        run: chmod +x scripts/security-api-smoke.sh && ./scripts/security-api-smoke.sh http://127.0.0.1:8085
+
+  deploy:
+    name: Deploy
+    needs: [gitleaks, trivy-core-image, trivy-admin-image]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/backend-deploy.yml
+    secrets: inherit
