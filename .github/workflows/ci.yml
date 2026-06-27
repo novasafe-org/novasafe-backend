@@ -199,3 +199,31 @@ jobs:
       packages: write
     uses: ./.github/workflows/backend-deploy.yml
     secrets: inherit
+
+  release-core:
+    name: GitHub Release (mobile-api)
+    needs: deploy
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
+    uses: novasafe-org/novasafe-deployment/.github/workflows/publish-github-release.yml@master
+    with:
+      package-json: services/core/package.json
+      changelog-path: services/core/CHANGELOG.md
+      manifest-path: .release-please-manifest.json
+      manifest-key: services/core
+      tag-prefix: mobile-api-
+
+  release-admin:
+    name: GitHub Release (admin-api)
+    needs: deploy
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
+    uses: novasafe-org/novasafe-deployment/.github/workflows/publish-github-release.yml@master
+    with:
+      package-json: services/admin-app/package.json
+      changelog-path: services/admin-app/CHANGELOG.md
+      manifest-path: .release-please-manifest.json
+      manifest-key: services/admin-app
+      tag-prefix: admin-api-
