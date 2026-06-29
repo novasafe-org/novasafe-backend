@@ -13,6 +13,11 @@ const defaultOrigins = [
   'http://localhost:3102',
   'http://127.0.0.1:3101',
   'http://127.0.0.1:3102',
+  // Capacitor WebView origins (email login from packaged APK/IPA)
+  'http://localhost',
+  'https://localhost',
+  'capacitor://localhost',
+  'ionic://localhost',
 ];
 
 export const corsConfig = {
