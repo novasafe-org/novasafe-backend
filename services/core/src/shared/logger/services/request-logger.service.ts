@@ -2,7 +2,11 @@ import type { LoggerConfig } from '../config';
 import { pickLogFields } from '../config/log-context-fields.config';
 import type { RequestLogContext } from '../core/logger.types';
 import { buildPlainRequestMessage } from '../formatters';
-import { buildAccessLogEnrichment, resolveAccessLogLevel } from '../observability';
+import {
+  buildAccessLogEnrichment,
+  resolveAccessLogLevel,
+  shouldLogHealthProbeAccess,
+} from '../observability';
 import type { LoggerService } from './logger.service';
 
 export class RequestLoggerService {
@@ -13,6 +17,10 @@ export class RequestLoggerService {
 
   logCompleted(context: RequestLogContext): void {
     if (!this.config.enableRequest) return;
+
+    if (!shouldLogHealthProbeAccess(context.path, context.statusCode)) {
+      return;
+    }
 
     const message = buildPlainRequestMessage(context);
     const httpMeta = pickLogFields(

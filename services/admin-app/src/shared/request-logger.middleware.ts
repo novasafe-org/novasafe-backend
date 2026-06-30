@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 
+import { shouldLogHealthProbeAccess } from './health-probe.util';
 import { logger } from './logger';
 
 const LOG_SCHEMA_VERSION = 1;
@@ -31,15 +32,18 @@ const writeAccessLog = (
   level: 'error' | 'warn' | 'info',
   payload: Record<string, unknown>,
 ): void => {
+  const message = String(payload.message ?? '');
+  const { message: _omit, ...meta } = payload;
+
   if (level === 'error') {
-    logger.error(payload.message as string, payload);
+    logger.error(message, meta);
     return;
   }
   if (level === 'warn') {
-    logger.warn(payload.message as string, payload);
+    logger.warn(message, meta);
     return;
   }
-  logger.info(payload.message as string, payload);
+  logger.info(message, meta);
 };
 
 export const requestLoggerMiddleware = (req: Request, res: Response, next: NextFunction): void => {
@@ -54,6 +58,10 @@ export const requestLoggerMiddleware = (req: Request, res: Response, next: NextF
     const method = req.method;
     const path = req.path;
     const url = req.originalUrl || req.url;
+    if (!shouldLogHealthProbeAccess(path, statusCode)) {
+      return;
+    }
+
     const level = resolveAccessLevel(statusCode);
 
     const record: Record<string, unknown> = {

@@ -77,6 +77,10 @@ Applications emit one canonical JSON shape; the collector (Alloy today) maps fie
 
 Non-HTTP logs use `logType: "app"` (default) or `logType: "audit"`.
 
+### Health probe access logs
+
+Docker `HEALTHCHECK` hits `/health` and `/mobile/health` every 30s. **Successful 2xx health probes are not written** to access logs (file or Loki). Failed probes (4xx/5xx) are logged at `warn`/`error`.
+
 ## Collector label mapping (Alloy → Loki)
 
 | JSON field | Loki label | Cardinality |
