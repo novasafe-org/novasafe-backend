@@ -3,6 +3,7 @@ import express from 'express';
 import { registerAdminModules } from './modules';
 import { isBlogApiPath } from './modules/blog/register';
 import { logger } from './shared/logger';
+import { requestLoggerMiddleware } from './shared/request-logger.middleware';
 import { getBuildInfo, getVersionPayload } from './shared/build-info';
 
 const API_PREFIX = '/api/v1';
@@ -33,6 +34,8 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
+
+app.use(requestLoggerMiddleware);
 
 app.get('/health', (_req, res) => {
   res.json({

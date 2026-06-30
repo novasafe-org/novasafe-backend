@@ -66,9 +66,11 @@ const ensureLogDir = (logDir: string): string => {
 
 const jsonLineFormat = winston.format.printf((info) => {
   const record: Record<string, unknown> = {
+    schemaVersion: 1,
     service: config.serviceName,
     environment: config.environment,
     level: info.level,
+    logType: 'app',
     message: String(info.message ?? ''),
     timestamp: info.timestamp,
   };
@@ -79,7 +81,7 @@ const jsonLineFormat = winston.format.printf((info) => {
 
   const extras: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(info)) {
-    if (['level', 'message', 'timestamp', 'service', 'environment', 'stack'].includes(key)) {
+    if (['level', 'message', 'timestamp', 'service', 'environment', 'stack', 'schemaVersion'].includes(key)) {
       continue;
     }
     if (value !== undefined) {
@@ -88,6 +90,11 @@ const jsonLineFormat = winston.format.printf((info) => {
   }
 
   Object.assign(record, redactObject(extras));
+
+  if (typeof record.logType !== 'string' || record.logType === '') {
+    record.logType = 'app';
+  }
+
   return JSON.stringify(record);
 });
 
@@ -139,5 +146,9 @@ if (transports.length === 0) {
 
 export const logger = winston.createLogger({
   level: config.level,
+  defaultMeta: {
+    service: config.serviceName,
+    environment: config.environment,
+  },
   transports,
 });

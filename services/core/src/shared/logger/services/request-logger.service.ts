@@ -1,7 +1,8 @@
 import type { LoggerConfig } from '../config';
 import { pickLogFields } from '../config/log-context-fields.config';
-import { buildPlainRequestMessage } from '../formatters';
 import type { RequestLogContext } from '../core/logger.types';
+import { buildPlainRequestMessage } from '../formatters';
+import { buildAccessLogEnrichment, resolveAccessLogLevel } from '../observability';
 import type { LoggerService } from './logger.service';
 
 export class RequestLoggerService {
@@ -37,15 +38,20 @@ export class RequestLoggerService {
       this.config.httpFields,
     );
 
-    const status = context.statusCode ?? 0;
-    if (status >= 500) {
-      this.logger.error(message, httpMeta);
+    const accessMeta = {
+      ...httpMeta,
+      ...buildAccessLogEnrichment(context.statusCode),
+    };
+
+    const level = resolveAccessLogLevel(context.statusCode);
+    if (level === 'error') {
+      this.logger.error(message, accessMeta);
       return;
     }
-    if (status >= 400) {
-      this.logger.warn(message, httpMeta);
+    if (level === 'warn') {
+      this.logger.warn(message, accessMeta);
       return;
     }
-    this.logger.request(message, httpMeta);
+    this.logger.info(message, accessMeta);
   }
 }

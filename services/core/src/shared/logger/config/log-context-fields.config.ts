@@ -72,11 +72,16 @@ const DEFAULT_CONTEXT_FIELDS: LogContextFieldKey[] = [
 
 const DEFAULT_HTTP_FIELDS: LogHttpFieldKey[] = [
   'requestId',
+  'correlationId',
   'method',
   'url',
+  'path',
   'statusCode',
   'durationMs',
   'ip',
+  'userId',
+  'platform',
+  'source',
 ];
 
 const parseFieldList = <T extends string>(

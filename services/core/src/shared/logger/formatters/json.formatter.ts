@@ -1,9 +1,21 @@
 import winston from 'winston';
 import type { LoggerConfig } from '../config';
 import { pickLogFields } from '../config/log-context-fields.config';
+import { LOG_SCHEMA_VERSION, LOG_TYPES } from '../observability';
 import { stripAnsi } from '../utils/ansi.util';
 
-const RESERVED = new Set(['level', 'message', 'timestamp', 'service', 'environment', 'stack', 'label', 'meta']);
+const RESERVED = new Set([
+  'level',
+  'message',
+  'timestamp',
+  'service',
+  'environment',
+  'stack',
+  'label',
+  'meta',
+  'schemaVersion',
+  'logType',
+]);
 
 /**
  * Production / file / JSON-console pipeline — flat JSON, no ANSI, machine-parseable.
@@ -15,9 +27,11 @@ export const createStructuredJsonFormat = (config: LoggerConfig) =>
     winston.format.errors({ stack: config.enableErrorStack }),
     winston.format.printf((info) => {
       const record: Record<string, unknown> = {
+        schemaVersion: LOG_SCHEMA_VERSION,
         service: info.service,
         environment: info.environment,
         level: info.level,
+        logType: LOG_TYPES.APP,
         message: stripAnsi(String(info.message ?? '')),
         timestamp: info.timestamp,
       };
@@ -39,6 +53,8 @@ export const createStructuredJsonFormat = (config: LoggerConfig) =>
       const contextKeys = [
         ...config.contextFields,
         ...config.httpFields,
+        'logType',
+        'statusClass',
         'err',
         'code',
         'category',
@@ -46,6 +62,10 @@ export const createStructuredJsonFormat = (config: LoggerConfig) =>
       ];
       const picked = pickLogFields(extras, [...new Set(contextKeys)]);
       Object.assign(record, picked);
+
+      if (typeof record.logType !== 'string' || record.logType === '') {
+        record.logType = LOG_TYPES.APP;
+      }
 
       return JSON.stringify(record);
     }),
