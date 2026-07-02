@@ -26,7 +26,14 @@ importers:
         specifier: ^5.2.2
         version: 5.9.3
 
-  common/feature-flags: {}
+  common/feature-flags:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.10.0
+        version: 20.19.29
+      typescript:
+        specifier: ^5.2.2
+        version: 5.9.3
 
   services/admin-app:
     dependencies:
