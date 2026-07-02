@@ -10,6 +10,7 @@
     "build": "REPOSITORY=novasafe-mobile-api node ../../scripts/generate-build-metadata.mjs --package services/core/package.json --out services/core/src/generated && tsc && REPOSITORY=novasafe-mobile-api node ../../scripts/generate-build-metadata.mjs --package services/core/package.json --out services/core/dist",
     "test": "node --import tsx --test 'src/**/*.test.ts'",
     "seed:status": "tsx src/scripts/seed-status-page.ts",
+    "seed:feature-flags": "tsx src/scripts/seed-feature-flags.ts",
     "start": "node dist/index.js",
     "stop": "node ../../scripts/free-port.mjs CORE_PORT 3125"
   },
