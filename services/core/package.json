@@ -4,10 +4,10 @@
   "private": true,
   "main": "dist/index.js",
   "scripts": {
-    "predev": "node ../../scripts/free-port.mjs CORE_PORT 3125",
+    "predev": "pnpm --filter @novasafe/feature-flags run build && node ../../scripts/free-port.mjs CORE_PORT 3125",
     "dev": "tsx watch src/index.ts",
     "prestart": "node ../../scripts/free-port.mjs CORE_PORT 3125",
-    "build": "REPOSITORY=novasafe-mobile-api node ../../scripts/generate-build-metadata.mjs --package services/core/package.json --out services/core/src/generated && tsc && REPOSITORY=novasafe-mobile-api node ../../scripts/generate-build-metadata.mjs --package services/core/package.json --out services/core/dist",
+    "build": "pnpm --filter @novasafe/feature-flags run build && REPOSITORY=novasafe-mobile-api node ../../scripts/generate-build-metadata.mjs --package services/core/package.json --out services/core/src/generated && tsc && REPOSITORY=novasafe-mobile-api node ../../scripts/generate-build-metadata.mjs --package services/core/package.json --out services/core/dist",
     "test": "node ../../scripts/run-node-tests.mjs .",
     "seed:status": "tsx src/scripts/seed-status-page.ts",
     "seed:feature-flags": "tsx src/scripts/seed-feature-flags.ts",

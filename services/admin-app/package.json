@@ -4,9 +4,9 @@
   "private": true,
   "main": "dist/index.js",
   "scripts": {
-    "predev": "node ../../scripts/free-port.mjs ADMIN_PORT 3130",
+    "predev": "pnpm --filter @novasafe/feature-flags run build && node ../../scripts/free-port.mjs ADMIN_PORT 3130",
     "dev": "tsx watch src/index.ts",
-    "build": "REPOSITORY=novasafe-admin-api node ../../scripts/generate-build-metadata.mjs --package services/admin-app/package.json --out services/admin-app/src/generated && tsc -p tsconfig.json && tsc-alias -p tsconfig.json && REPOSITORY=novasafe-admin-api node ../../scripts/generate-build-metadata.mjs --package services/admin-app/package.json --out services/admin-app/dist",
+    "build": "pnpm --filter @novasafe/feature-flags run build && REPOSITORY=novasafe-admin-api node ../../scripts/generate-build-metadata.mjs --package services/admin-app/package.json --out services/admin-app/src/generated && tsc -p tsconfig.json && tsc-alias -p tsconfig.json && REPOSITORY=novasafe-admin-api node ../../scripts/generate-build-metadata.mjs --package services/admin-app/package.json --out services/admin-app/dist",
     "start": "node dist/index.js",
     "stop": "node ../../scripts/free-port.mjs ADMIN_PORT 3130",
     "seed": "tsx src/scripts/seed-admin.ts",
