@@ -1,5 +1,9 @@
 import app, { initializeApp } from './app';
 import { connectMongo } from './database/mongo';
+import {
+  ensureFeatureFlagIndexes,
+  seedFeatureFlagsFromCatalog,
+} from './modules/feature-flags/feature-flags.service';
 import { ensureRbacIndexes, seedRbac } from './modules/rbac/rbac.service';
 import { logger } from './shared/logger';
 
@@ -12,6 +16,8 @@ export async function startServer(): Promise<import('http').Server> {
   await connectMongo();
   await ensureRbacIndexes();
   await seedRbac();
+  await ensureFeatureFlagIndexes();
+  await seedFeatureFlagsFromCatalog();
   await initializeApp();
 
   return new Promise((resolve, reject) => {

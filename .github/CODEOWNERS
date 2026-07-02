@@ -1,4 +1,5 @@
 # NS-55 Feature Flag Platform — platform and flag modules
 /services/core/src/modules/platform/ @novasafe-org/novasafe-backend
 /services/core/src/platform/ @novasafe-org/novasafe-backend
+/common/feature-flags/ @novasafe-org/novasafe-backend
 /services/admin-app/src/modules/feature-flags/ @novasafe-org/novasafe-backend

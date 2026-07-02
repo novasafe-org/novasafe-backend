@@ -1,5 +1,5 @@
+import type { FeatureFlagKey } from '@novasafe/feature-flags';
 import { applyFeatureFlagsToCapabilities } from '../../../platform/feature-flags/capability-bindings';
-import type { FeatureFlagKey } from '../../../platform/feature-flags/types';
 import { RequestSource, type PlatformCapability } from '../types';
 
 /** Default capabilities per client source (extend via feature flags later). */

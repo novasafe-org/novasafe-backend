@@ -27,6 +27,8 @@ export const PERMISSION_DEFINITIONS: Array<{
   { key: 'settings.manage', module: 'settings', label: 'Settings', description: 'Manage workspace settings' },
   { key: 'settings.read', module: 'settings', label: 'Settings (read)', description: 'View settings' },
   { key: 'integrations.manage', module: 'integrations', label: 'Integrations', description: 'Manage integrations' },
+  { key: 'flags.read', module: 'flags', label: 'Feature flags (read)', description: 'View feature flags' },
+  { key: 'flags.manage', module: 'flags', label: 'Feature flags', description: 'Manage feature flags' },
 ];
 
 const manage = 'manage' as PermissionAction;
@@ -61,6 +63,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<AdminRoleKey, Partial<Record<Permi
     'settings.manage': none,
     'settings.read': read,
     'integrations.manage': none,
+    'flags.read': read,
+    'flags.manage': manage,
   },
   member: {
     'rbac.manage': none,
@@ -84,6 +88,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<AdminRoleKey, Partial<Record<Permi
     'settings.manage': none,
     'settings.read': read,
     'integrations.manage': none,
+    'flags.read': read,
+    'flags.manage': none,
   },
 };
 

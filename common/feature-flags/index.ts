@@ -1,11 +1,11 @@
+export { FEATURE_FLAG_CATALOG, RELEASED_FEATURE_FLAG_KEYS, UNRELEASED_FEATURE_FLAG_KEYS } from './catalog';
 export {
-  FEATURE_FLAG_CATALOG,
-  RELEASED_FEATURE_FLAG_KEYS,
-  UNRELEASED_FEATURE_FLAG_KEYS,
   FEATURE_FLAG_DEFINITION_JSON_SCHEMA,
   assertLifecycleProductionDefaults,
   assertUniqueCatalogKeys,
   validateFeatureFlagDefinition,
+} from './schema';
+export {
   buildDefaultFeatureFlagSnapshot,
   FEATURE_FLAG_CATALOG_VERSION,
   getFeatureFlagCatalog,
@@ -13,6 +13,8 @@ export {
   initializeFeatureFlagCatalog,
   isKnownFeatureFlagKey,
   resolveFeatureFlagEnvironment,
+} from './registry';
+export {
   FEATURE_FLAG_KEYS,
   type FeatureFlagCategory,
   type FeatureFlagClientSurface,
@@ -23,8 +25,4 @@ export {
   type FeatureFlagLifecycle,
   type FeatureFlagSnapshot,
   type FeatureFlagTier,
-} from '@novasafe/feature-flags';
-export {
-  applyFeatureFlagsToCapabilities,
-  FEATURE_FLAG_CAPABILITY_BINDINGS,
-} from './capability-bindings';
+} from './types';

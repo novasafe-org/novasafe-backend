@@ -1,5 +1,5 @@
 import type { PlatformCapability } from '../../shared/request-context/types';
-import type { FeatureFlagKey } from './types';
+import type { FeatureFlagKey } from '@novasafe/feature-flags';
 
 /**
  * Maps feature flags to platform capabilities merged into request context.

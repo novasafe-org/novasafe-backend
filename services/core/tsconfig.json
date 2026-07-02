@@ -5,7 +5,8 @@
     "rootDir": "./src",
     "baseUrl": "./src",
     "paths": {
-      "@core/*": ["./*"]
+      "@core/*": ["./*"],
+      "@novasafe/feature-flags": ["../../common/feature-flags/index.ts"]
     }
   },
   "include": ["src/**/*"],
