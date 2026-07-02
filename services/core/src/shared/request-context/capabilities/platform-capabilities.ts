@@ -1,3 +1,5 @@
+import { applyFeatureFlagsToCapabilities } from '../../../platform/feature-flags/capability-bindings';
+import type { FeatureFlagKey } from '../../../platform/feature-flags/types';
 import { RequestSource, type PlatformCapability } from '../types';
 
 /** Default capabilities per client source (extend via feature flags later). */
@@ -17,8 +19,13 @@ export const resolveDefaultCapabilities = (source: RequestSource): PlatformCapab
   ...(CAPABILITY_MATRIX[source] ?? []),
 ];
 
-/** Placeholder: merge remote feature-flag payload into capabilities. */
+/** Merge remote feature-flag payload into platform capabilities. */
 export const mergeCapabilities = (
   base: PlatformCapability[],
-  _flags?: Record<string, boolean>,
-): PlatformCapability[] => base;
+  flags?: Partial<Record<FeatureFlagKey, boolean>> | Record<string, boolean>,
+): PlatformCapability[] => {
+  if (!flags) {
+    return base;
+  }
+  return applyFeatureFlagsToCapabilities(base, flags as Partial<Record<FeatureFlagKey, boolean>>);
+};
