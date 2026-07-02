@@ -10,6 +10,8 @@ import {
 } from '@novasafe/feature-flags';
 
 import { ADMIN_COLLECTIONS, getDb } from '../../database/mongo';
+import { logger } from '../../shared/logger';
+import { assertEnterpriseProductionApproval } from './approval';
 import type {
   FeatureFlagAuditAction,
   FeatureFlagAuditRecord,
@@ -92,11 +94,26 @@ async function writeAuditEntry(input: {
   newValue: { enabled: boolean };
   actorId: string;
   actorEmail: string;
+  note?: string | null;
 }): Promise<void> {
+  const definition = getFeatureFlagDefinition(input.key);
   const db = getDb();
   await db.collection<Omit<FeatureFlagAuditRecord, '_id'>>(ADMIN_COLLECTIONS.featureFlagAudit).insertOne({
     ...input,
     createdAt: new Date(),
+  });
+
+  logger.info('Feature flag changed', {
+    logType: 'audit',
+    flagKey: input.key,
+    environment: input.environment,
+    tier: definition.tier,
+    lifecycle: definition.lifecycle,
+    action: input.action,
+    oldEnabled: input.oldValue.enabled,
+    newEnabled: input.newValue.enabled,
+    actorEmail: input.actorEmail,
+    approvalNote: input.note ?? null,
   });
 }
 
@@ -180,11 +197,18 @@ export async function toggleFeatureFlag(input: {
   enabled: boolean;
   actorId: string;
   actorEmail: string;
+  approvalNote?: string;
 }): Promise<FeatureFlagRowDto> {
   if (!isKnownFeatureFlagKey(input.key)) {
     throw new Error(`Unknown feature flag key: ${input.key}`);
   }
   const environment = parseEnvironment(input.environment);
+  assertEnterpriseProductionApproval({
+    key: input.key,
+    environment,
+    enabled: input.enabled,
+    approvalNote: input.approvalNote,
+  });
   const db = getDb();
   const collection = db.collection<FeatureFlagRecord>(ADMIN_COLLECTIONS.featureFlags);
   const existing = await collection.findOne({ key: input.key, environment });
@@ -225,6 +249,7 @@ export async function toggleFeatureFlag(input: {
     newValue: { enabled: input.enabled },
     actorId: input.actorId,
     actorEmail: input.actorEmail,
+    note: input.approvalNote?.trim() || null,
   });
 
   const updated = await collection.findOne({ key: input.key, environment });

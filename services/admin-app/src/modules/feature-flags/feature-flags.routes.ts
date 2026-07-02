@@ -71,6 +71,7 @@ export function createFeatureFlagRoutes(): Router {
         enabled,
         actorId: req.admin.id,
         actorEmail: req.admin.email,
+        approvalNote: typeof body.approvalNote === 'string' ? body.approvalNote : undefined,
       });
       res.json({ success: true, data: row });
     } catch (err) {

@@ -4,6 +4,7 @@ import { authMiddleware } from '../../../modules/auth';
 import { createRateLimiter } from '../../../middleware/rate-limit.middleware';
 import { mergeCapabilities } from '../../../shared/request-context/capabilities/platform-capabilities';
 import { getRequestContext, RequestContextManager } from '../../../shared/request-context';
+import { getFeatureFlagMetrics } from '../../../platform/feature-flags/metrics';
 import { buildFeatureFlagEtag, resolveClientFeatureFlags } from '../../../platform/feature-flags/store';
 
 const featureFlagsRateLimiter = createRateLimiter({
@@ -24,7 +25,8 @@ export const createPlatformFeatureFlagRoutes = (): Router => {
       try {
         const environment =
           typeof req.query.environment === 'string' ? req.query.environment : undefined;
-        const snapshot = await resolveClientFeatureFlags(environment);
+        const { snapshot, cacheHit } = await resolveClientFeatureFlags(environment);
+        const metrics = getFeatureFlagMetrics();
         const context = getRequestContext();
         const baseCapabilities = context?.snapshot.capabilities ?? [];
         const capabilities = mergeCapabilities(baseCapabilities, snapshot.flags);
@@ -42,6 +44,10 @@ export const createPlatformFeatureFlagRoutes = (): Router => {
         const etag = buildFeatureFlagEtag(snapshot);
         res.setHeader('ETag', etag);
         res.setHeader('Cache-Control', 'private, max-age=60');
+        res.setHeader('X-Feature-Flags-Cache', cacheHit ? 'HIT' : 'MISS');
+        res.setHeader('X-Feature-Flags-Store-Version', String(snapshot.storeVersion));
+        res.setHeader('X-Feature-Flags-Catalog-Version', snapshot.catalogVersion);
+        res.setHeader('X-Feature-Flags-Cache-Hit-Rate', metrics.cacheHitRate.toFixed(3));
 
         if (req.headers['if-none-match'] === etag) {
           res.status(304).end();
