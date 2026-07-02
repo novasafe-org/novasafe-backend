@@ -26,11 +26,16 @@ importers:
         specifier: ^5.2.2
         version: 5.9.3
 
+  common/feature-flags: {}
+
   services/admin-app:
     dependencies:
       '@hono/node-server':
         specifier: ^1.14.0
         version: 1.19.14(hono@4.12.26)
+      '@novasafe/feature-flags':
+        specifier: workspace:*
+        version: link:../../common/feature-flags
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3
@@ -138,6 +143,9 @@ importers:
 
   services/core:
     dependencies:
+      '@novasafe/feature-flags':
+        specifier: workspace:*
+        version: link:../../common/feature-flags
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3

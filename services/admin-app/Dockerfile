@@ -25,6 +25,7 @@ ENV APP_VERSION=$APP_VERSION \
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY scripts ./scripts
+COPY common/feature-flags ./common/feature-flags
 COPY services/admin-app/package.json ./services/admin-app/
 COPY tsconfig.json ./
 

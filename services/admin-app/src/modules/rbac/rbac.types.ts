@@ -23,7 +23,9 @@ export type PermissionKey =
   | 'audit.read'
   | 'settings.manage'
   | 'settings.read'
-  | 'integrations.manage';
+  | 'integrations.manage'
+  | 'flags.read'
+  | 'flags.manage';
 
 export interface AdminUserRecord {
   _id: import('mongodb').ObjectId;
