@@ -52,4 +52,6 @@ export const ADMIN_COLLECTIONS = {
   invites: 'admin_invites',
   passwordResets: 'admin_password_resets',
   changelog: 'changelog_releases',
+  featureFlags: 'feature_flags',
+  featureFlagAudit: 'feature_flag_audit',
 } as const;

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import { createChangelogRoutes } from './changelog/changelog.routes';
+import { createFeatureFlagRoutes } from './feature-flags/feature-flags.routes';
 import { createRbacRoutes } from './rbac/rbac.routes';
 import { createStatusAdminRoutes } from './status/status.routes';
 import { createTemplateRoutes } from './templates/template.routes';
@@ -10,6 +11,7 @@ export async function registerAdminModules(app: import('express').Express, apiPr
   const router = Router();
 
   router.use(createRbacRoutes());
+  router.use('/feature-flags', createFeatureFlagRoutes());
   router.use('/changelog', createChangelogRoutes());
   router.use('/status', createStatusAdminRoutes());
   router.use('/templates', createTemplateRoutes());

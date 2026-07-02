@@ -1,0 +1,16 @@
+---
+description: Never add Cursor branding to PRs, commits, or docs
+alwaysApply: true
+---
+
+# No Cursor attribution in deliverables
+
+Never append or include any of the following in PR descriptions, commit messages, Notion pages, or user-facing docs:
+
+- `Made with [Cursor](https://cursor.com)`
+- `Made with Cursor`
+- Similar Cursor product attribution or footer links
+
+When creating PRs with `gh pr create`, the body must end after the test plan — no attribution footer.
+
+When the user uses Cursor's PR UI and attribution is added automatically, they should remove it before merge. Do not add it from the agent side.

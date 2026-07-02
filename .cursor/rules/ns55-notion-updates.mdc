@@ -1,0 +1,32 @@
+---
+description: Update Notion docs when completing NS-55 feature flag stories
+alwaysApply: true
+---
+
+# NS-55 — Notion documentation updates (required)
+
+Engineering docs for the Feature Flag Platform epic live in **Notion**, not repo `.md` files.
+
+## Epic hub
+- **NS-55 epic:** https://app.notion.com/p/39185cf25bf281a6b122fb4d4c947a9d
+
+## After every story is implemented
+
+1. **Create or update** the story page under the NS-55 epic (child page).
+2. **Update the epic** story status table (Pending → In Progress → Done).
+3. **Append a row** to the epic **Progress log** section (date, story, Notion link, Jira link, PR link).
+4. **Update Jira** (transition + comment with PR links) — same as Notion, every story.
+
+## Story page template
+
+Include on each story page:
+- Jira link, branch name, status
+- Purpose and scope
+- Files/paths delivered
+- PR link(s)
+- Test evidence
+- Next story pointer
+
+## Do not
+- Add `docs/FEATURE_FLAGS.md` or similar repo markdown for this epic
+- Put "Made with Cursor" in PR descriptions

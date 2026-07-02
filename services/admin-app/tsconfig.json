@@ -5,7 +5,8 @@
     "rootDir": "./src",
     "baseUrl": "./src",
     "paths": {
-      "@/*": ["./modules/blog/*"]
+      "@/*": ["./modules/blog/*"],
+      "@novasafe/feature-flags": ["../../common/feature-flags/index.ts"]
     }
   },
   "include": ["src/**/*", "src/types/vercel-node.d.ts"],

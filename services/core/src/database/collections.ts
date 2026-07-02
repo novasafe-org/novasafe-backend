@@ -34,6 +34,8 @@ export const COLLECTIONS = {
   statusIncidents: 'incidents',
   /** Status page — daily uptime snapshots per service. */
   statusSnapshots: 'service_status_snapshots',
+  /** Feature flag overrides (written by admin-api, read by mobile-api). */
+  featureFlags: 'feature_flags',
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
