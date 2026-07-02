@@ -28,3 +28,8 @@ export {
   applyFeatureFlagsToCapabilities,
   FEATURE_FLAG_CAPABILITY_BINDINGS,
 } from './capability-bindings';
+export {
+  buildFeatureFlagEtag,
+  clearFeatureFlagCache,
+  resolveClientFeatureFlags,
+} from './store';
