@@ -31,13 +31,6 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>();
 
-type FeatureFlagDbRecord = {
-  key: string;
-  environment: FeatureFlagEnvironment;
-  enabled: boolean;
-  version?: number;
-};
-
 export const clearFeatureFlagCache = (): void => {
   cache.clear();
 };
@@ -49,11 +42,10 @@ export const buildFeatureFlagEtag = (snapshot: ResolvedClientFeatureFlags): stri
 
 async function loadFeatureFlagRecords(
   environment: FeatureFlagEnvironment,
-): Promise<FeatureFlagDbRecord[]> {
-  const records = await getFeatureFlagsCollection(FEATURE_FLAGS_COLLECTION)
+) {
+  return getFeatureFlagsCollection(FEATURE_FLAGS_COLLECTION)
     .find({ environment })
     .toArray();
-  return records as FeatureFlagDbRecord[];
 }
 
 export const resolveClientFeatureFlags = async (
