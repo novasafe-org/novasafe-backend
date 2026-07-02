@@ -10,8 +10,9 @@ import {
   type FeatureFlagKey,
 } from '@novasafe/feature-flags';
 
-import { getNativeMongo } from '../../database/adapters/native-mongo.adapter';
 import { COLLECTIONS } from '../../database/collections';
+import { getFeatureFlagsCollection } from './db';
+import { recordFeatureFlagCacheHit, recordFeatureFlagCacheMiss } from './metrics';
 
 export const FEATURE_FLAGS_COLLECTION = COLLECTIONS.featureFlags;
 const CACHE_TTL_MS = 60_000;
@@ -30,13 +31,6 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>();
 
-type FeatureFlagDbRecord = {
-  key: string;
-  environment: FeatureFlagEnvironment;
-  enabled: boolean;
-  version?: number;
-};
-
 export const clearFeatureFlagCache = (): void => {
   cache.clear();
 };
@@ -46,9 +40,17 @@ export const buildFeatureFlagEtag = (snapshot: ResolvedClientFeatureFlags): stri
   return `"${createHash('sha256').update(payload).digest('hex').slice(0, 16)}"`;
 };
 
+async function loadFeatureFlagRecords(
+  environment: FeatureFlagEnvironment,
+) {
+  return getFeatureFlagsCollection(FEATURE_FLAGS_COLLECTION)
+    .find({ environment })
+    .toArray();
+}
+
 export const resolveClientFeatureFlags = async (
   environmentInput?: string,
-): Promise<ResolvedClientFeatureFlags> => {
+): Promise<{ snapshot: ResolvedClientFeatureFlags; cacheHit: boolean }> => {
   initializeFeatureFlagCatalog();
   const environment = environmentInput
     ? resolveFeatureFlagEnvironment(environmentInput as FeatureFlagEnvironment)
@@ -56,17 +58,17 @@ export const resolveClientFeatureFlags = async (
 
   const cached = cache.get(environment);
   if (cached && cached.expiresAt > Date.now()) {
-    return cached.snapshot;
+    recordFeatureFlagCacheHit();
+    return { snapshot: cached.snapshot, cacheHit: true };
   }
 
+  const startedAt = Date.now();
   const defaults = buildDefaultFeatureFlagSnapshot(environment);
   const flags: Record<FeatureFlagKey, boolean> = { ...defaults.flags };
   let storeVersion = 1;
 
   try {
-    const records = (await getNativeMongo().findMany(FEATURE_FLAGS_COLLECTION, {
-      environment,
-    })) as unknown as FeatureFlagDbRecord[];
+    const records = await loadFeatureFlagRecords(environment);
 
     for (const record of records) {
       if (!isKnownFeatureFlagKey(record.key)) {
@@ -91,5 +93,6 @@ export const resolveClientFeatureFlags = async (
     snapshot,
   });
 
-  return snapshot;
+  recordFeatureFlagCacheMiss(Date.now() - startedAt);
+  return { snapshot, cacheHit: false };
 };

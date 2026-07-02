@@ -26,6 +26,7 @@ export interface FeatureFlagAuditRecord {
   newValue: { enabled: boolean };
   actorId: string;
   actorEmail: string;
+  note?: string | null;
   createdAt: Date;
 }
 
