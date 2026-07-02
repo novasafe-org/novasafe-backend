@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.0
+
+### Added
+
+NS-55 Feature flag platform
+
 All notable changes to the NovaSafe Mobile API (`services/core`) are documented here.
 
 Release versions are managed automatically by [release-please](https://github.com/googleapis/release-please) from [Conventional Commits](https://www.conventionalcommits.org/).
