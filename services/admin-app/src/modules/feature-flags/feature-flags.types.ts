@@ -34,6 +34,7 @@ export interface FeatureFlagRowDto {
   key: FeatureFlagKey;
   displayName: string;
   description: string;
+  owner: string;
   category: string;
   tier: string;
   lifecycle: string;
