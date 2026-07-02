@@ -1,5 +1,9 @@
 import { FEATURE_FLAG_CATALOG } from './catalog';
-import { assertUniqueCatalogKeys, validateFeatureFlagDefinition } from './schema';
+import {
+  assertLifecycleProductionDefaults,
+  assertUniqueCatalogKeys,
+  validateFeatureFlagDefinition,
+} from './schema';
 import {
   FEATURE_FLAG_KEYS,
   type FeatureFlagDefinition,
@@ -8,7 +12,7 @@ import {
   type FeatureFlagSnapshot,
 } from './types';
 
-export const FEATURE_FLAG_CATALOG_VERSION = '1';
+export const FEATURE_FLAG_CATALOG_VERSION = '2';
 
 let initialized = false;
 
@@ -42,6 +46,7 @@ export const initializeFeatureFlagCatalog = (): readonly FeatureFlagDefinition[]
     validateFeatureFlagDefinition(entry, index),
   );
   assertUniqueCatalogKeys(validated);
+  assertLifecycleProductionDefaults(validated);
 
   const catalogKeys = new Set(validated.map((entry) => entry.key));
   for (const key of FEATURE_FLAG_KEYS) {

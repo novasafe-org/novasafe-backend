@@ -1,10 +1,15 @@
-export { FEATURE_FLAG_CATALOG } from './catalog';
+export {
+  FEATURE_FLAG_CATALOG,
+  RELEASED_FEATURE_FLAG_KEYS,
+  UNRELEASED_FEATURE_FLAG_KEYS,
+} from './catalog';
 export {
   applyFeatureFlagsToCapabilities,
   FEATURE_FLAG_CAPABILITY_BINDINGS,
 } from './capability-bindings';
 export {
   FEATURE_FLAG_DEFINITION_JSON_SCHEMA,
+  assertLifecycleProductionDefaults,
   assertUniqueCatalogKeys,
   validateFeatureFlagDefinition,
 } from './schema';
@@ -25,6 +30,7 @@ export {
   type FeatureFlagDefinition,
   type FeatureFlagEnvironment,
   type FeatureFlagKey,
+  type FeatureFlagLifecycle,
   type FeatureFlagSnapshot,
   type FeatureFlagTier,
 } from './types';

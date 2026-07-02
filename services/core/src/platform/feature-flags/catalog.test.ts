@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { FEATURE_FLAG_CATALOG } from './catalog';
+import {
+  FEATURE_FLAG_CATALOG,
+  RELEASED_FEATURE_FLAG_KEYS,
+  UNRELEASED_FEATURE_FLAG_KEYS,
+} from './catalog';
 import {
   assertUniqueCatalogKeys,
   FEATURE_FLAG_DEFINITION_JSON_SCHEMA,
@@ -22,6 +26,7 @@ describe('feature flag catalog', () => {
       'owner',
       'category',
       'tier',
+      'lifecycle',
       'introducedIn',
       'clientSurfaces',
       'defaults',
@@ -62,11 +67,29 @@ describe('feature flag catalog', () => {
     }
   });
 
-  it('defaults all product flags to false in production', () => {
+  it('includes released and unreleased feature groups', () => {
+    assert.equal(RELEASED_FEATURE_FLAG_KEYS.length, 22);
+    assert.equal(UNRELEASED_FEATURE_FLAG_KEYS.length, 11);
+    assert.equal(
+      RELEASED_FEATURE_FLAG_KEYS.length + UNRELEASED_FEATURE_FLAG_KEYS.length,
+      FEATURE_FLAG_KEYS.length,
+    );
+  });
+
+  it('defaults unreleased flags to false in production', () => {
     const snapshot = buildDefaultFeatureFlagSnapshot('production');
     for (const definition of FEATURE_FLAG_CATALOG) {
-      if (definition.category === 'product') {
+      if (definition.lifecycle === 'unreleased') {
         assert.equal(snapshot.flags[definition.key], false);
+      }
+    }
+  });
+
+  it('defaults released flags to true in production', () => {
+    const snapshot = buildDefaultFeatureFlagSnapshot('production');
+    for (const definition of FEATURE_FLAG_CATALOG) {
+      if (definition.lifecycle === 'released') {
+        assert.equal(snapshot.flags[definition.key], true);
       }
     }
   });

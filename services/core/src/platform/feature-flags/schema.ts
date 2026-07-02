@@ -5,6 +5,7 @@ import {
   type FeatureFlagDefinition,
   type FeatureFlagEnvironment,
   type FeatureFlagKey,
+  type FeatureFlagLifecycle,
   type FeatureFlagTier,
 } from './types';
 
@@ -30,6 +31,8 @@ const CLIENT_SURFACES: readonly FeatureFlagClientSurface[] = [
   'admin-api',
 ];
 
+const LIFECYCLES: readonly FeatureFlagLifecycle[] = ['released', 'unreleased'];
+
 /** JSON Schema (draft-07) for catalog entries — validated at startup. */
 export const FEATURE_FLAG_DEFINITION_JSON_SCHEMA = {
   $schema: 'http://json-schema.org/draft-07/schema#',
@@ -41,6 +44,7 @@ export const FEATURE_FLAG_DEFINITION_JSON_SCHEMA = {
     'owner',
     'category',
     'tier',
+    'lifecycle',
     'introducedIn',
     'clientSurfaces',
     'defaults',
@@ -53,6 +57,7 @@ export const FEATURE_FLAG_DEFINITION_JSON_SCHEMA = {
     owner: { type: 'string', minLength: 1 },
     category: { type: 'string', enum: [...CATEGORIES] },
     tier: { type: 'string', enum: [...TIERS] },
+    lifecycle: { type: 'string', enum: [...LIFECYCLES] },
     introducedIn: { type: 'string', minLength: 1 },
     clientSurfaces: {
       type: 'array',
@@ -103,6 +108,10 @@ export const validateFeatureFlagDefinition = (
     throw new Error(`${prefix}: invalid tier`);
   }
 
+  if (!LIFECYCLES.includes(definition.lifecycle as FeatureFlagLifecycle)) {
+    throw new Error(`${prefix}: invalid lifecycle`);
+  }
+
   if (!Array.isArray(definition.clientSurfaces) || definition.clientSurfaces.length === 0) {
     throw new Error(`${prefix}: clientSurfaces must be a non-empty array`);
   }
@@ -146,10 +155,28 @@ export const validateFeatureFlagDefinition = (
     owner: owner.trim(),
     category: definition.category as FeatureFlagCategory,
     tier: definition.tier as FeatureFlagTier,
+    lifecycle: definition.lifecycle as FeatureFlagLifecycle,
     introducedIn: introducedIn.trim(),
     clientSurfaces: definition.clientSurfaces as FeatureFlagClientSurface[],
     defaults: definition.defaults as FeatureFlagDefinition['defaults'],
   };
+};
+
+export const assertLifecycleProductionDefaults = (
+  definitions: readonly FeatureFlagDefinition[],
+): void => {
+  for (const definition of definitions) {
+    if (definition.lifecycle === 'released' && definition.defaults.production !== true) {
+      throw new Error(
+        `${definition.key}: released flags must default to true in production`,
+      );
+    }
+    if (definition.lifecycle === 'unreleased' && definition.defaults.production !== false) {
+      throw new Error(
+        `${definition.key}: unreleased flags must default to false in production`,
+      );
+    }
+  }
 };
 
 export const assertUniqueCatalogKeys = (definitions: readonly FeatureFlagDefinition[]): void => {
