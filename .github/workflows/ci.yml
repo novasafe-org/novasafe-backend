@@ -87,6 +87,7 @@ jobs:
           node-version: "20"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @novasafe/feature-flags run build
       - name: Run catalog + service tests
         run: |
           pnpm --filter core-service test

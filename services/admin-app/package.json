@@ -10,6 +10,7 @@
     "start": "node dist/index.js",
     "stop": "node ../../scripts/free-port.mjs ADMIN_PORT 3130",
     "seed": "tsx src/scripts/seed-admin.ts",
+    "pretest": "pnpm --filter @novasafe/feature-flags run build",
     "test": "node ../../scripts/run-node-tests.mjs ."
   },
   "dependencies": {
