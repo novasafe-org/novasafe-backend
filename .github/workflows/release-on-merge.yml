@@ -7,6 +7,11 @@ on:
     types: [closed]
     branches: [main, master]
 
+permissions:
+  contents: write
+  pull-requests: read
+  issues: read
+
 jobs:
   changes:
     if: github.event.pull_request.merged == true
@@ -28,6 +33,10 @@ jobs:
   release-mobile-api:
     needs: changes
     if: needs.changes.outputs.core == 'true'
+    permissions:
+      contents: write
+      pull-requests: read
+      issues: read
     uses: novasafe-org/novasafe-deployment/.github/workflows/release-on-merge.yml@master
     with:
       package-json: services/core/package.json
@@ -40,6 +49,10 @@ jobs:
   release-admin-api:
     needs: changes
     if: needs.changes.outputs.admin == 'true'
+    permissions:
+      contents: write
+      pull-requests: read
+      issues: read
     uses: novasafe-org/novasafe-deployment/.github/workflows/release-on-merge.yml@master
     with:
       package-json: services/admin-app/package.json
