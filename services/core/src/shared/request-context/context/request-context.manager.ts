@@ -53,6 +53,13 @@ export class RequestContextManager {
     }
   }
 
+  /** Merge resolved feature flags into request context (mobile-api read path). */
+  static enrichFlags(featureFlags: Record<string, boolean>): void {
+    const data = RequestContextManager.getData();
+    if (!data) return;
+    data.flags = { ...data.flags, featureFlags };
+  }
+
   /** Effective source for security decisions: verified when present, else declared. */
   static getEffectiveSource(): RequestSource {
     const data = RequestContextManager.getData();
