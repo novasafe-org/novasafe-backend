@@ -110,6 +110,7 @@ function toRowDto(
     key: definition.key,
     displayName: definition.displayName,
     description: definition.description,
+    owner: definition.owner,
     category: definition.category,
     tier: definition.tier,
     lifecycle: definition.lifecycle,
