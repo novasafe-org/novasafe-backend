@@ -11,7 +11,7 @@
     "stop": "node ../../scripts/free-port.mjs PLAYGROUND_PORT 5200"
   },
   "dependencies": {
-    "@scalar/express-api-reference": "^0.9.16",
+    "@scalar/express-api-reference": "^0.10.8",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "picocolors": "^1.1.1",
