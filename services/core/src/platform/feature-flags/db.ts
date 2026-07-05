@@ -13,6 +13,7 @@ export type FeatureFlagDbRecord = {
   environment: FeatureFlagEnvironment;
   enabled: boolean;
   version?: number;
+  updatedAt?: Date;
 };
 
 export const getFeatureFlagsCollection = (collectionName: string) => {
