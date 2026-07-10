@@ -1,3 +1,7 @@
+/**
+ * Load `.env` before any other app modules read `process.env`.
+ * Lambda bundles the same VPS-format `.env` via scripts/package-lambda.mjs.
+ */
 import dotenv from 'dotenv';
 import path from 'path';
 
