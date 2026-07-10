@@ -1,3 +1,4 @@
+/** Docker / VPS / local process entry — do not replace with Lambda handler. */
 import './loadEnv';
 import { registerGracefulShutdown } from './shutdown';
 import { startServer } from './server';

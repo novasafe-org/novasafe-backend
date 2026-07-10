@@ -1,8 +1,12 @@
-import './loadEnv';
+/**
+ * AWS Lambda entrypoint only — not used by Docker, VPS, or `node dist/index.js`.
+ * Handler: dist/runtimes/lambda.handler (built via `pnpm run build:lambda`).
+ */
+import '../loadEnv';
 
 import serverlessExpress from '@codegenie/serverless-express';
 
-import app, { initializeApp } from './app';
+import app, { initializeApp } from '../app';
 
 type ServerlessHandler = (event: unknown, context: unknown) => Promise<unknown>;
 

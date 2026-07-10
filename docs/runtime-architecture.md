@@ -13,7 +13,7 @@ flowchart TB
   subgraph runtimes [Runtime Adapters — hosting-specific]
     INDEX[index.ts]
     SERVER[server.ts]
-    LAMBDA[lambda.ts]
+    LAMBDA[runtimes/lambda.ts]
   end
 
   subgraph app [Application Layer — platform-independent]
@@ -32,9 +32,11 @@ flowchart TB
 | **Application** | `app.ts` | Create Express app, register middleware & routes, run `initializeApp()` (DB, seeds, catalogs) |
 | **Server runtime** | `server.ts` | Read port/host env, call `initializeApp()`, `app.listen()`, graceful HTTP shutdown |
 | **Process bootstrap** | `index.ts` | Load env, register signal handlers, invoke `startServer()` — Docker/VPS entrypoint |
-| **Lambda runtime** | `lambda.ts` | Lazy `initializeApp()`, wrap Express with `@codegenie/serverless-express`, export handler |
+| **Lambda runtime** | `runtimes/lambda.ts` | Lazy `initializeApp()`, wrap Express with `@codegenie/serverless-express`, export handler — **not built into Docker images** |
 
 **Rule:** `app.ts` never calls `app.listen()`. Only `server.ts` starts an HTTP server.
+
+**VPS guarantee:** Production Docker/VPS never imports or executes Lambda code. Switching Lambda → VPS is a deploy/DNS change only — zero application or Dockerfile changes.
 
 ---
 
@@ -49,11 +51,12 @@ Both services follow the same layout:
 
 ```
 services/<service>/src/
-├── app.ts       # Express application + initializeApp()
-├── server.ts    # HTTP server (Docker, VPS, ECS, EC2, local)
-├── lambda.ts    # AWS Lambda handler
-├── index.ts     # Process entry (node dist/index.js)
-└── modules/     # Routes, controllers, services (unchanged)
+├── app.ts              # Express application + initializeApp()
+├── server.ts           # HTTP server (Docker, VPS, ECS, EC2, local)
+├── index.ts            # Process entry (node dist/index.js)
+├── runtimes/
+│   └── lambda.ts       # AWS Lambda only (not in default Docker build)
+└── modules/            # Routes, controllers, services (unchanged)
 ```
 
 ---
@@ -96,11 +99,22 @@ For long-lived Node processes:
 
 ---
 
-## Lambda runtime (`lambda.ts`)
+## Lambda runtime (`runtimes/lambda.ts`)
 
-For AWS Lambda (and similar event-driven hosts):
+Isolated under `src/runtimes/` and **excluded from the default `pnpm build`** used by Docker and VPS. The Lambda adapter is not compiled into production container images.
 
-1. `import './loadEnv'` — same env mechanism as other runtimes
+For AWS deploy only:
+
+```bash
+pnpm run build        # same as today — dist/index.js for Docker/VPS
+pnpm run build:lambda # adds dist/runtimes/lambda.js for Lambda handler
+```
+
+`@codegenie/serverless-express` is a **devDependency** — it is not installed in production Docker images (`pnpm deploy --prod`). Lambda packaging (future CI) bundles it when building the deployment zip.
+
+Handler configuration (AWS only): `dist/runtimes/lambda.handler`
+
+1. `import '../loadEnv'` — same env mechanism as other runtimes
 2. On first invocation: `await initializeApp()`
 3. Wrap the Express app with `@codegenie/serverless-express`
 4. Export `handler` for API Gateway
@@ -108,11 +122,28 @@ For AWS Lambda (and similar event-driven hosts):
 No routing, middleware, or controller changes. Lambda is a **transport adapter** only.
 
 ```typescript
-// Conceptual flow — see services/*/src/lambda.ts for implementation
+// Conceptual flow — see services/*/src/runtimes/lambda.ts
 const handler = serverlessExpress({ app });
 ```
 
 MongoDB connection reuse and Lambda-specific DB tuning are **out of scope** for this layer and will be addressed in a follow-up PR.
+
+---
+
+## Switching Lambda ↔ VPS (no code changes)
+
+| Direction | What you do | What you do **not** do |
+|-----------|-------------|------------------------|
+| **VPS → Lambda** | Point DNS to API Gateway; deploy Lambda zip (`build:lambda` + handler `dist/runtimes/lambda.handler`) | Change `app.ts`, routes, Dockerfiles, or `index.ts` |
+| **Lambda → VPS** | Point DNS back to VPS; run existing Docker compose / `deploy-service.yml` as today | Revert code, change env abstractions, or remove Lambda files |
+
+The VPS path is frozen:
+
+- **Entry:** `node dist/index.js` (via `index.ts` → `server.ts` → `app.ts`)
+- **Build:** `pnpm run build` (excludes `src/runtimes/**`)
+- **Image:** same GHCR image, same compose files in `novasafe-deployment/opt/`
+
+Lambda files can remain in the repo indefinitely; they are inert on VPS.
 
 ---
 
@@ -136,7 +167,7 @@ MongoDB connection reuse and Lambda-specific DB tuning are **out of scope** for 
 | Local | `index.ts` → `server.ts` | `pnpm dev` / `pnpm start` |
 | Docker / VPS | `index.ts` → `server.ts` | `node dist/index.js` |
 | ECS / EC2 | `index.ts` → `server.ts` | Same container image as Docker |
-| AWS Lambda | `lambda.ts` | `dist/lambda.js` handler |
+| AWS Lambda | `runtimes/lambda.ts` | `dist/runtimes/lambda.handler` (separate `build:lambda`) |
 
 Environment variables, logging, and configuration are **unchanged** across runtimes — no Lambda-specific config abstractions.
 
@@ -152,8 +183,8 @@ Environment variables, logging, and configuration are **unchanged** across runti
 
 Examples already in repo:
 
-- **Docker:** `index.ts` + `server.ts` (production today)
-- **Lambda:** `lambda.ts` (ready for AWS deploy pipeline)
+- **Docker / VPS:** `index.ts` + `server.ts` (production today — unchanged)
+- **Lambda:** `runtimes/lambda.ts` (optional; AWS deploy pipeline only)
 
 ---
 

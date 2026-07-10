@@ -1,3 +1,4 @@
+/** Long-lived HTTP runtime (Docker, VPS, ECS, EC2). Lambda uses src/runtimes/lambda.ts instead. */
 import type { Server } from 'http';
 import app, { initializeApp } from './app';
 import { ConnectionManager } from './database';
