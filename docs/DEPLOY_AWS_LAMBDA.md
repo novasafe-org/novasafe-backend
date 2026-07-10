@@ -34,7 +34,9 @@ Settings → Actions → Variables:
 
 ### 3. Environment secrets (production)
 
-Settings → Environments → **production** → Secrets:
+**Repository:** `novasafe-backend` (not novasafe-deployment)
+
+Settings → Environments → **production** → **Environment secrets** (not repository secrets):
 
 | Secret | Value |
 |--------|-------|
