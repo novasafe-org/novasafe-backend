@@ -1,10 +1,8 @@
+/** Docker / VPS / local process entry — do not replace with Lambda handler. */
 import './loadEnv';
-import { initializeFeatureFlagCatalog } from './platform/feature-flags';
 import { registerGracefulShutdown } from './shutdown';
 import { startServer } from './server';
 import { logger } from './shared/logger';
-
-initializeFeatureFlagCatalog();
 
 registerGracefulShutdown();
 

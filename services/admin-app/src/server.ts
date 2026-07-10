@@ -1,29 +1,20 @@
+/** Long-lived HTTP runtime (Docker, VPS, ECS, EC2). Lambda uses src/runtimes/lambda.ts instead. */
+import type { Server } from 'http';
 import app, { initializeApp } from './app';
-import { connectMongo } from './database/mongo';
-import {
-  ensureFeatureFlagIndexes,
-  seedFeatureFlagsFromCatalog,
-} from './modules/feature-flags/feature-flags.service';
-import { ensureRbacIndexes, seedRbac } from './modules/rbac/rbac.service';
 import { logger } from './shared/logger';
 
 const PORT = Number(process.env.ADMIN_PORT || process.env.PORT || 3130);
 const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
 
-let httpServer: import('http').Server | null = null;
+let httpServer: Server | null = null;
 
-export async function startServer(): Promise<import('http').Server> {
-  await connectMongo();
-  await ensureRbacIndexes();
-  await seedRbac();
-  await ensureFeatureFlagIndexes();
-  await seedFeatureFlagsFromCatalog();
+export async function startServer(): Promise<Server> {
   await initializeApp();
 
   return new Promise((resolve, reject) => {
     httpServer = app.listen(PORT, BIND_HOST, () => {
       logger.info(`Admin API listening on http://${BIND_HOST}:${PORT}`);
-      resolve(httpServer!);
+      resolve(httpServer as Server);
     });
     httpServer.on('error', reject);
   });

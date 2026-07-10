@@ -1,6 +1,8 @@
 import express from 'express';
 import { ConnectionManager, type ConnectionManagerStatus } from './database';
+import { initializeFeatureFlagCatalog } from './platform/feature-flags';
 import { isOriginAllowed } from './config/cors.config';
+import { logger } from './shared/logger';
 import { applyExpressLogging, getExpressErrorLogger } from './shared/logger/adapters';
 import { notFoundHandler } from './middleware/notFoundHandler';
 import { errorHandler } from './middleware/errorHandler';
@@ -119,6 +121,18 @@ registerModuleRoutes(app);
 app.use(notFoundHandler);
 app.use(getExpressErrorLogger());
 app.use(errorHandler);
+
+let appReady = false;
+
+/** Platform-agnostic dependency initialization (database, catalogs). */
+export async function initializeApp(): Promise<void> {
+  if (appReady) return;
+
+  initializeFeatureFlagCatalog();
+  logger.info('Connecting to database...');
+  await ConnectionManager.getInstance().initialize();
+  appReady = true;
+}
 
 export default app;
 

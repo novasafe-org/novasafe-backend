@@ -90,3 +90,4 @@ EXPOSE 3130
 VOLUME ["/app/logs", "/app/uploads"]
 
 CMD ["node", "dist/index.js"]
+# VPS/Docker entry only. AWS Lambda uses dist/runtimes/lambda.handler (separate build:lambda + deploy).
