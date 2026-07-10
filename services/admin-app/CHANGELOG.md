@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.1
+
+### Changed
+
+Refactor backends for runtime-agnostic deployment
+
 ## v1.1.0
 
 ### Added
