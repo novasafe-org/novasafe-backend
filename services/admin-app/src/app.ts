@@ -1,7 +1,13 @@
 import express from 'express';
 
+import { connectMongo } from './database/mongo';
 import { registerAdminModules } from './modules';
 import { isBlogApiPath } from './modules/blog/register';
+import {
+  ensureFeatureFlagIndexes,
+  seedFeatureFlagsFromCatalog,
+} from './modules/feature-flags/feature-flags.service';
+import { ensureRbacIndexes, seedRbac } from './modules/rbac/rbac.service';
 import { logger } from './shared/logger';
 import { requestLoggerMiddleware } from './shared/request-logger.middleware';
 import { getBuildInfo, getVersionPayload } from './shared/build-info';
@@ -65,9 +71,15 @@ app.get('/version.json', (_req, res) => {
 
 let modulesReady = false;
 
+/** Platform-agnostic dependency initialization (database, seeds, routes). */
 export async function initializeApp(): Promise<void> {
   if (modulesReady) return;
 
+  await connectMongo();
+  await ensureRbacIndexes();
+  await seedRbac();
+  await ensureFeatureFlagIndexes();
+  await seedFeatureFlagsFromCatalog();
   await registerAdminModules(app, API_PREFIX);
 
   app.use((_req, res) => {

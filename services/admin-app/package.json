@@ -14,8 +14,9 @@
     "test": "node ../../scripts/run-node-tests.mjs ."
   },
   "dependencies": {
-    "@novasafe/feature-flags": "workspace:*",
+    "@codegenie/serverless-express": "^5.0.0",
     "@hono/node-server": "^1.14.0",
+    "@novasafe/feature-flags": "workspace:*",
     "bcryptjs": "^2.4.3",
     "busboy": "^1.6.0",
     "dotenv": "^16.0.3",

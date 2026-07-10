@@ -4,14 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  core-service>bson: 6.10.4
-  core-service>mongodb: 6.20.0
-  jws@3.2.2: 3.2.3
-  jws@4.0.0: 4.0.1
-  path-to-regexp@0.1.12: 0.1.13
-  multer@2.0.2: 2.2.0
-
 importers:
 
   .:
@@ -37,6 +29,9 @@ importers:
 
   services/admin-app:
     dependencies:
+      '@codegenie/serverless-express':
+        specifier: ^5.0.0
+        version: 5.0.0
       '@hono/node-server':
         specifier: ^1.14.0
         version: 1.19.14(hono@4.12.26)
@@ -150,6 +145,9 @@ importers:
 
   services/core:
     dependencies:
+      '@codegenie/serverless-express':
+        specifier: ^5.0.0
+        version: 5.0.0
       '@novasafe/feature-flags':
         specifier: workspace:*
         version: link:../../common/feature-flags
@@ -216,6 +214,10 @@ importers:
         version: 5.9.3
 
 packages:
+
+  '@codegenie/serverless-express@5.0.0':
+    resolution: {integrity: sha512-7+PvSBj4KmPC8PVFDoXZp2cwTr13YIgFsZT55uJhpt7Ml1hJ3IK1Xnw36hr6GYVzLDrEW26oBZt50jamfu6kkw==}
+    engines: {node: '>=24'}
 
   '@colors/colors@1.6.0':
     resolution: {integrity: sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA==}
@@ -534,6 +536,7 @@ packages:
 
   '@ungap/structured-clone@1.3.0':
     resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
+    deprecated: Potential CWE-502 - Update to 1.3.1 or higher
 
   accepts@1.3.8:
     resolution: {integrity: sha512-PYAthTa2m2VKxuvSD3DPC/Gy+U+sOA1LAuT8mkmRuvw+NACSaeXEQ+NHcVF7rONl6qcaxV3Uuemwawk+7+SJLw==}
@@ -1346,8 +1349,8 @@ packages:
     resolution: {integrity: sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==}
     engines: {node: '>=8'}
 
-  path-to-regexp@0.1.13:
-    resolution: {integrity: sha512-A/AGNMFN3c8bOlvV9RreMdrv7jsmF9XIfDeCd87+I8RNg6s78BhJxMu69NEMHBSJFxKidViTEdruRwEk/WIKqA==}
+  path-to-regexp@0.1.12:
+    resolution: {integrity: sha512-RA1GjUVMnvYFxuqovrEqZoxxW5NUZqbwKtYz/Tt7nXerk0LbLblQmrsgdeOxV5SFHf0UDggjS/bSeOZwt1pmEQ==}
 
   path-type@4.0.0:
     resolution: {integrity: sha512-gDKb8aZMDeD/tZWs9P6+q0J9Mwkdl6xMV8TjnGP3qJVJ06bdMgkbBlLU8IdfOsIsFz2BW1rNVT3XuNEl8zPAvw==}
@@ -1680,6 +1683,8 @@ packages:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
 snapshots:
+
+  '@codegenie/serverless-express@5.0.0': {}
 
   '@colors/colors@1.6.0': {}
 
@@ -2309,7 +2314,7 @@ snapshots:
       methods: 1.1.2
       on-finished: 2.4.1
       parseurl: 1.3.3
-      path-to-regexp: 0.1.13
+      path-to-regexp: 0.1.12
       proxy-addr: 2.0.7
       qs: 6.13.0
       range-parser: 1.2.1
@@ -2822,7 +2827,7 @@ snapshots:
 
   path-key@3.1.1: {}
 
-  path-to-regexp@0.1.13: {}
+  path-to-regexp@0.1.12: {}
 
   path-type@4.0.0: {}
 

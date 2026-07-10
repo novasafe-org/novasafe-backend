@@ -1,5 +1,5 @@
 import type { Server } from 'http';
-import app from './app';
+import app, { initializeApp } from './app';
 import { ConnectionManager } from './database';
 import { LoggerManager, logger } from './shared/logger';
 
@@ -9,8 +9,7 @@ const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
 let httpServer: Server | null = null;
 
 export const startServer = async (): Promise<Server> => {
-  logger.info('Connecting to database...');
-  await ConnectionManager.getInstance().initialize();
+  await initializeApp();
 
   return new Promise((resolve, reject) => {
     httpServer = app.listen(PORT, BIND_HOST, () => {
