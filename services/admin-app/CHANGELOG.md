@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.2
+
+### Changed
+
+AWS Lambda deploy workflows with VPS .env bundling
+
 ## v1.1.1
 
 ### Changed
