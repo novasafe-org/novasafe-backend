@@ -1,5 +1,9 @@
 /**
  * Load `.env` before any other app modules read `process.env`.
+ *
+ * Docker/VPS: reads `.env` from the working directory or next to compiled output.
+ * Lambda: `.env` is bundled at the package root by `scripts/package-lambda.mjs`
+ * (same dotenv format as VPS — no separate Lambda config layer).
  */
 import dotenv from 'dotenv';
 import path from 'path';

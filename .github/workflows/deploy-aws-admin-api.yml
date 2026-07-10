@@ -1,0 +1,40 @@
+# Deploy admin-api to AWS Lambda
+#
+# Prerequisites:
+#   1. AdminApi CDK stack deployed (novasafe-deployment → Deploy Infrastructure → AdminApi)
+#   2. Repository Variables: AWS_ROLE_ARN, AWS_REGION
+#   3. Environment "production" secret ADMIN_API_ENV_FILE — paste full VPS admin-api/.env contents
+#   4. ACM DNS validation + Cloudflare CNAME for admin-api.novasafe.io
+#
+# See docs/DEPLOY_AWS_LAMBDA.md
+
+name: Deploy AWS (admin-api)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Lambda package
+    environment: production
+    permissions:
+      contents: read
+    uses: novasafe-org/novasafe-deployment/.github/workflows/build-backend.yml@master
+    secrets: inherit
+    with:
+      service: admin-app
+      application-name: novasafe-admin-api
+      overrides-env-path: infra-aws/config/env/admin-api.lambda.overrides.example
+      github-environment: production
+
+  deploy:
+    name: Deploy to Lambda
+    needs: build
+    permissions:
+      id-token: write
+      contents: read
+    uses: novasafe-org/novasafe-deployment/.github/workflows/deploy-backend-aws.yml@master
+    with:
+      application-name: novasafe-admin-api
+      lambda-function-name: novasafe-prod-fn-admin-api
+      artifact-name: lambda-novasafe-admin-api-${{ github.run_id }}
