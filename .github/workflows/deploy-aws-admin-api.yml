@@ -15,10 +15,6 @@ on:
 
 jobs:
   build:
-    name: Build Lambda package
-    environment: production
-    permissions:
-      contents: read
     uses: novasafe-org/novasafe-deployment/.github/workflows/build-backend.yml@master
     secrets: inherit
     with:
@@ -28,7 +24,6 @@ jobs:
       github-environment: production
 
   deploy:
-    name: Deploy to Lambda
     needs: build
     permissions:
       id-token: write
