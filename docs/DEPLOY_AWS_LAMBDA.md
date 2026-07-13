@@ -1,12 +1,6 @@
 # Deploy NovaSafe backends to AWS Lambda
 
-Parallel path to VPS Docker. **VPS deployment is unchanged** — same `node dist/index.js`, same `.env` on the server.
-
-Lambda uses the **same `.env` file format** as VPS. At deploy time the workflow:
-
-1. Reads your production `.env` from a GitHub Environment secret
-2. Merges Lambda-specific overrides (public URLs, logging)
-3. Bundles `.env` into the zip — `loadEnv.ts` reads it at cold start (identical to Docker)
+Lambda reads production config from a **private S3 bucket** — upload two `.env` files once, CI downloads them at deploy time. No VPS and no one-by-one GitHub secrets.
 
 ---
 
@@ -14,42 +8,59 @@ Lambda uses the **same `.env` file format** as VPS. At deploy time the workflow:
 
 ### 1. Deploy CDK stacks
 
-In `novasafe-deployment` → **Deploy Infrastructure** → run:
+In `novasafe-deployment` → **Deploy Infrastructure**:
 
 | Stack | Creates |
 |-------|---------|
-| **MobileApi** | Lambda `novasafe-prod-fn-mobile-api`, API GW, ACM for `mobile-api.novasafe.io` |
-| **AdminApi** | Lambda `novasafe-prod-fn-admin-api`, S3 uploads bucket, ACM for `admin-api.novasafe.io` |
+| **MobileApi** | Lambda `novasafe-prod-fn-mobile-api`, API GW, ACM |
+| **AdminApi** | Lambda `novasafe-prod-fn-admin-api`, S3 uploads, API GW, ACM |
 
-Add ACM DNS validation records in Cloudflare, then CNAME each API subdomain to the stack output **CustomDomainTarget**.
+Add ACM DNS validation in Cloudflare, then CNAME each subdomain to **CustomDomainTarget** from stack outputs.
 
-### 2. Repository variables (`novasafe-backend`)
+### 2. Create config S3 bucket
 
-Settings → Actions → Variables:
+Private bucket in `ap-south-1`, block public access:
+
+```bash
+BUCKET=novasafe-prod-backend-config-<account-id>
+
+aws s3api create-bucket \
+  --bucket "$BUCKET" \
+  --region ap-south-1 \
+  --create-bucket-configuration LocationConstraint=ap-south-1
+```
+
+### 3. Upload `.env` files to S3
+
+Start from templates in `novasafe-deployment`:
+
+- `opt/novasafe-deployment/mobile-api/.env.example`
+- `opt/novasafe-deployment/platform/admin-api/.env.example`
+
+Upload:
+
+```bash
+aws s3 cp mobile-api.env s3://$BUCKET/mobile-api/.env --sse AES256
+aws s3 cp admin-api.env  s3://$BUCKET/admin-api/.env  --sse AES256
+```
+
+### 4. Repository variables (`novasafe-backend`)
+
+Settings → Actions → **Variables**:
 
 | Variable | Example |
 |----------|---------|
 | `AWS_ROLE_ARN` | `arn:aws:iam::793239449172:role/NovaSafeGitHubDeployRole` |
 | `AWS_REGION` | `ap-south-1` |
+| `BACKEND_CONFIG_BUCKET` | `novasafe-prod-backend-config-793239449172` |
 
-### 3. Environment secrets (production)
+### 5. IAM
 
-**Repository:** `novasafe-backend` (not novasafe-deployment)
+Grant the GitHub OIDC deploy role `s3:GetObject` on `arn:aws:s3:::BUCKET/*`.
 
-Settings → Environments → **production** → **Environment secrets** (not repository secrets):
+### 6. MongoDB Atlas
 
-| Secret | Value |
-|--------|-------|
-| `MOBILE_API_ENV_FILE` | Full contents of your VPS `/opt/novasafe-deployment/mobile-api/.env` |
-| `ADMIN_API_ENV_FILE` | Full contents of your VPS `/opt/novasafe-deployment/platform/admin-api/.env` |
-
-Copy-paste the **exact same file** you use on the VPS. No new variable names.
-
-Lambda overrides (public URLs, logging) are merged automatically from `novasafe-deployment/infra-aws/config/env/*.lambda.overrides.example`.
-
-### 4. MongoDB Atlas
-
-Allow Lambda egress (Atlas → Network Access). Serverless functions use dynamic IPs — use `0.0.0.0/0` with strong DB credentials, or Atlas Private Endpoint.
+Allow Lambda egress in Atlas Network Access.
 
 ---
 
@@ -60,36 +71,13 @@ Allow Lambda egress (Atlas → Network Access). Serverless functions use dynamic
 | Mobile API | **Deploy AWS (mobile-api)** |
 | Admin API | **Deploy AWS (admin-api)** |
 
-Each run: build zip (with `.env`) → `aws lambda update-function-code`.
+Each run: download `.env` from S3 → merge overrides → build zip → deploy to Lambda.
 
----
-
-## Local packaging (optional)
-
-```bash
-# Merge VPS .env with Lambda overrides
-node ../novasafe-deployment/.github/scripts/merge-env-files.mjs \
-  /tmp/lambda.env \
-  /path/to/mobile-api/.env \
-  ../novasafe-deployment/infra-aws/config/env/mobile-api.lambda.overrides.example
-
-# Package zip
-node scripts/package-lambda.mjs --service core --env-file /tmp/lambda.env
-```
-
----
-
-## Switching Lambda ↔ VPS
-
-| Direction | Action |
-|-----------|--------|
-| Lambda → VPS | Revert Cloudflare DNS to VPS; run existing Docker deploy — **no code changes** |
-| VPS → Lambda | Point DNS to API Gateway; run Deploy AWS workflow — **no code changes** |
+To update config, re-upload to S3 and re-run the workflow.
 
 ---
 
 ## Related
 
-- `docs/runtime-architecture.md` — application vs runtime layers
+- `docs/runtime-architecture.md`
 - `novasafe-deployment/infra-aws/config/env/` — Lambda override templates
-- `opt/novasafe-deployment/*/`.env.example` — VPS env templates (same keys)
