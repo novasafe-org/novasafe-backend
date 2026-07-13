@@ -2,9 +2,8 @@
 /**
  * Package a NovaSafe backend service for AWS Lambda.
  *
- * Builds the service, bundles the Lambda handler with esbuild (inlines express,
- * body-parser, serverless-express, app code), copies dist assets + .env, and zips.
- * Avoids pnpm deploy symlink issues entirely.
+ * Builds the service, bundles the Lambda handler with esbuild (inlines all JS deps),
+ * ships only the bundled handler + version.json + .env. No node_modules in the zip.
  *
  * Usage:
  *   node scripts/package-lambda.mjs --service core --env-file /path/to/.env
@@ -98,6 +97,11 @@ const assertLambdaPackage = (packageDir) => {
     }
   }
 
+  if (existsSync(join(packageDir, 'node_modules'))) {
+    console.error('::error::Lambda package must not include node_modules (use esbuild bundle only).');
+    process.exit(1);
+  }
+
   const handlerSize = statSync(handlerPath).size;
   if (handlerSize < 500_000) {
     console.error(
@@ -121,6 +125,14 @@ const verifyRuntimeModules = (packageDir) => {
   run(`node -e ${JSON.stringify(script)}`, { cwd: packageDir });
 };
 
+const assertZipHasNoNodeModules = (zipPath) => {
+  const listing = execSync(`unzip -l "${zipPath}"`, { encoding: 'utf8' });
+  if (listing.includes('node_modules/')) {
+    console.error('::error::Lambda zip must not contain node_modules/. Redeploy with esbuild packaging.');
+    process.exit(1);
+  }
+};
+
 const bundleLambdaHandler = (entryPath, outputPath) => {
   const esbuildBin = resolveEsbuildBin();
   mkdirSync(dirname(outputPath), { recursive: true });
@@ -141,6 +153,7 @@ const stageDir = mkdtempSync(join(tmpdir(), `novasafe-lambda-${config.label}-`))
 const packageDir = join(stageDir, 'package');
 const handlerEntry = join(serviceRoot, 'dist/runtimes/lambda.js');
 const handlerOutput = join(packageDir, 'dist/runtimes/lambda.js');
+const versionJson = join(serviceRoot, 'dist/version.json');
 
 try {
   run('pnpm --filter @novasafe/feature-flags run build', { cwd: repoRoot });
@@ -152,8 +165,13 @@ try {
     process.exit(1);
   }
 
-  mkdirSync(packageDir, { recursive: true });
-  cpSync(join(serviceRoot, 'dist'), join(packageDir, 'dist'), { recursive: true });
+  if (!existsSync(versionJson)) {
+    console.error(`::error::version.json not built: ${versionJson}`);
+    process.exit(1);
+  }
+
+  mkdirSync(join(packageDir, 'dist/runtimes'), { recursive: true });
+  cpSync(versionJson, join(packageDir, 'dist/version.json'));
 
   bundleLambdaHandler(handlerEntry, handlerOutput);
 
@@ -165,7 +183,8 @@ try {
 
   mkdirSync(resolve(output, '..'), { recursive: true });
   rmSync(output, { force: true });
-  run(`cd "${packageDir}" && zip -qr "${output}" . -x "*.map"`);
+  run(`cd "${packageDir}" && zip -qr "${output}" .`);
+  assertZipHasNoNodeModules(output);
 
   console.log(`[lambda-package] ${config.label} → ${output}`);
   console.log(`[lambda-package] handler: ${config.handler}`);
