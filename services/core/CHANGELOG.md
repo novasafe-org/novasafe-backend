@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.1
+
+### Changed
+
+Fix Lambda packaging: serverless-express in prod dependencies
+
 ## v1.1.0
 
 ### Added
