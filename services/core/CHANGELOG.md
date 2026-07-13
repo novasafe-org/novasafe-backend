@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.3
+
+### Changed
+
+Auto-deploy mobile-api Lambda on master push
+
 ## v1.1.2
 
 ### Changed
