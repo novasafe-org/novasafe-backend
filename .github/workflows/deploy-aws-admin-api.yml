@@ -15,6 +15,9 @@ on:
 
 jobs:
   build:
+    permissions:
+      id-token: write
+      contents: read
     uses: novasafe-org/novasafe-deployment/.github/workflows/build-backend.yml@master
     with:
       service: admin-app
