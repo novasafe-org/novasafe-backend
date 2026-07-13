@@ -2,29 +2,34 @@
 /**
  * Package a NovaSafe backend service for AWS Lambda.
  *
- * Produces a zip with production node_modules, compiled dist/, and a `.env` file
- * (same dotenv format as VPS Docker). loadEnv.ts reads `.env` at cold start.
+ * Builds the service, bundles the Lambda handler with esbuild (inlines express,
+ * body-parser, serverless-express, app code), copies dist assets + .env, and zips.
+ * Avoids pnpm deploy symlink issues entirely.
  *
  * Usage:
  *   node scripts/package-lambda.mjs --service core --env-file /path/to/.env
  *   node scripts/package-lambda.mjs --service admin-app --env-file /path/to/.env
  */
 import { execSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const requireFromRoot = createRequire(join(repoRoot, 'package.json'));
 
 const SERVICES = {
   core: {
     filter: 'core-service',
+    serviceDir: 'services/core',
     label: 'mobile-api',
     handler: 'dist/runtimes/lambda.handler',
   },
   'admin-app': {
     filter: 'admin-app-service',
+    serviceDir: 'services/admin-app',
     label: 'admin-api',
     handler: 'dist/runtimes/lambda.handler',
   },
@@ -68,11 +73,22 @@ const run = (command, options = {}) => {
   execSync(command, { stdio: 'inherit', ...options });
 };
 
-const assertLambdaPackage = (deployDir) => {
+const resolveEsbuildBin = () => {
+  try {
+    const pkgJson = requireFromRoot.resolve('esbuild/package.json');
+    return join(dirname(pkgJson), 'bin/esbuild');
+  } catch {
+    console.error('::error::esbuild is required for Lambda packaging (root devDependency).');
+    process.exit(1);
+  }
+};
+
+const assertLambdaPackage = (packageDir) => {
+  const handlerPath = join(packageDir, 'dist/runtimes/lambda.js');
   const required = [
-    ['Lambda handler', join(deployDir, 'dist/runtimes/lambda.js')],
-    ['serverless-express', join(deployDir, 'node_modules/@codegenie/serverless-express/package.json')],
-    ['env file', join(deployDir, '.env')],
+    ['Lambda handler', handlerPath],
+    ['env file', join(packageDir, '.env')],
+    ['version metadata', join(packageDir, 'dist/version.json')],
   ];
 
   for (const [label, filePath] of required) {
@@ -81,14 +97,23 @@ const assertLambdaPackage = (deployDir) => {
       process.exit(1);
     }
   }
+
+  const handlerSize = statSync(handlerPath).size;
+  if (handlerSize < 500_000) {
+    console.error(
+      `::error::Lambda handler looks too small (${handlerSize} bytes). esbuild bundle may have failed.`,
+    );
+    process.exit(1);
+  }
+
+  console.log(`[lambda-package] handler bundle size: ${(handlerSize / 1024 / 1024).toFixed(2)} MB`);
 };
 
-/** Fail in CI if Node cannot resolve runtime deps (same paths Lambda uses after zip). */
 const verifyRuntimeModules = (packageDir) => {
   const script = [
-    "const express = require('express')",
-    "if (!express || typeof express !== 'function') throw new Error('express failed to load')",
-    "require('@codegenie/serverless-express')",
+    "process.env.LOG_ENABLE_FILE = process.env.LOG_ENABLE_FILE || 'false'",
+    "process.env.LOG_ENABLE_CONSOLE = process.env.LOG_ENABLE_CONSOLE || 'true'",
+    "process.env.LOG_DIR = process.env.LOG_DIR || '/tmp/logs'",
     "require('./dist/runtimes/lambda.js')",
     "console.log('[lambda-package] runtime module resolution OK')",
   ].join('; ');
@@ -96,50 +121,51 @@ const verifyRuntimeModules = (packageDir) => {
   run(`node -e ${JSON.stringify(script)}`, { cwd: packageDir });
 };
 
-/**
- * pnpm deploy leaves symlinked node_modules. zip stores symlinks as links, which
- * break on Lambda. Copy with dereference so the archive contains real files.
- */
-const materializeForZip = (sourceDir, targetDir) => {
-  rmSync(targetDir, { recursive: true, force: true });
-  cpSync(sourceDir, targetDir, {
-    recursive: true,
-    dereference: true,
-    filter: (src) => !src.endsWith('.map'),
-  });
-  console.log(`[lambda-package] materialized deploy tree → ${targetDir}`);
+const bundleLambdaHandler = (entryPath, outputPath) => {
+  const esbuildBin = resolveEsbuildBin();
+  mkdirSync(dirname(outputPath), { recursive: true });
+
+  run(
+    `"${esbuildBin}" "${entryPath}" --bundle --platform=node --target=node20 --format=cjs --outfile="${outputPath}"`,
+    { cwd: repoRoot },
+  );
 };
 
 const { service, envFile, output } = parseArgs();
 const config = SERVICES[service];
+const serviceRoot = join(repoRoot, config.serviceDir);
 
 readFileSync(envFile, 'utf8');
 
 const stageDir = mkdtempSync(join(tmpdir(), `novasafe-lambda-${config.label}-`));
-const deployDir = join(stageDir, 'package');
-const zipRoot = join(stageDir, 'zip-root');
+const packageDir = join(stageDir, 'package');
+const handlerEntry = join(serviceRoot, 'dist/runtimes/lambda.js');
+const handlerOutput = join(packageDir, 'dist/runtimes/lambda.js');
 
 try {
   run('pnpm --filter @novasafe/feature-flags run build', { cwd: repoRoot });
   run(`pnpm --filter ${config.filter} run build`, { cwd: repoRoot });
   run(`pnpm --filter ${config.filter} run build:lambda`, { cwd: repoRoot });
 
-  mkdirSync(deployDir, { recursive: true });
-  run(`pnpm --filter ${config.filter} deploy --prod --legacy "${deployDir}"`, {
-    cwd: repoRoot,
-    env: { ...process.env, HUSKY: '0' },
-  });
+  if (!existsSync(handlerEntry)) {
+    console.error(`::error::Lambda handler not built: ${handlerEntry}`);
+    process.exit(1);
+  }
 
-  writeFileSync(join(deployDir, '.env'), readFileSync(envFile, 'utf8'), 'utf8');
-  console.log(`[lambda-package] wrote ${join(deployDir, '.env')}`);
+  mkdirSync(packageDir, { recursive: true });
+  cpSync(join(serviceRoot, 'dist'), join(packageDir, 'dist'), { recursive: true });
 
-  assertLambdaPackage(deployDir);
-  materializeForZip(deployDir, zipRoot);
-  verifyRuntimeModules(zipRoot);
+  bundleLambdaHandler(handlerEntry, handlerOutput);
+
+  writeFileSync(join(packageDir, '.env'), readFileSync(envFile, 'utf8'), 'utf8');
+  console.log(`[lambda-package] wrote ${join(packageDir, '.env')}`);
+
+  assertLambdaPackage(packageDir);
+  verifyRuntimeModules(packageDir);
 
   mkdirSync(resolve(output, '..'), { recursive: true });
   rmSync(output, { force: true });
-  run(`cd "${zipRoot}" && zip -qr "${output}" .`);
+  run(`cd "${packageDir}" && zip -qr "${output}" . -x "*.map"`);
 
   console.log(`[lambda-package] ${config.label} → ${output}`);
   console.log(`[lambda-package] handler: ${config.handler}`);
