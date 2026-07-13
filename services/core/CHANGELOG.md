@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.2
+
+### Changed
+
+Fix mobile-api Lambda: esbuild-only zip (no node_modules)
+
 ## v1.1.1
 
 ### Changed
