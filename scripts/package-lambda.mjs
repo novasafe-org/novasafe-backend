@@ -10,6 +10,7 @@
  *   node scripts/package-lambda.mjs --service admin-app --env-file /path/to/.env
  */
 import { execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -68,6 +69,28 @@ const run = (command, options = {}) => {
   execSync(command, { stdio: 'inherit', ...options });
 };
 
+/** Lambda-only adapter — devDependency in services, copied from the monorepo after deploy --prod. */
+const copyServerlessExpress = (targetDir) => {
+  const requireFromRoot = createRequire(join(repoRoot, 'package.json'));
+  let packageJsonPath;
+
+  try {
+    packageJsonPath = requireFromRoot.resolve('@codegenie/serverless-express/package.json');
+  } catch {
+    console.error(
+      '::error::@codegenie/serverless-express is not installed. Run pnpm install in the monorepo.',
+    );
+    process.exit(1);
+  }
+
+  const sourceDir = dirname(packageJsonPath);
+  const destinationDir = join(targetDir, 'node_modules/@codegenie/serverless-express');
+
+  mkdirSync(join(targetDir, 'node_modules/@codegenie'), { recursive: true });
+  cpSync(sourceDir, destinationDir, { recursive: true });
+  console.log(`[lambda-package] copied @codegenie/serverless-express → ${destinationDir}`);
+};
+
 const { service, envFile, output } = parseArgs();
 const config = SERVICES[service];
 
@@ -88,10 +111,7 @@ try {
   });
 
   // Lambda-only runtime adapter — kept as devDependency so Docker `deploy --prod` stays lean.
-  run(`pnpm add @codegenie/serverless-express@5.0.0 --prod --dir "${deployDir}"`, {
-    cwd: repoRoot,
-    env: { ...process.env, HUSKY: '0' },
-  });
+  copyServerlessExpress(deployDir);
 
   writeFileSync(join(deployDir, '.env'), readFileSync(envFile, 'utf8'), 'utf8');
   console.log(`[lambda-package] wrote ${join(deployDir, '.env')}`);
