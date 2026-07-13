@@ -10,7 +10,7 @@
  *   node scripts/package-lambda.mjs --service admin-app --env-file /path/to/.env
  */
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -81,8 +81,33 @@ const assertLambdaPackage = (deployDir) => {
       process.exit(1);
     }
   }
+};
 
-  console.log('[lambda-package] package validation passed');
+/** Fail in CI if Node cannot resolve Express + transitive deps from the deploy folder. */
+const verifyRuntimeModules = (deployDir) => {
+  const script = [
+    "require('express')",
+    "require('body-parser')",
+    "require('@codegenie/serverless-express')",
+    "require('./dist/runtimes/lambda.js')",
+    "console.log('[lambda-package] runtime module resolution OK')",
+  ].join('; ');
+
+  run(`node -e ${JSON.stringify(script)}`, { cwd: deployDir });
+};
+
+/**
+ * pnpm deploy leaves symlinked node_modules. zip stores symlinks as links, which
+ * break on Lambda. Copy with dereference so the archive contains real files.
+ */
+const materializeForZip = (sourceDir, targetDir) => {
+  rmSync(targetDir, { recursive: true, force: true });
+  cpSync(sourceDir, targetDir, {
+    recursive: true,
+    dereference: true,
+    filter: (src) => !src.endsWith('.map'),
+  });
+  console.log(`[lambda-package] materialized deploy tree → ${targetDir}`);
 };
 
 const { service, envFile, output } = parseArgs();
@@ -92,6 +117,7 @@ readFileSync(envFile, 'utf8');
 
 const stageDir = mkdtempSync(join(tmpdir(), `novasafe-lambda-${config.label}-`));
 const deployDir = join(stageDir, 'package');
+const zipRoot = join(stageDir, 'zip-root');
 
 try {
   run('pnpm --filter @novasafe/feature-flags run build', { cwd: repoRoot });
@@ -108,10 +134,13 @@ try {
   console.log(`[lambda-package] wrote ${join(deployDir, '.env')}`);
 
   assertLambdaPackage(deployDir);
+  verifyRuntimeModules(deployDir);
+  materializeForZip(deployDir, zipRoot);
+  verifyRuntimeModules(zipRoot);
 
   mkdirSync(resolve(output, '..'), { recursive: true });
   rmSync(output, { force: true });
-  run(`cd "${deployDir}" && zip -qr "${output}" . -x "*.map"`);
+  run(`cd "${zipRoot}" && zip -qr "${output}" .`);
 
   console.log(`[lambda-package] ${config.label} → ${output}`);
   console.log(`[lambda-package] handler: ${config.handler}`);
