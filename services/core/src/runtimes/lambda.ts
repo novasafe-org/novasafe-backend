@@ -2,6 +2,19 @@
  * AWS Lambda entrypoint only — not used by Docker, VPS, or `node dist/index.js`.
  * Handler: dist/runtimes/lambda.handler (built via `pnpm run build:lambda`).
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+try {
+  const meta = JSON.parse(readFileSync(join(__dirname, '../version.json'), 'utf8')) as {
+    version?: string;
+    build?: string;
+  };
+  console.log(`[mobile-api] package version=${meta.version ?? '?'} build=${meta.build ?? '?'}`);
+} catch {
+  console.log('[mobile-api] package loaded (no version.json)');
+}
+
 import '../loadEnv';
 
 import serverlessExpress from '@codegenie/serverless-express';

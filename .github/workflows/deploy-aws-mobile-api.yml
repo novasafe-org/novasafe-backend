@@ -12,6 +12,13 @@ name: Deploy AWS (mobile-api)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'services/core/**'
+      - 'common/**'
+      - 'scripts/package-lambda.mjs'
+      - 'pnpm-lock.yaml'
 
 jobs:
   build:
@@ -35,3 +42,4 @@ jobs:
       application-name: novasafe-mobile-api
       lambda-function-name: novasafe-prod-fn-mobile-api
       artifact-name: lambda-novasafe-mobile-api-${{ github.run_id }}
+      health-probe-path: /mobile/health
