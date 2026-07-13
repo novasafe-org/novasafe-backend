@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.4
+
+### Changed
+
+Fix Mongoose schemas for esbuild Lambda bundles
+
 ## v1.1.3
 
 ### Changed
