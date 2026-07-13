@@ -2,9 +2,8 @@
 #
 # Prerequisites:
 #   1. AdminApi CDK stack deployed (novasafe-deployment → Deploy Infrastructure → AdminApi)
-#   2. Repository Variables: AWS_ROLE_ARN, AWS_REGION
-#   3. Repository secrets SSH_USER, SSH_HOST, SSH_PASSWORD, DEPLOY_PATH (same as VPS Docker deploy)
-#      Lambda reads .env from VPS: ${DEPLOY_PATH}/platform/admin-api/.env
+#   2. Repository Variables: AWS_ROLE_ARN, AWS_REGION, BACKEND_CONFIG_BUCKET
+#   3. S3 object s3://$BACKEND_CONFIG_BUCKET/admin-api/.env uploaded (see docs/DEPLOY_AWS_LAMBDA.md)
 #   4. ACM DNS validation + Cloudflare CNAME for admin-api.novasafe.io
 #
 # See docs/DEPLOY_AWS_LAMBDA.md
@@ -17,16 +16,10 @@ on:
 jobs:
   build:
     uses: novasafe-org/novasafe-deployment/.github/workflows/build-backend.yml@master
-    secrets:
-      SSH_USER: ${{ secrets.SSH_USER }}
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
     with:
       service: admin-app
       application-name: novasafe-admin-api
-      vps-env-relative-path: platform/admin-api/.env
+      s3-env-key: admin-api/.env
       overrides-env-path: infra-aws/config/env/admin-api.lambda.overrides.example
 
   deploy:

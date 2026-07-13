@@ -2,9 +2,8 @@
 #
 # Prerequisites:
 #   1. MobileApi CDK stack deployed (novasafe-deployment → Deploy Infrastructure → MobileApi)
-#   2. Repository Variables: AWS_ROLE_ARN, AWS_REGION
-#   3. Repository secrets SSH_USER, SSH_HOST, SSH_PASSWORD, DEPLOY_PATH (same as VPS Docker deploy)
-#      Lambda reads .env from VPS: ${DEPLOY_PATH}/mobile-api/.env
+#   2. Repository Variables: AWS_ROLE_ARN, AWS_REGION, BACKEND_CONFIG_BUCKET
+#   3. S3 object s3://$BACKEND_CONFIG_BUCKET/mobile-api/.env uploaded (see docs/DEPLOY_AWS_LAMBDA.md)
 #   4. ACM DNS validation + Cloudflare CNAME for mobile-api.novasafe.io
 #
 # See docs/DEPLOY_AWS_LAMBDA.md
@@ -17,16 +16,10 @@ on:
 jobs:
   build:
     uses: novasafe-org/novasafe-deployment/.github/workflows/build-backend.yml@master
-    secrets:
-      SSH_USER: ${{ secrets.SSH_USER }}
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
     with:
       service: core
       application-name: novasafe-mobile-api
-      vps-env-relative-path: mobile-api/.env
+      s3-env-key: mobile-api/.env
       overrides-env-path: infra-aws/config/env/mobile-api.lambda.overrides.example
 
   deploy:
