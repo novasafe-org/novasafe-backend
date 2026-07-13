@@ -1,6 +1,6 @@
-import { Schema } from 'mongoose';
 import { COLLECTIONS } from '../../collections';
 import { createBaseSchema } from '../base.schema';
+import { mixedType, objectIdType } from '../common/schema-types';
 import { requestContextAuditFields } from '../common/request-context-audit.schema';
 import { sourceField } from '../common/source-tracking.schema';
 import { optionalUserIdField } from '../common/user-reference.schema';
@@ -10,11 +10,11 @@ const auditLogDefinition = {
   ...optionalUserIdField,
   action: { type: String, required: true, index: true },
   resourceType: { type: String, default: null, index: true },
-  resourceId: { type: Schema.Types.ObjectId, default: null },
+  resourceId: { type: objectIdType, default: null },
   outcome: { type: String, enum: ['success', 'failure'], default: 'success' },
   ipAddress: { type: String, default: null },
   userAgent: { type: String, default: null },
-  details: { type: Schema.Types.Mixed, default: {} },
+  details: { type: mixedType, default: {} },
   ...sourceField,
   ...requestContextAuditFields,
 };

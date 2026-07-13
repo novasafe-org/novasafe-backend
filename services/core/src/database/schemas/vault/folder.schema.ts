@@ -1,6 +1,6 @@
-import { Schema } from 'mongoose';
 import { COLLECTIONS } from '../../collections';
 import { createBaseSchema } from '../base.schema';
+import { objectIdType } from '../common/schema-types';
 import { sourceField } from '../common/source-tracking.schema';
 import { userIdField } from '../common/user-reference.schema';
 import type { IVaultFolder } from './vault.interface';
@@ -9,7 +9,7 @@ import type { IVaultFolder } from './vault.interface';
 const folderDefinition = {
   ...userIdField,
   name: { type: String, required: true },
-  parentId: { type: Schema.Types.ObjectId, default: null, index: true, sparse: true },
+  parentId: { type: objectIdType, default: null, index: true, sparse: true },
   ...sourceField,
 };
 

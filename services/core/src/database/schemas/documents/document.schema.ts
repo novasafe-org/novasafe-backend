@@ -1,6 +1,6 @@
-import { Schema } from 'mongoose';
 import { COLLECTIONS } from '../../collections';
 import { createBaseSchema } from '../base.schema';
+import { objectIdType } from '../common/schema-types';
 import { sourceField } from '../common/source-tracking.schema';
 import { userIdField } from '../common/user-reference.schema';
 
@@ -12,7 +12,7 @@ const documentDefinition = {
   sizeBytes: { type: Number, default: 0 },
   storageKey: { type: String, default: null },
   checksum: { type: String, default: null },
-  folderId: { type: Schema.Types.ObjectId, default: null, sparse: true },
+  folderId: { type: objectIdType, default: null, sparse: true },
   ...sourceField,
 };
 

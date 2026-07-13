@@ -1,18 +1,18 @@
-import { Schema } from 'mongoose';
 import { COLLECTIONS } from '../../collections';
 import { createBaseSchema } from '../base.schema';
+import { objectIdType } from '../common/schema-types';
 import { sharingPermissionField } from '../common/sharing-permission.schema';
 import { sourceField } from '../common/source-tracking.schema';
 import type { IShareRecord } from './sharing.interface';
 
 const shareRecordDefinition = {
-  senderId: { type: Schema.Types.ObjectId, required: true, ref: 'VaultUser' },
+  senderId: { type: objectIdType, required: true, ref: 'VaultUser' },
   senderEmail: { type: String, default: null },
   senderName: { type: String, default: null },
-  receiverId: { type: Schema.Types.ObjectId, default: null, sparse: true, ref: 'VaultUser' },
+  receiverId: { type: objectIdType, default: null, sparse: true, ref: 'VaultUser' },
   receiverEmail: { type: String, required: true, lowercase: true, trim: true },
   resourceName: { type: String, required: true },
-  resourceId: { type: Schema.Types.ObjectId, default: null, sparse: true, ref: 'VaultItem' },
+  resourceId: { type: objectIdType, default: null, sparse: true, ref: 'VaultItem' },
   ...sharingPermissionField,
   ...sourceField,
 };
