@@ -10,8 +10,7 @@
  *   node scripts/package-lambda.mjs --service admin-app --env-file /path/to/.env
  */
 import { execSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -69,26 +68,21 @@ const run = (command, options = {}) => {
   execSync(command, { stdio: 'inherit', ...options });
 };
 
-/** Lambda-only adapter — devDependency in services, copied from the monorepo after deploy --prod. */
-const copyServerlessExpress = (targetDir) => {
-  const requireFromRoot = createRequire(join(repoRoot, 'package.json'));
-  let packageJsonPath;
+const assertLambdaPackage = (deployDir) => {
+  const required = [
+    ['Lambda handler', join(deployDir, 'dist/runtimes/lambda.js')],
+    ['serverless-express', join(deployDir, 'node_modules/@codegenie/serverless-express/package.json')],
+    ['env file', join(deployDir, '.env')],
+  ];
 
-  try {
-    packageJsonPath = requireFromRoot.resolve('@codegenie/serverless-express/package.json');
-  } catch {
-    console.error(
-      '::error::@codegenie/serverless-express is not installed. Run pnpm install in the monorepo.',
-    );
-    process.exit(1);
+  for (const [label, filePath] of required) {
+    if (!existsSync(filePath)) {
+      console.error(`::error::Lambda package missing ${label}: ${filePath}`);
+      process.exit(1);
+    }
   }
 
-  const sourceDir = dirname(packageJsonPath);
-  const destinationDir = join(targetDir, 'node_modules/@codegenie/serverless-express');
-
-  mkdirSync(join(targetDir, 'node_modules/@codegenie'), { recursive: true });
-  cpSync(sourceDir, destinationDir, { recursive: true });
-  console.log(`[lambda-package] copied @codegenie/serverless-express → ${destinationDir}`);
+  console.log('[lambda-package] package validation passed');
 };
 
 const { service, envFile, output } = parseArgs();
@@ -110,11 +104,10 @@ try {
     env: { ...process.env, HUSKY: '0' },
   });
 
-  // Lambda-only runtime adapter — kept as devDependency so Docker `deploy --prod` stays lean.
-  copyServerlessExpress(deployDir);
-
   writeFileSync(join(deployDir, '.env'), readFileSync(envFile, 'utf8'), 'utf8');
   console.log(`[lambda-package] wrote ${join(deployDir, '.env')}`);
+
+  assertLambdaPackage(deployDir);
 
   mkdirSync(resolve(output, '..'), { recursive: true });
   rmSync(output, { force: true });

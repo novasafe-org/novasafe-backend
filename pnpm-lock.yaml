@@ -37,6 +37,9 @@ importers:
 
   services/admin-app:
     dependencies:
+      '@codegenie/serverless-express':
+        specifier: ^5.0.0
+        version: 5.0.0
       '@hono/node-server':
         specifier: ^1.14.0
         version: 1.19.14(hono@4.12.26)
@@ -83,9 +86,6 @@ importers:
         specifier: ^3.24.2
         version: 3.25.76
     devDependencies:
-      '@codegenie/serverless-express':
-        specifier: ^5.0.0
-        version: 5.0.0
       '@types/bcryptjs':
         specifier: ^2.4.6
         version: 2.4.6
@@ -153,6 +153,9 @@ importers:
 
   services/core:
     dependencies:
+      '@codegenie/serverless-express':
+        specifier: ^5.0.0
+        version: 5.0.0
       '@novasafe/feature-flags':
         specifier: workspace:*
         version: link:../../common/feature-flags
@@ -196,9 +199,6 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0(winston@3.19.0)
     devDependencies:
-      '@codegenie/serverless-express':
-        specifier: ^5.0.0
-        version: 5.0.0
       '@types/bcryptjs':
         specifier: ^2.4.6
         version: 2.4.6

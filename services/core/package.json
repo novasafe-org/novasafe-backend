@@ -17,6 +17,7 @@
     "stop": "node ../../scripts/free-port.mjs CORE_PORT 3125"
   },
   "dependencies": {
+    "@codegenie/serverless-express": "^5.0.0",
     "@novasafe/feature-flags": "workspace:*",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.0.3",
@@ -33,7 +34,6 @@
     "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
-    "@codegenie/serverless-express": "^5.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.5",
