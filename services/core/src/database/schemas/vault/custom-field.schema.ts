@@ -1,6 +1,6 @@
-import { Schema } from 'mongoose';
 import { COLLECTIONS } from '../../collections';
 import { createBaseSchema } from '../base.schema';
+import { objectIdType } from '../common/schema-types';
 import { encryptionFields, optionalPlaintextValueField } from '../common/encryption.schema';
 import { sourceField } from '../common/source-tracking.schema';
 import { userIdField } from '../common/user-reference.schema';
@@ -9,7 +9,7 @@ import type { ICustomField } from './vault.interface';
 
 const customFieldDefinition = {
   ...userIdField,
-  credentialId: { type: Schema.Types.ObjectId, required: true, ref: 'VaultItem' },
+  credentialId: { type: objectIdType, required: true, ref: 'VaultItem' },
   field_label: { type: String, required: true },
   field_type: { type: String, required: true, enum: Object.values(CustomFieldType) },
   is_sensitive: { type: Boolean, default: false },

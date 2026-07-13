@@ -1,6 +1,6 @@
-import { Schema } from 'mongoose';
 import { COLLECTIONS } from '../../collections';
 import { createBaseSchema } from '../base.schema';
+import { mixedType } from '../common/schema-types';
 import { optionalUserIdField } from '../common/user-reference.schema';
 import { WebhookEventStatus } from './subscription.enums';
 import type { ISubscriptionEvent } from './subscription.interface';
@@ -11,7 +11,7 @@ const subscriptionEventDefinition = {
   ...optionalUserIdField,
   transactionId: { type: String, default: null },
   status: { type: String, enum: Object.values(WebhookEventStatus), default: WebhookEventStatus.Processing },
-  payload: { type: Schema.Types.Mixed, default: {} },
+  payload: { type: mixedType, default: {} },
   errorMessage: { type: String, default: null },
   processedAt: { type: Date, default: Date.now },
 };

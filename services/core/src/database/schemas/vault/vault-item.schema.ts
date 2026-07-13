@@ -1,6 +1,6 @@
-import { Schema } from 'mongoose';
 import { COLLECTIONS } from '../../collections';
 import { createBaseSchema } from '../base.schema';
+import { objectIdType } from '../common/schema-types';
 import { encryptionFields } from '../common/encryption.schema';
 import { sourceField, syncFields } from '../common/source-tracking.schema';
 import { userIdField } from '../common/user-reference.schema';
@@ -9,11 +9,11 @@ import type { IVaultItem } from './vault.interface';
 
 const vaultItemDefinition = {
   ...userIdField,
-  workspaceId: { type: Schema.Types.ObjectId, default: null, sparse: true },
+  workspaceId: { type: objectIdType, default: null, sparse: true },
   ...encryptionFields,
   category: { type: String, default: VaultItemCategory.Login },
   title: { type: String, default: null },
-  folderId: { type: Schema.Types.ObjectId, default: null, sparse: true },
+  folderId: { type: objectIdType, default: null, sparse: true },
   tags: { type: [String], default: [] },
   logoUrl: { type: String, default: null },
   isFavorite: { type: Boolean, default: false },
