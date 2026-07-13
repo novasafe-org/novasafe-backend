@@ -22,8 +22,18 @@ function buildUri(): string {
 export async function connectMongo(): Promise<Db> {
   if (db) return db;
   const uri = buildUri();
-  client = new MongoClient(uri);
-  await client.connect();
+  const timeoutMs = Number(process.env.MONGO_TIMEOUT ?? 10_000);
+  client = new MongoClient(uri, {
+    serverSelectionTimeoutMS: timeoutMs,
+    connectTimeoutMS: timeoutMs,
+  });
+  try {
+    await client.connect();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[admin-api] MongoDB connection failed:', message);
+    throw error;
+  }
   db = client.db(process.env.DATABASE_NAME?.trim() || 'novasafe');
   logger.info('Admin-app MongoDB connected', { db: db.databaseName });
   return db;
