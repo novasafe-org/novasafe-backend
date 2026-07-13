@@ -1,6 +1,6 @@
-import { Schema } from 'mongoose';
 import { COLLECTIONS } from '../../collections';
 import { createBaseSchema } from '../base.schema';
+import { objectIdType } from '../common/schema-types';
 import { encryptionFields } from '../common/encryption.schema';
 import { sourceField } from '../common/source-tracking.schema';
 import { userIdField } from '../common/user-reference.schema';
@@ -8,7 +8,7 @@ import type { IPasswordHistory } from './vault.interface';
 
 const passwordHistoryDefinition = {
   ...userIdField,
-  credentialId: { type: Schema.Types.ObjectId, required: true, ref: 'VaultItem' },
+  credentialId: { type: objectIdType, required: true, ref: 'VaultItem' },
   ...encryptionFields,
   is_expired: { type: Boolean, default: false },
   ...sourceField,
