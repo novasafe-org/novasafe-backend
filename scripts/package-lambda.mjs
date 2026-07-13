@@ -83,17 +83,17 @@ const assertLambdaPackage = (deployDir) => {
   }
 };
 
-/** Fail in CI if Node cannot resolve Express + transitive deps from the deploy folder. */
-const verifyRuntimeModules = (deployDir) => {
+/** Fail in CI if Node cannot resolve runtime deps (same paths Lambda uses after zip). */
+const verifyRuntimeModules = (packageDir) => {
   const script = [
-    "require('express')",
-    "require('body-parser')",
+    "const express = require('express')",
+    "if (!express || typeof express !== 'function') throw new Error('express failed to load')",
     "require('@codegenie/serverless-express')",
     "require('./dist/runtimes/lambda.js')",
     "console.log('[lambda-package] runtime module resolution OK')",
   ].join('; ');
 
-  run(`node -e ${JSON.stringify(script)}`, { cwd: deployDir });
+  run(`node -e ${JSON.stringify(script)}`, { cwd: packageDir });
 };
 
 /**
@@ -134,7 +134,6 @@ try {
   console.log(`[lambda-package] wrote ${join(deployDir, '.env')}`);
 
   assertLambdaPackage(deployDir);
-  verifyRuntimeModules(deployDir);
   materializeForZip(deployDir, zipRoot);
   verifyRuntimeModules(zipRoot);
 
