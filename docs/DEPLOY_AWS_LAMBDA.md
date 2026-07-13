@@ -68,7 +68,7 @@ Allow Lambda egress in Atlas Network Access.
 
 | Service | Workflow | Trigger |
 |---------|----------|---------|
-| Mobile API | **Deploy AWS (mobile-api)** | Push to `main` (core paths) or manual |
+| Mobile API | **Deploy AWS (mobile-api)** | Push to `master` (core paths) or manual |
 | Admin API | **Deploy AWS (admin-api)** | Manual |
 
 > **Note:** The main **NovaSafe Backend Deploy** CI pipeline builds Docker images for the VPS. It does **not** update AWS Lambda. Lambda deploys only run via the workflows above.

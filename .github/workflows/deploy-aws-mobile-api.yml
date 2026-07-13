@@ -13,7 +13,7 @@ name: Deploy AWS (mobile-api)
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'services/core/**'
       - 'common/**'
