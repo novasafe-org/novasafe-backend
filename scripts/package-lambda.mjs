@@ -87,6 +87,12 @@ try {
     env: { ...process.env, HUSKY: '0' },
   });
 
+  // Lambda-only runtime adapter — kept as devDependency so Docker `deploy --prod` stays lean.
+  run(`pnpm add @codegenie/serverless-express@5.0.0 --prod --dir "${deployDir}"`, {
+    cwd: repoRoot,
+    env: { ...process.env, HUSKY: '0' },
+  });
+
   writeFileSync(join(deployDir, '.env'), readFileSync(envFile, 'utf8'), 'utf8');
   console.log(`[lambda-package] wrote ${join(deployDir, '.env')}`);
 
