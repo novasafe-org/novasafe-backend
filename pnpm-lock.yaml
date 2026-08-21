@@ -45,7 +45,7 @@ importers:
         version: 5.0.0
       '@hono/node-server':
         specifier: ^1.14.0
-        version: 1.19.14(hono@4.12.26)
+        version: 1.19.14(hono@4.13.3)
       '@novasafe/feature-flags':
         specifier: workspace:*
         version: link:../../common/feature-flags
@@ -62,8 +62,8 @@ importers:
         specifier: ^4.18.2
         version: 4.21.2
       hono:
-        specifier: ^4.7.4
-        version: 4.12.26
+        specifier: ^4.13.3
+        version: 4.13.3
       jose:
         specifier: ^5.10.0
         version: 5.10.0
@@ -1015,8 +1015,8 @@ packages:
     resolution: {integrity: sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==}
     engines: {node: '>= 0.4'}
 
-  hono@4.12.26:
-    resolution: {integrity: sha512-uyZtpnYxM9CmQ7QsQknM4zN8EftNqhON1qYeIKM0Se67CCEe2c44xyGURwB0axX2fBDu1dqHrHAc1hmNT8ITkw==}
+  hono@4.13.3:
+    resolution: {integrity: sha512-r8AO2mYHoLxSHkgafNeC/BXyb2vWRxD3jem4Ts+ptav8oTG5FIRifAjuJEmZI4bSvvc2ns0GxmIYiZnHqN3mMw==}
     engines: {node: '>=16.9.0'}
 
   html-to-text@9.0.5:
@@ -1062,8 +1062,8 @@ packages:
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
 
-  ip-address@10.0.1:
-    resolution: {integrity: sha512-NWv9YLW4PoW2B7xtzaS3NCot75m6nK7Icdv0o3lfMceJVRfSoQwqD4wEH5rLwoKJwUiZ/rfpiVBhnaF0FK4HoA==}
+  ip-address@10.5.0:
+    resolution: {integrity: sha512-R5SnVLJmgYYvf2F2ZgwSBnelz5G4q5AxIC277GDfUaNbrZKNANcBC7RHqYYePlszf4kBolVkJauG0ZjHHFh55g==}
     engines: {node: '>= 12'}
 
   ipaddr.js@1.9.1:
@@ -1806,9 +1806,9 @@ snapshots:
 
   '@eslint/js@8.57.1': {}
 
-  '@hono/node-server@1.19.14(hono@4.12.26)':
+  '@hono/node-server@1.19.14(hono@4.13.3)':
     dependencies:
-      hono: 4.12.26
+      hono: 4.13.3
 
   '@humanwhocodes/config-array@0.13.0':
     dependencies:
@@ -2516,7 +2516,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  hono@4.12.26: {}
+  hono@4.13.3: {}
 
   html-to-text@9.0.5:
     dependencies:
@@ -2570,7 +2570,7 @@ snapshots:
 
   inherits@2.0.4: {}
 
-  ip-address@10.0.1:
+  ip-address@10.5.0:
     optional: true
 
   ipaddr.js@1.9.1: {}
@@ -3008,7 +3008,7 @@ snapshots:
 
   socks@2.8.7:
     dependencies:
-      ip-address: 10.0.1
+      ip-address: 10.5.0
       smart-buffer: 4.2.0
     optional: true
 
