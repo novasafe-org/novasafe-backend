@@ -26,6 +26,7 @@ export interface ResolvedClientFeatureFlags {
 
 interface CacheEntry {
   expiresAt: number;
+  revisionKey: string;
   snapshot: ResolvedClientFeatureFlags;
 }
 
@@ -40,12 +41,26 @@ export const buildFeatureFlagEtag = (snapshot: ResolvedClientFeatureFlags): stri
   return `"${createHash('sha256').update(payload).digest('hex').slice(0, 16)}"`;
 };
 
-async function loadFeatureFlagRecords(
-  environment: FeatureFlagEnvironment,
-) {
+async function loadFeatureFlagRecords(environment: FeatureFlagEnvironment) {
   return getFeatureFlagsCollection(FEATURE_FLAGS_COLLECTION)
     .find({ environment })
     .toArray();
+}
+
+function buildRevisionKey(
+  records: Awaited<ReturnType<typeof loadFeatureFlagRecords>>,
+): string {
+  let storeVersion = 1;
+  let maxUpdatedAt = 0;
+
+  for (const record of records) {
+    storeVersion = Math.max(storeVersion, Number(record.version) || 1);
+    if (record.updatedAt) {
+      maxUpdatedAt = Math.max(maxUpdatedAt, new Date(record.updatedAt).getTime());
+    }
+  }
+
+  return `${storeVersion}:${maxUpdatedAt}:${records.length}`;
 }
 
 export const resolveClientFeatureFlags = async (
@@ -56,19 +71,14 @@ export const resolveClientFeatureFlags = async (
     ? resolveFeatureFlagEnvironment(environmentInput as FeatureFlagEnvironment)
     : resolveFeatureFlagEnvironment();
 
-  const cached = cache.get(environment);
-  if (cached && cached.expiresAt > Date.now()) {
-    recordFeatureFlagCacheHit();
-    return { snapshot: cached.snapshot, cacheHit: true };
-  }
-
   const startedAt = Date.now();
   const defaults = buildDefaultFeatureFlagSnapshot(environment);
   const flags: Record<FeatureFlagKey, boolean> = { ...defaults.flags };
   let storeVersion = 1;
+  let records: Awaited<ReturnType<typeof loadFeatureFlagRecords>> = [];
 
   try {
-    const records = await loadFeatureFlagRecords(environment);
+    records = await loadFeatureFlagRecords(environment);
 
     for (const record of records) {
       if (!isKnownFeatureFlagKey(record.key)) {
@@ -81,6 +91,13 @@ export const resolveClientFeatureFlags = async (
     // Mongo unavailable — safe catalog defaults already applied.
   }
 
+  const revisionKey = buildRevisionKey(records);
+  const cached = cache.get(environment);
+  if (cached && cached.revisionKey === revisionKey && cached.expiresAt > Date.now()) {
+    recordFeatureFlagCacheHit();
+    return { snapshot: cached.snapshot, cacheHit: true };
+  }
+
   const snapshot: ResolvedClientFeatureFlags = {
     catalogVersion: FEATURE_FLAG_CATALOG_VERSION,
     storeVersion,
@@ -89,6 +106,7 @@ export const resolveClientFeatureFlags = async (
   };
 
   cache.set(environment, {
+    revisionKey,
     expiresAt: Date.now() + CACHE_TTL_MS,
     snapshot,
   });
