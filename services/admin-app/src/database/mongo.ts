@@ -64,4 +64,6 @@ export const ADMIN_COLLECTIONS = {
   changelog: 'changelog_releases',
   featureFlags: 'feature_flags',
   featureFlagAudit: 'feature_flag_audit',
+  serviceAccounts: 'admin_service_accounts',
+  apiTokens: 'admin_api_tokens',
 } as const;

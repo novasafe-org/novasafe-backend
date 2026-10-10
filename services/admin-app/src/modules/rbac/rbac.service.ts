@@ -166,7 +166,13 @@ export function requirePermission(permissionKey: PermissionKey, minAction: Permi
         res.status(401).json({ success: false, message: 'Unauthorized' });
         return;
       }
-      const allowed = await canAccess(req.admin.roleKey, permissionKey, minAction);
+      let allowed = false;
+      if (req.admin.authKind === 'service_account' && req.admin.permissions) {
+        const { permissionGrantsAllow } = await import('../service-accounts/service-accounts.service');
+        allowed = permissionGrantsAllow(req.admin.permissions, permissionKey, minAction);
+      } else {
+        allowed = await canAccess(req.admin.roleKey, permissionKey, minAction);
+      }
       if (!allowed) {
         res.status(403).json({ success: false, message: 'Forbidden' });
         return;
@@ -180,26 +186,11 @@ export function requirePermission(permissionKey: PermissionKey, minAction: Permi
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const header = req.headers.authorization;
-    if (!header?.startsWith('Bearer ')) {
-      res.status(401).json({ success: false, message: 'Missing authorization token' });
-      return;
-    }
-    const token = header.slice(7);
-    const payload = await verifyAdminToken(token);
-    const user = await getDb()
-      .collection<AdminUserRecord>(ADMIN_COLLECTIONS.users)
-      .findOne({ _id: new ObjectId(payload.sub), status: 'active' });
-    if (!user) {
-      res.status(401).json({ success: false, message: 'Invalid session' });
-      return;
-    }
-    req.admin = {
-      id: String(user._id),
-      email: user.email,
-      name: user.name,
-      roleKey: user.roleKey,
-    };
+    const { resolvePrincipalFromAuthorizationHeader, principalToExpressAdmin } = await import(
+      '../../shared/resolve-principal'
+    );
+    const principal = await resolvePrincipalFromAuthorizationHeader(req.headers.authorization);
+    req.admin = principalToExpressAdmin(principal);
     next();
   } catch {
     res.status(401).json({ success: false, message: 'Invalid or expired token' });
@@ -433,6 +424,9 @@ declare global {
         email: string;
         name: string;
         roleKey: AdminRoleKey;
+        authKind?: 'user' | 'service_account';
+        permissions?: Array<{ permissionKey: PermissionKey; action: PermissionAction }>;
+        defaultAuthor?: { id: string; name: string; email?: string };
       };
     }
   }
