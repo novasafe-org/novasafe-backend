@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.5
+
+### Changed
+
+Service accounts and API tokens for blog automation
+
 ## v1.1.4
 
 ### Changed
