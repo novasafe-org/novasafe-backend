@@ -8,6 +8,7 @@ import {
   seedFeatureFlagsFromCatalog,
 } from './modules/feature-flags/feature-flags.service';
 import { ensureRbacIndexes, seedRbac } from './modules/rbac/rbac.service';
+import { ensureServiceAccountIndexes } from './modules/service-accounts/service-accounts.service';
 import { logger } from './shared/logger';
 import { requestLoggerMiddleware } from './shared/request-logger.middleware';
 import { getBuildInfo, getVersionPayload } from './shared/build-info';
@@ -78,6 +79,7 @@ export async function initializeApp(): Promise<void> {
   await connectMongo();
   await ensureRbacIndexes();
   await seedRbac();
+  await ensureServiceAccountIndexes();
   await ensureFeatureFlagIndexes();
   await seedFeatureFlagsFromCatalog();
   await registerAdminModules(app, API_PREFIX);

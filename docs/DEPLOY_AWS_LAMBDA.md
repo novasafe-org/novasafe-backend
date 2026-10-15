@@ -60,7 +60,31 @@ Grant the GitHub OIDC deploy role `s3:GetObject` on `arn:aws:s3:::BUCKET/*`.
 
 ### 6. MongoDB Atlas
 
-Allow Lambda egress in Atlas Network Access.
+Lambda has **no fixed outbound IP** unless you add VPC + NAT. In Atlas → **Network Access**:
+
+1. Add **`0.0.0.0/0`** (allow from anywhere) — required for Lambda without VPC NAT
+2. Confirm database user/password match your S3 `.env`
+
+**Admin API** `.env` keys (not the same as mobile-api):
+
+| Variable | Required |
+|----------|----------|
+| `MONGODB_USERNAME` | yes |
+| `MONGODB_PASSWORD` | yes |
+| `MONGODB_HOST` | yes (e.g. `cluster0.xxxxx.mongodb.net`) |
+| `DATABASE_NAME` | yes (e.g. `novasafe`) |
+
+**Mobile API** uses `MONGO_USER`, `MONGO_PASSWORD`, `MONGO_HOST`, `MONGO_DB_NAME`.
+
+### 7. Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `Status: timeout` at **29s**, no app logs | MongoDB connection hanging | Atlas allow `0.0.0.0/0`; verify `.env` in S3 |
+| `500 Internal Server Error` from API GW | Lambda threw or timed out | Check CloudWatch for `MongoDB connection failed` |
+| `/health` works but API routes fail | DB creds or indexes | Fix Mongo env vars; redeploy after S3 update |
+
+After changing S3 `.env`, re-run **Deploy AWS** workflow (rebuilds zip with new env).
 
 ---
 
