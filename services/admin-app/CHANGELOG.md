@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.3
+
+### Changed
+
+fix(ci): resolve Trivy failures on core and admin images
+
 ## v1.1.2
 
 ### Changed
