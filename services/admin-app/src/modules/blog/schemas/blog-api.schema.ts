@@ -8,6 +8,12 @@ import {
   paginationSchema,
 } from "@/types/schemas/common.schema";
 
+/** n8n and other clients often send "" for omitted optional fields. */
+function emptyToUndefined(value: unknown): unknown {
+  if (value === "" || value === null) return undefined;
+  return value;
+}
+
 /** Route param: MongoDB ObjectId */
 export const mongoIdParamSchema = z.object({
   id: objectIdSchema,
@@ -25,13 +31,19 @@ export const createPostBodySchema = z.object({
   content_markdown: z.string().max(500_000).default(""),
   featured_image: z.string().max(2048).nullable().optional(),
   status: postStatusSchema.default("draft"),
-  category_id: objectIdSchema.nullable().optional(),
-  tag_ids: z.array(objectIdSchema).max(50).default([]),
+  category_id: z.preprocess(emptyToUndefined, objectIdSchema.nullable().optional()),
+  tag_ids: z.preprocess(
+    (value) => (value === "" || value === null ? undefined : value),
+    z.array(objectIdSchema).max(50).default([]),
+  ),
   seo_title: z.string().max(70).nullable().optional(),
   seo_description: z.string().max(160).nullable().optional(),
-  canonical_url: urlSchema.nullable().optional(),
+  canonical_url: z.preprocess(emptyToUndefined, urlSchema.nullable().optional()),
   author: postAuthorSchema.optional(),
-  published_at: z.string().datetime().nullable().optional(),
+  published_at: z.preprocess(
+    emptyToUndefined,
+    z.string().datetime().nullable().optional(),
+  ),
 });
 
 export const updatePostBodySchema = createPostBodySchema.partial();

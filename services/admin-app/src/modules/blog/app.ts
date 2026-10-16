@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { ZodError } from "zod";
 import { createMiddleware } from "hono/factory";
 import { cors } from "hono/cors";
 import { HTTP } from "@/lib/constants";
@@ -419,8 +420,8 @@ app.onError((err, c) => {
       err.status as 400,
     );
   }
-  if (err && typeof err === "object" && "name" in err && err.name === "ZodError") {
-    const zodErr = err as { issues?: Array<{ message: string; path: (string | number)[] }> };
+  if (err instanceof ZodError || (err && typeof err === "object" && "name" in err && err.name === "ZodError")) {
+    const zodErr = err as ZodError;
     const message =
       zodErr.issues?.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") ||
       "Validation failed";
