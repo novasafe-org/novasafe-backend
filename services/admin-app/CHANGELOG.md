@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.6
+
+### Changed
+
+feat(admin-api): Google Drive plug-and-play blog media storage
+
 ## v1.1.5
 
 ### Changed
