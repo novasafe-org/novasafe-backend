@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.4
+
+### Changed
+
+fix(admin-api): clearer errors for blog API token and validation
+
 ## v1.1.3
 
 ### Changed
