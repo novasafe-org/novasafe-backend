@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.7
+
+### Changed
+
+fix(admin-api): expose /api/v1/health/detailed for Mongo and media checks
+
 ## v1.1.6
 
 ### Changed
