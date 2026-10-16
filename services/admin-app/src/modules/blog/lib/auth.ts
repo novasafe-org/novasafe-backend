@@ -53,7 +53,14 @@ export async function verifyAdminFromHeader(
   }
 
   if (token.startsWith(API_TOKEN_PREFIX)) {
-    const principal = await resolvePrincipalFromBearer(token);
+    let principal: Awaited<ReturnType<typeof resolvePrincipalFromBearer>>;
+    try {
+      principal = await resolvePrincipalFromBearer(token);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message ? error.message : "Invalid or expired API token";
+      throw new UnauthorizedError(message);
+    }
     const allowed = await principalHasPermission(principal, "content.manage", "manage");
     if (!allowed) {
       throw new UnauthorizedError("API token lacks content.manage permission");

@@ -33,7 +33,11 @@ export function extractBearerToken(authorization: string | undefined): string | 
 export async function resolvePrincipalFromBearer(bearerToken: string): Promise<AuthPrincipal> {
   if (bearerToken.startsWith(API_TOKEN_PREFIX)) {
     const verified = await verifyApiToken(bearerToken);
-    if (!verified) throw new Error('Invalid or expired API token');
+    if (!verified) {
+      const err = new Error('Invalid or expired API token');
+      err.name = 'UnauthorizedError';
+      throw err;
+    }
     const { serviceAccount } = verified;
     const email =
       serviceAccount.defaultAuthor?.email?.trim() ||
