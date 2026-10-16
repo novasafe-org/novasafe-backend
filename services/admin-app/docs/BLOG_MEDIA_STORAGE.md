@@ -16,8 +16,8 @@ Upload and serve APIs are unchanged:
 
 1. [Google Cloud Console](https://console.cloud.google.com/) → create project → enable **Google Drive API**.
 2. **IAM → Service accounts** → create → download JSON key.
-3. In **My Drive**, create folder `NovaSafe Blog Media` → **Share** with the service account email (Editor).
-4. Open the folder in Drive; copy the **folder ID** from the URL (`folders/FOLDER_ID`).
+3. In **My Drive**, create folder `NovaSafe Blog Media` → **Share** with the service account email from the JSON (`client_email`) as **Editor** (not Viewer).
+4. Open the folder in Drive; copy the **folder ID** from the URL (`https://drive.google.com/drive/folders/FOLDER_ID`). Use only `FOLDER_ID`, not a file id or shared-drive root id unless that folder is the upload target.
 
 ## Environment variables
 

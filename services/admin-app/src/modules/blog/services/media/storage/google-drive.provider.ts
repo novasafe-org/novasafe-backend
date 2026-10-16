@@ -95,7 +95,12 @@ export class GoogleDriveMediaStorageProvider implements MediaStorageProvider {
     const auth = new google.auth.JWT({
       email: String(credentials.client_email),
       key: String(credentials.private_key),
-      scopes: ["https://www.googleapis.com/auth/drive.file"],
+      scopes: [
+        // Create/read app-owned files in the shared upload folder
+        "https://www.googleapis.com/auth/drive.file",
+        // Metadata on the shared folder (health check; drive.file alone often 404s on files.get(folderId))
+        "https://www.googleapis.com/auth/drive.metadata.readonly",
+      ],
     });
 
     this.drive = google.drive({ version: "v3", auth });
@@ -172,18 +177,45 @@ export class GoogleDriveMediaStorageProvider implements MediaStorageProvider {
   async healthCheck() {
     try {
       const drive = this.getClient();
-      await drive.files.get({
+      const folder = await drive.files.get({
         fileId: this.config.folderId,
-        fields: "id,name",
+        fields: "id,name,mimeType,trashed",
         supportsAllDrives: true,
       });
+
+      if (folder.data.trashed) {
+        return {
+          ok: false,
+          provider: this.providerId,
+          detail: "GOOGLE_DRIVE_FOLDER_ID points to a trashed folder",
+        };
+      }
+
+      const mime = folder.data.mimeType ?? "";
+      if (mime && mime !== "application/vnd.google-apps.folder") {
+        return {
+          ok: false,
+          provider: this.providerId,
+          detail:
+            "GOOGLE_DRIVE_FOLDER_ID must be a Drive folder id (from .../folders/FOLDER_ID), not a file id",
+        };
+      }
+
       return { ok: true, provider: this.providerId };
     } catch (error) {
       const mapped = error instanceof MediaStorageError ? error : mapDriveError(error);
+      let detail = mapped.message;
+      if (mapped.code === MEDIA_STORAGE_ERROR_CODES.NOT_FOUND) {
+        detail =
+          "Upload folder not found or not shared with the service account. In Google Drive, share the folder with the service account email (Editor) and set GOOGLE_DRIVE_FOLDER_ID to the id from the folder URL.";
+      } else if (mapped.code === MEDIA_STORAGE_ERROR_CODES.AUTH) {
+        detail =
+          "Service account cannot access the folder. Share it with the service account email as Editor and ensure the Drive API is enabled for the GCP project.";
+      }
       return {
         ok: false,
         provider: this.providerId,
-        detail: mapped.message,
+        detail,
       };
     }
   }
