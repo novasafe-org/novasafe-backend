@@ -25,6 +25,16 @@ export class CategoriesRepository implements ICategoriesRepository {
     return doc ? serializeDoc(doc) : null;
   }
 
+  async findByNameIgnoreCase(name: string): Promise<CategoryDocument | null> {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const doc = await this.client.findOne<CategoryDocument>(COLLECTIONS.CATEGORIES, {
+      name: { $regex: new RegExp(`^${escaped}$`, 'i') },
+    });
+    return doc ? serializeDoc(doc) : null;
+  }
+
   async list(): Promise<CategoryDocument[]> {
     const docs = await this.client.findMany<CategoryDocument>(COLLECTIONS.CATEGORIES, {
       sort: { name: 1 },

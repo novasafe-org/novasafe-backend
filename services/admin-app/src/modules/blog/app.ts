@@ -259,16 +259,30 @@ function createApiRouter(): Hono<{ Variables: AppVariables }> {
     const parsed = createCategoryBodySchema.parse(await c.req.json());
     const slug = parsed.slug ?? slugify(parsed.name);
     const repos = c.get("repos")!;
-    const existing = await repos.categories.findBySlug(slug);
+    const existing =
+      (await repos.categories.findBySlug(slug)) ??
+      (await repos.categories.findByNameIgnoreCase(parsed.name));
     if (existing) {
-      return c.json(ok(toCategoryDto(existing)), 200);
+      return c.json(
+        ok(toCategoryDto(existing), {
+          existed: true,
+          message: "Category already exists",
+        }),
+        200,
+      );
     }
     const category = await repos.categories.create({
       name: parsed.name,
       slug,
       description: parsed.description ?? null,
     } as CreateCategoryInput);
-    return c.json(ok(toCategoryDto(category)), 201);
+    return c.json(
+      ok(toCategoryDto(category), {
+        existed: false,
+        message: "Category created",
+      }),
+      201,
+    );
   });
 
   api.get("/tags", withMongo, async (c) => {

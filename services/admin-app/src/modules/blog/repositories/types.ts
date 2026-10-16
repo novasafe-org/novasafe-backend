@@ -36,6 +36,7 @@ export interface IPostsRepository {
 export interface ICategoriesRepository {
   findById(id: string): Promise<CategoryDocument | null>;
   findBySlug(slug: string): Promise<CategoryDocument | null>;
+  findByNameIgnoreCase(name: string): Promise<CategoryDocument | null>;
   list(): Promise<CategoryDocument[]>;
   create(input: CreateCategoryInput): Promise<CategoryDocument>;
   update(id: string, input: UpdateCategoryInput): Promise<CategoryDocument>;
