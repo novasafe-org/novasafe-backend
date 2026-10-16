@@ -7,7 +7,9 @@ import { MEDIA_STORAGE_PREFIX } from "@/lib/constants";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import type { MongoRepositories } from "@/repositories/types";
 import { newObjectId } from "@/repositories/helpers";
-import { createMediaProvider, type MediaProvider } from "./media/provider";
+import { createMediaStorageProvider } from "./media/storage/factory";
+import { normalizeStorageKey } from "./media/storage/keys";
+import type { MediaStorageProvider } from "./media/storage/types";
 
 export type UploadMediaInput = {
   buffer: Buffer;
@@ -18,14 +20,14 @@ export type UploadMediaInput = {
 };
 
 export class MediaService {
-  private readonly provider: MediaProvider;
+  private readonly provider: MediaStorageProvider;
 
   constructor(
     private readonly config: AppConfig,
     private readonly mongo: MongoRepositories,
-    provider?: MediaProvider,
+    provider?: MediaStorageProvider,
   ) {
-    this.provider = provider ?? createMediaProvider(config.MEDIA_STORAGE_PATH);
+    this.provider = provider ?? createMediaStorageProvider();
   }
 
   getMaxBytes(): number {
@@ -77,9 +79,13 @@ export class MediaService {
 
     const mediaId = newObjectId();
     const safeName = input.filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
-    const storageKey = `${MEDIA_STORAGE_PREFIX}${mediaId}/${safeName}`;
-
-    await this.provider.put(storageKey, input.buffer, input.mimeType);
+    const logicalPath = `${MEDIA_STORAGE_PREFIX}${mediaId}/${safeName}`;
+    const { storageKey } = await this.provider.put({
+      buffer: input.buffer,
+      mimeType: input.mimeType,
+      filename: safeName,
+      logicalPath,
+    });
 
     const url = this.buildPublicUrl(requestUrl, mediaId);
 
@@ -99,7 +105,12 @@ export class MediaService {
   }
 
   private resolveStorageKey(asset: MediaDocument): string {
-    return asset.r2_key ?? `${MEDIA_STORAGE_PREFIX}${asset._id}/${asset.filename}`;
+    const fallback = `${MEDIA_STORAGE_PREFIX}${asset._id}/${asset.filename}`;
+    return normalizeStorageKey(asset.r2_key ?? fallback);
+  }
+
+  async storageHealth() {
+    return this.provider.healthCheck?.() ?? { ok: true, provider: this.provider.providerId };
   }
 
   async delete(id: string, options: { force?: boolean } = {}): Promise<void> {

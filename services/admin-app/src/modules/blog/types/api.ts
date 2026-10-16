@@ -38,9 +38,11 @@ export type HealthChecks = {
     audience: string;
   };
   media: {
-    provider: "local";
-    storagePath: string;
+    provider: string;
+    storagePath?: string;
     maxBytes: number;
+    storageOk?: boolean;
+    storageDetail?: string;
   };
   site: {
     url: string | null;

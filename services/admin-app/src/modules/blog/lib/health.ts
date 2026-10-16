@@ -1,6 +1,8 @@
 import type { AppConfig } from "@/types/config";
 import type { HealthChecks, HealthResponse } from "@/types/api";
 import { isMongoConfigured, getMongoDatabase } from "@/lib/mongodb";
+import { loadMediaStorageConfig } from "@/services/media/storage/config";
+import { createMediaStorageProvider } from "@/services/media/storage/factory";
 
 function envFlag(key: string): boolean {
   return Boolean(process.env[key]?.trim());
@@ -56,6 +58,27 @@ export async function buildHealthResponse(): Promise<HealthResponse> {
 
   const mongodb = await checkMongo();
 
+  let mediaCheck: HealthChecks["media"] = {
+    provider: process.env.MEDIA_PROVIDER ?? "local",
+    storagePath: slice.MEDIA_STORAGE_PATH ?? "./uploads",
+    maxBytes: Number.parseInt(process.env.MEDIA_MAX_BYTES ?? "5242880", 10),
+  };
+
+  try {
+    const storageConfig = loadMediaStorageConfig();
+    mediaCheck.provider = storageConfig.provider;
+    const storage = createMediaStorageProvider(storageConfig);
+    const health = await storage.healthCheck?.();
+    if (health) {
+      mediaCheck.storageOk = health.ok;
+      mediaCheck.storageDetail = health.detail;
+      mediaCheck.provider = health.provider;
+    }
+  } catch (error) {
+    mediaCheck.storageOk = false;
+    mediaCheck.storageDetail = error instanceof Error ? error.message : "Media storage config error";
+  }
+
   const checks: HealthChecks = {
     mongodb,
     auth: {
@@ -64,11 +87,7 @@ export async function buildHealthResponse(): Promise<HealthResponse> {
       issuer: process.env.JWT_ISSUER ?? "novasafe-blog-api",
       audience: process.env.JWT_AUDIENCE ?? "novasafe-blog-admin",
     },
-    media: {
-      provider: "local",
-      storagePath: slice.MEDIA_STORAGE_PATH ?? "./uploads",
-      maxBytes: Number.parseInt(process.env.MEDIA_MAX_BYTES ?? "5242880", 10),
-    },
+    media: mediaCheck,
     site: {
       url: slice.SITE_URL ?? null,
       name: process.env.SITE_NAME ?? null,
