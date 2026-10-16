@@ -61,4 +61,4 @@ Legacy rows without a prefix are treated as local.
 | `MEDIA_STORAGE_RATE_LIMIT` | Drive API quota |
 | `MEDIA_STORAGE_PROVIDER` | Other provider error |
 
-Check `GET /api/v1/health` → `checks.media` for provider health.
+Check `GET /api/v1/health/detailed` → `data.checks.media` for provider health. (`GET /api/v1/health` is a lightweight probe on Lambda and does not run storage checks.)

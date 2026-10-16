@@ -62,6 +62,32 @@ app.get(`${API_PREFIX}/health`, (_req, res) => {
   });
 });
 
+/** Full dependency checks (Mongo, media provider, auth env). Not used by Lambda load-balancer probes. */
+app.get(`${API_PREFIX}/health/detailed`, async (_req, res) => {
+  try {
+    const { buildHealthResponse } = await import('./modules/blog/lib/health');
+    const body = await buildHealthResponse();
+    res.json({ success: true, data: body });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Health check failed';
+    res.status(500).json({ success: false, message });
+  }
+});
+
+app.get(`${API_PREFIX}/health/ready`, async (_req, res) => {
+  try {
+    const { isReady } = await import('./modules/blog/lib/health');
+    const ready = await isReady();
+    res.json({
+      success: true,
+      data: { ready, timestamp: new Date().toISOString() },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Readiness check failed';
+    res.status(500).json({ success: false, message });
+  }
+});
+
 app.get('/version', (_req, res) => {
   res.json(getVersionPayload('novasafe-admin-api'));
 });
