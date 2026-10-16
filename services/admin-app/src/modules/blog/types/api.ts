@@ -43,6 +43,12 @@ export type HealthChecks = {
     maxBytes: number;
     storageOk?: boolean;
     storageDetail?: string;
+    config?: {
+      credentialsConfigured: boolean;
+      folderIdPreview?: string;
+      serviceAccountEmail?: string;
+      cacheEnabled?: boolean;
+    };
   };
   site: {
     url: string | null;
@@ -57,9 +63,29 @@ export type HealthChecks = {
   };
 };
 
+export type HealthEnvVariable = {
+  name: string;
+  set: boolean;
+  /** Non-secret value safe to expose in health output */
+  display?: string;
+};
+
+export type HealthDiagnosticItem = {
+  severity: "info" | "warning" | "error";
+  code: string;
+  message: string;
+  remediation?: string[];
+};
+
 export type HealthResponse = {
   status: "ok" | "degraded";
   environment: string;
   timestamp: string;
   checks: HealthChecks;
+  /** Which required env vars are present (never includes secrets). */
+  env: HealthEnvVariable[];
+  /** Actionable issues and setup hints derived from checks + env. */
+  diagnostics: HealthDiagnosticItem[];
+  /** Short machine-readable summary of why status is degraded. */
+  statusReasons: string[];
 };

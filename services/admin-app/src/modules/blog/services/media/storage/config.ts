@@ -15,7 +15,7 @@ export type MediaStorageConfig = {
   };
 };
 
-function readGoogleCredentialsJson(): string | undefined {
+export function readGoogleCredentialsJson(): string | undefined {
   const inline = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
   if (inline) return inline;
 
@@ -25,6 +25,18 @@ function readGoogleCredentialsJson(): string | undefined {
   }
 
   return undefined;
+}
+
+/** Safe for health output — not a secret; needed to share the Drive folder. */
+export function readGoogleServiceAccountClientEmail(): string | undefined {
+  const json = readGoogleCredentialsJson();
+  if (!json) return undefined;
+  try {
+    const parsed = JSON.parse(json) as { client_email?: unknown };
+    return typeof parsed.client_email === "string" ? parsed.client_email.trim() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function loadMediaStorageConfig(): MediaStorageConfig {

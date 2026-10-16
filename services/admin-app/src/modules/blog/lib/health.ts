@@ -1,8 +1,20 @@
 import type { AppConfig } from "@/types/config";
 import type { HealthChecks, HealthResponse } from "@/types/api";
 import { isMongoConfigured, getMongoDatabase } from "@/lib/mongodb";
-import { loadMediaStorageConfig } from "@/services/media/storage/config";
+import {
+  loadMediaStorageConfig,
+  readGoogleCredentialsJson,
+  readGoogleServiceAccountClientEmail,
+} from "@/services/media/storage/config";
 import { createMediaStorageProvider } from "@/services/media/storage/factory";
+import { attachHealthDiagnostics } from "@/lib/health-diagnostics";
+
+function maskId(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= 4) return "…";
+  if (trimmed.length <= 10) return `…${trimmed.slice(-4)}`;
+  return `…${trimmed.slice(-8)}`;
+}
 
 function envFlag(key: string): boolean {
   return Boolean(process.env[key]?.trim());
@@ -67,6 +79,15 @@ export async function buildHealthResponse(): Promise<HealthResponse> {
   try {
     const storageConfig = loadMediaStorageConfig();
     mediaCheck.provider = storageConfig.provider;
+    if (storageConfig.provider === "google_drive") {
+      const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID?.trim();
+      mediaCheck.config = {
+        credentialsConfigured: Boolean(readGoogleCredentialsJson()),
+        folderIdPreview: folderId ? maskId(folderId) : undefined,
+        serviceAccountEmail: readGoogleServiceAccountClientEmail(),
+        cacheEnabled: storageConfig.cache.enabled,
+      };
+    }
     const storage = createMediaStorageProvider(storageConfig);
     const health = await storage.healthCheck?.();
     if (health) {
@@ -77,6 +98,15 @@ export async function buildHealthResponse(): Promise<HealthResponse> {
   } catch (error) {
     mediaCheck.storageOk = false;
     mediaCheck.storageDetail = error instanceof Error ? error.message : "Media storage config error";
+    if ((process.env.MEDIA_PROVIDER ?? "local").trim().toLowerCase().includes("drive")) {
+      mediaCheck.config = {
+        credentialsConfigured: Boolean(readGoogleCredentialsJson()),
+        folderIdPreview: process.env.GOOGLE_DRIVE_FOLDER_ID?.trim()
+          ? maskId(process.env.GOOGLE_DRIVE_FOLDER_ID.trim())
+          : undefined,
+        serviceAccountEmail: readGoogleServiceAccountClientEmail(),
+      };
+    }
   }
 
   const checks: HealthChecks = {
@@ -104,12 +134,12 @@ export async function buildHealthResponse(): Promise<HealthResponse> {
   const allCriticalOk =
     mongodb.connected && checks.auth.jwtConfigured && checks.auth.adminLoginConfigured;
 
-  return {
+  return attachHealthDiagnostics(checks, {
     status: allCriticalOk ? "ok" : "degraded",
     environment: slice.ENVIRONMENT ?? "development",
     timestamp: new Date().toISOString(),
     checks,
-  };
+  });
 }
 
 export async function isReady(): Promise<boolean> {
