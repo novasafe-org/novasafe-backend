@@ -1,5 +1,6 @@
 import type { Express } from 'express';
-import { getRequestListener } from '@hono/node-server';
+
+import { createBlogExpressMiddleware } from './hono-express-bridge';
 
 /** Paths handled by the Hono blog app — must NOT pass through express.json() (body stream is consumed). */
 export const BLOG_API_PREFIXES = [
@@ -16,11 +17,11 @@ export function isBlogApiPath(path: string): boolean {
 
 export async function registerBlogRoutes(app: Express): Promise<void> {
   const { app: blogHono } = await import('./app');
-  const handler = getRequestListener(blogHono.fetch);
+  const handler = createBlogExpressMiddleware(blogHono);
 
   app.use((req, res, next) => {
     if (isBlogApiPath(req.path)) {
-      return handler(req, res);
+      return handler(req, res, next);
     }
     return next();
   });
