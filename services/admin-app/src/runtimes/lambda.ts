@@ -59,6 +59,7 @@ export const handler = async (event: unknown, context: unknown) => {
         service: 'admin-app',
         status: 'ok',
         probe: 'lambda',
+        detailedHealthPath: '/api/v1/health/detailed',
       }),
     };
   }
