@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.5
+
+### Changed
+
+fix(admin-api): Lambda JSON body for blog POST + category upsert message
+
 ## v1.1.4
 
 ### Changed
