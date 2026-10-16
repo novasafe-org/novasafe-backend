@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.8
+
+### Changed
+
+fix(admin-api): Google Drive health check and folder access scopes
+
 ## v1.1.7
 
 ### Changed
