@@ -10,6 +10,7 @@ import { registerUsersModule } from './users';
 import { registerVaultModule } from './vault';
 import { registerStatusPageModule } from './status-page';
 import { registerBlogProxyModule } from './blog-proxy';
+import { registerBlogImagesProxyModule } from './blog-images-proxy';
 import { registerChangelogProxyModule } from './changelog-proxy';
 import { appConfig } from '../config';
 
@@ -30,5 +31,6 @@ export const registerModuleRoutes = (app: Express): void => {
   registerSubscriptionsModule(app, prefix);
   registerStatusPageModule(app, prefix);
   registerBlogProxyModule(app, prefix);
+  registerBlogImagesProxyModule(app, prefix);
   registerChangelogProxyModule(app, prefix);
 };
