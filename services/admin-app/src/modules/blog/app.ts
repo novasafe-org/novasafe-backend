@@ -37,6 +37,11 @@ import type { CreateCategoryInput } from "@/types/documents/category";
 import type { CreateTagInput } from "@/types/documents/tag";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { buildHealthResponse, isReady } from "@/lib/health";
+import {
+  BlogImagesService,
+  blogImageResponseHeaders,
+  mapBlogImageError,
+} from "@/services/blog-images/blog-images.service";
 
 async function toResolvedPostDto(doc: PostDocument): Promise<PostDto> {
   const dto = toPostDto(doc);
@@ -304,6 +309,18 @@ function createApiRouter(): Hono<{ Variables: AppVariables }> {
       slug,
     } as CreateTagInput);
     return c.json(ok(toTagDto(tag)), 201);
+  });
+
+  api.get("/blog-images/:fileId", async (c) => {
+    const blogImages = BlogImagesService.create();
+    try {
+      const { buffer, mimeType } = await blogImages.serve(c.req.param("fileId"));
+      return new Response(new Uint8Array(buffer), {
+        headers: blogImageResponseHeaders(mimeType),
+      });
+    } catch (error) {
+      throw mapBlogImageError(error);
+    }
   });
 
   api.get("/media", withMongo, async (c) => {

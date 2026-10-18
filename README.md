@@ -128,7 +128,7 @@ The admin UI runs on a different origin (e.g. `https://ns-admin.netlify.app`). S
 ```
 
 - **Customer users** — admin-app reads `vaultUsers` (and related collections) directly from MongoDB. No core proxy.
-- **Blog (public)** — landing calls `GET /api/v1/blog/*` on **core**; core proxies to admin-api on the Docker network (`ADMIN_API_URL`). Admin-api is not exposed to browsers for blog reads.
+- **Blog (public)** — landing calls `GET /api/v1/blog/*` and `GET /api/v1/blog-images/:fileId` on **core**; core proxies to admin-api on the Docker network (`ADMIN_API_URL`). Featured images are stored in Google Drive and streamed by admin-api; static HTML references the core URL.
 - **Status admin** — admin-app proxies to core with `STATUS_PAGE_ADMIN_SECRET`.
 
 Both services share the same MongoDB cluster but use different collections.

@@ -8,6 +8,7 @@ export const BLOG_API_PREFIXES = [
   '/api/v1/categories',
   '/api/v1/tags',
   '/api/v1/media',
+  '/api/v1/blog-images',
   '/api/v1/seo',
 ] as const;
 
