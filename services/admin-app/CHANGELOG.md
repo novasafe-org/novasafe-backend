@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.10
+
+### Changed
+
+fix(blog-images): read manual and service-account Drive uploads
+
 ## v1.1.9
 
 ### Changed
