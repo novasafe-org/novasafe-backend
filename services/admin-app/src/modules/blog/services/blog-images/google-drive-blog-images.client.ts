@@ -124,6 +124,81 @@ export class GoogleDriveBlogImagesClient {
     }
   }
 
+  async findFileIdByNameInFolders(folderIds: readonly string[], filename: string): Promise<string | null> {
+    if (folderIds.length === 0) return null;
+
+    try {
+      const drive = this.getClient();
+      const parentClause = folderIds.map((id) => `'${id.replace(/'/g, "\\'")}' in parents`).join(" or ");
+      const safeName = filename.replace(/'/g, "\\'");
+      const q = `name = '${safeName}' and trashed = false and (${parentClause})`;
+
+      const response = await drive.files.list({
+        q,
+        fields: "files(id,mimeType)",
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        pageSize: 5,
+      });
+
+      const files = response.data.files ?? [];
+      const image = files.find((f) => f.id && (f.mimeType ?? "").startsWith("image/"));
+      return image?.id ?? files[0]?.id ?? null;
+    } catch (error) {
+      if (error instanceof MediaStorageError) throw error;
+      throw mapDriveError(error);
+    }
+  }
+
+  async findFileIdByNameWithAncestorCheck(
+    filename: string,
+    _allowedFolderIds: ReadonlySet<string> | readonly string[],
+    isAllowed: (parentIds: string[]) => Promise<boolean>,
+  ): Promise<string | null> {
+    try {
+      const drive = this.getClient();
+      const safeName = filename.replace(/'/g, "\\'");
+      const response = await drive.files.list({
+        q: `name = '${safeName}' and trashed = false`,
+        fields: "files(id,mimeType,parents)",
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        pageSize: 20,
+      });
+
+      for (const file of response.data.files ?? []) {
+        if (!file.id) continue;
+        const mime = file.mimeType ?? "";
+        if (!mime.startsWith("image/")) continue;
+        const parents = file.parents ?? [];
+        if (parents.length === 0) continue;
+        if (await isAllowed(parents)) return file.id;
+      }
+
+      return null;
+    } catch (error) {
+      if (error instanceof MediaStorageError) throw error;
+      throw mapDriveError(error);
+    }
+  }
+
+  async getParentFolderIds(folderId: string): Promise<string[]> {
+    try {
+      const drive = this.getClient();
+      const response = await drive.files.get({
+        fileId: folderId,
+        fields: "parents",
+        supportsAllDrives: true,
+      });
+      return response.data.parents ?? [];
+    } catch (error) {
+      if (error instanceof MediaStorageError) throw error;
+      const mapped = mapDriveError(error);
+      if (mapped.code === MEDIA_STORAGE_ERROR_CODES.NOT_FOUND) return [];
+      throw mapped;
+    }
+  }
+
   async download(fileId: string): Promise<DriveFileContent> {
     try {
       const drive = this.getClient();

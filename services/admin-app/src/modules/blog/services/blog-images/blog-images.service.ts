@@ -9,12 +9,20 @@ import {
   type DriveFileMetadata,
 } from "./google-drive-blog-images.client";
 import { parseBlogImageFileId } from "@/lib/blog-image-file-id";
+import { blogImageFilename, parseBlogImageSlug } from "@/lib/blog-image-slug";
 
 export type BlogImageResult = DriveFileContent;
 
 export type BlogImagesDrive = {
   getMetadata(fileId: string): Promise<DriveFileMetadata | null>;
   download(fileId: string): Promise<DriveFileContent>;
+  findFileIdByNameInFolders(folderIds: readonly string[], filename: string): Promise<string | null>;
+  findFileIdByNameWithAncestorCheck(
+    filename: string,
+    allowedFolderIds: ReadonlySet<string> | readonly string[],
+    isAllowed: (parentIds: string[]) => Promise<boolean>,
+  ): Promise<string | null>;
+  getParentFolderIds(folderId: string): Promise<string[]>;
 };
 
 export class BlogImagesService {
@@ -42,7 +50,7 @@ export class BlogImagesService {
     }
   }
 
-  private isFileAllowed(fileId: string, meta: DriveFileMetadata): boolean {
+  private async isFileAllowed(fileId: string, meta: DriveFileMetadata): Promise<boolean> {
     const { config } = this;
     if (!config) return false;
 
@@ -52,7 +60,69 @@ export class BlogImagesService {
       return false;
     }
 
-    return meta.parents.some((parent) => config.folderIds.has(parent));
+    return this.isUnderApprovedFolders(meta.parents, config.folderIds);
+  }
+
+  /** Walks up Drive parent folders (handles images in subfolders of the shared root). */
+  private async isUnderApprovedFolders(
+    startFolderIds: string[],
+    allowedFolderIds: ReadonlySet<string>,
+  ): Promise<boolean> {
+    const seen = new Set<string>();
+    const queue = [...startFolderIds];
+
+    while (queue.length > 0) {
+      const folderId = queue.shift()!;
+      if (allowedFolderIds.has(folderId)) return true;
+      if (seen.has(folderId)) continue;
+      seen.add(folderId);
+
+      const parents = await this.drive!.getParentFolderIds(folderId);
+      for (const parent of parents) {
+        if (!seen.has(parent)) queue.push(parent);
+      }
+    }
+
+    return false;
+  }
+
+  async serveBySlug(slugRaw: string): Promise<BlogImageResult> {
+    this.assertConfigured();
+    let slug: string;
+    try {
+      slug = parseBlogImageSlug(slugRaw);
+    } catch (error) {
+      throw mapBlogImageError(error);
+    }
+
+    const folderIds = [...this.config!.folderIds];
+    let fileId: string | null = null;
+
+    for (const ext of this.config!.fileExtensions) {
+      const filename = blogImageFilename(slug, ext);
+      try {
+        fileId = await this.findImageFileIdByFilename(filename);
+      } catch (error) {
+        throw mapBlogImageError(error);
+      }
+      if (fileId) break;
+    }
+
+    if (!fileId) {
+      throw new NotFoundError("Blog image");
+    }
+
+    return this.serve(fileId);
+  }
+
+  private async findImageFileIdByFilename(filename: string): Promise<string | null> {
+    const folderIds = [...this.config!.folderIds];
+    const direct = await this.drive!.findFileIdByNameInFolders(folderIds, filename);
+    if (direct) return direct;
+
+    return this.drive!.findFileIdByNameWithAncestorCheck(filename, folderIds, (parents) =>
+      this.isUnderApprovedFolders(parents, this.config!.folderIds),
+    );
   }
 
   async serve(fileIdRaw: string): Promise<BlogImageResult> {
@@ -74,7 +144,7 @@ export class BlogImagesService {
       throw new NotFoundError("Blog image");
     }
 
-    if (!this.isFileAllowed(fileId, meta)) {
+    if (!(await this.isFileAllowed(fileId, meta))) {
       throw new ForbiddenError("Blog image is not in an approved folder");
     }
 
@@ -111,7 +181,10 @@ export function mapBlogImageError(error: unknown): AppError {
       details: error.details,
     });
   }
-  if (error instanceof Error && error.message === "Invalid blog image file id") {
+  if (
+    error instanceof Error &&
+    (error.message === "Invalid blog image file id" || error.message === "Invalid blog image slug")
+  ) {
     return new AppError(error.message, {
       status: HTTP.BAD_REQUEST,
       code: ERROR_CODES.VALIDATION_ERROR,
