@@ -11,15 +11,26 @@ const baseConfig: BlogImagesConfig = {
   folderIds: new Set(["folder-allowed"]),
   allowedFileIds: new Set(["explicit-allow"]),
   credentialsJson: "{}",
+  fileExtensions: ["png", "webp"],
 };
 
 function createMockDrive(handlers: {
   getMetadata?: (fileId: string) => Promise<DriveFileMetadata | null>;
   download?: (fileId: string) => Promise<DriveFileContent>;
+  getParentFolderIds?: (folderId: string) => Promise<string[]>;
+  findFileIdByNameInFolders?: (folderIds: readonly string[], filename: string) => Promise<string | null>;
+  findFileIdByNameWithAncestorCheck?: (
+    filename: string,
+    allowedFolderIds: ReadonlySet<string> | readonly string[],
+    isAllowed: (parentIds: string[]) => Promise<boolean>,
+  ) => Promise<string | null>;
 }) {
   return {
     getMetadata: handlers.getMetadata ?? (async () => null),
     download: handlers.download ?? (async () => ({ buffer: Buffer.from("x"), mimeType: "image/png" })),
+    getParentFolderIds: handlers.getParentFolderIds ?? (async () => []),
+    findFileIdByNameInFolders: handlers.findFileIdByNameInFolders ?? (async () => null),
+    findFileIdByNameWithAncestorCheck: handlers.findFileIdByNameWithAncestorCheck ?? (async () => null),
   };
 }
 
@@ -102,6 +113,7 @@ describe("BlogImagesService.serve", () => {
           parents: ["other-folder"],
           trashed: false,
         }),
+        getParentFolderIds: async () => [],
       }),
     );
 
@@ -110,6 +122,30 @@ describe("BlogImagesService.serve", () => {
       assert.equal(err.status, HTTP.FORBIDDEN);
       return true;
     });
+  });
+
+  it("allows files in nested subfolders when ancestor is approved", async () => {
+    const fileId = "abcdefghijklmnop";
+    const service = new BlogImagesService(
+      baseConfig,
+      createMockDrive({
+        getMetadata: async () => ({
+          id: fileId,
+          mimeType: "image/jpeg",
+          parents: ["nested-folder"],
+          trashed: false,
+        }),
+        getParentFolderIds: async (folderId) =>
+          folderId === "nested-folder" ? ["folder-allowed"] : [],
+        download: async () => ({
+          buffer: Buffer.from([9]),
+          mimeType: "image/jpeg",
+        }),
+      }),
+    );
+
+    const result = await service.serve(fileId);
+    assert.equal(result.buffer[0], 9);
   });
 
   it("maps upstream Drive failures to service unavailable", async () => {
@@ -134,6 +170,30 @@ describe("BlogImagesService.serve", () => {
       assert.equal(err.status, HTTP.SERVICE_UNAVAILABLE);
       return true;
     });
+  });
+
+  it("resolves slug-based filenames at request time", async () => {
+    const fileId = "abcdefghijklmnop";
+    const service = new BlogImagesService(
+      baseConfig,
+      createMockDrive({
+        findFileIdByNameInFolders: async (_folders, filename) =>
+          filename === "my-post.png" ? fileId : null,
+        getMetadata: async () => ({
+          id: fileId,
+          mimeType: "image/png",
+          parents: ["folder-allowed"],
+          trashed: false,
+        }),
+        download: async () => ({
+          buffer: Buffer.from("ok"),
+          mimeType: "image/png",
+        }),
+      }),
+    );
+
+    const result = await service.serveBySlug("my-post");
+    assert.equal(result.mimeType, "image/png");
   });
 
   it("returns 503 when blog images are not configured", async () => {

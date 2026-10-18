@@ -311,6 +311,18 @@ function createApiRouter(): Hono<{ Variables: AppVariables }> {
     return c.json(ok(toTagDto(tag)), 201);
   });
 
+  api.get("/blog-images/by-slug/:slug", async (c) => {
+    const blogImages = BlogImagesService.create();
+    try {
+      const { buffer, mimeType } = await blogImages.serveBySlug(c.req.param("slug"));
+      return new Response(new Uint8Array(buffer), {
+        headers: blogImageResponseHeaders(mimeType),
+      });
+    } catch (error) {
+      throw mapBlogImageError(error);
+    }
+  });
+
   api.get("/blog-images/:fileId", async (c) => {
     const blogImages = BlogImagesService.create();
     try {

@@ -1,10 +1,23 @@
 import { loadMediaStorageConfig } from "../media/storage/config";
 
+const DEFAULT_BLOG_IMAGE_EXTENSIONS = ["png", "webp", "jpg", "jpeg"] as const;
+
 export type BlogImagesConfig = {
   folderIds: ReadonlySet<string>;
   allowedFileIds: ReadonlySet<string>;
   credentialsJson: string;
+  /** Tried in order when resolving GET /blog-images/by-slug/:slug */
+  fileExtensions: readonly string[];
 };
+
+function parseExtensions(value: string | undefined): string[] {
+  const raw = (value ?? "")
+    .split(",")
+    .map((part) => part.trim().toLowerCase().replace(/^\./, ""))
+    .filter(Boolean);
+  if (raw.length === 0) return [...DEFAULT_BLOG_IMAGE_EXTENSIONS];
+  return raw;
+}
 
 function parseCsvIds(value: string | undefined): string[] {
   return (value ?? "")
@@ -33,5 +46,6 @@ export function loadBlogImagesConfig(): BlogImagesConfig | null {
     folderIds,
     allowedFileIds,
     credentialsJson: storage.googleDrive.credentialsJson,
+    fileExtensions: parseExtensions(process.env.BLOG_IMAGE_FILE_EXTENSIONS),
   };
 }
