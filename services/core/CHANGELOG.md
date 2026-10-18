@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.6
+
+### Changed
+
+feat(admin-api): Google Drive blog image proxy
+
 ## v1.1.5
 
 ### Changed
