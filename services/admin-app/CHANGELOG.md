@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.9
+
+### Changed
+
+feat(blog-images): serve Drive images by post slug ({slug}.png)
+
 ## v1.1.8
 
 ### Changed
