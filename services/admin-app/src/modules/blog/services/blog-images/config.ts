@@ -1,6 +1,6 @@
 import { loadMediaStorageConfig } from "../media/storage/config";
 
-const DEFAULT_BLOG_IMAGE_EXTENSIONS = ["png", "webp", "jpg", "jpeg"] as const;
+const DEFAULT_BLOG_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp"] as const;
 
 export type BlogImagesConfig = {
   folderIds: ReadonlySet<string>;

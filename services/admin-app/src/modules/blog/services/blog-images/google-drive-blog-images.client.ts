@@ -89,8 +89,8 @@ export class GoogleDriveBlogImagesClient {
       email: String(credentials.client_email),
       key: String(credentials.private_key),
       scopes: [
-        "https://www.googleapis.com/auth/drive.file",
-        "https://www.googleapis.com/auth/drive.metadata.readonly",
+        // drive.file alone cannot list/read files uploaded by humans into a shared folder
+        "https://www.googleapis.com/auth/drive.readonly",
       ],
     });
 
@@ -121,6 +121,46 @@ export class GoogleDriveBlogImagesClient {
       const mapped = mapDriveError(error);
       if (mapped.code === MEDIA_STORAGE_ERROR_CODES.NOT_FOUND) return null;
       throw mapped;
+    }
+  }
+
+  /**
+   * One Drive list call for all `{slug}.{ext}` candidates inside approved folders.
+   */
+  async findImageFileIdForSlug(
+    folderIds: readonly string[],
+    filenamesInPriorityOrder: readonly string[],
+  ): Promise<string | null> {
+    if (folderIds.length === 0 || filenamesInPriorityOrder.length === 0) return null;
+
+    try {
+      const drive = this.getClient();
+      const nameClause = filenamesInPriorityOrder
+        .map((name) => `name = '${name.replace(/'/g, "\\'")}'`)
+        .join(" or ");
+      const parentClause = folderIds.map((id) => `'${id.replace(/'/g, "\\'")}' in parents`).join(" or ");
+      const q = `trashed = false and (${nameClause}) and (${parentClause})`;
+
+      const response = await drive.files.list({
+        q,
+        fields: "files(id,name,mimeType)",
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        pageSize: filenamesInPriorityOrder.length,
+      });
+
+      const files = response.data.files ?? [];
+      const byName = new Map(files.filter((f) => f.id && f.name).map((f) => [f.name!, f.id!]));
+
+      for (const filename of filenamesInPriorityOrder) {
+        const id = byName.get(filename);
+        if (id) return id;
+      }
+
+      return null;
+    } catch (error) {
+      if (error instanceof MediaStorageError) throw error;
+      throw mapDriveError(error);
     }
   }
 
