@@ -17,6 +17,10 @@ export type BlogImagesDrive = {
   getMetadata(fileId: string): Promise<DriveFileMetadata | null>;
   download(fileId: string): Promise<DriveFileContent>;
   findFileIdByNameInFolders(folderIds: readonly string[], filename: string): Promise<string | null>;
+  findImageFileIdForSlug(
+    folderIds: readonly string[],
+    filenamesInPriorityOrder: readonly string[],
+  ): Promise<string | null>;
   findFileIdByNameWithAncestorCheck(
     filename: string,
     allowedFolderIds: ReadonlySet<string> | readonly string[],
@@ -96,16 +100,19 @@ export class BlogImagesService {
     }
 
     const folderIds = [...this.config!.folderIds];
-    let fileId: string | null = null;
+    const filenames = this.config!.fileExtensions.map((ext) => blogImageFilename(slug, ext));
 
-    for (const ext of this.config!.fileExtensions) {
-      const filename = blogImageFilename(slug, ext);
-      try {
-        fileId = await this.findImageFileIdByFilename(filename);
-      } catch (error) {
-        throw mapBlogImageError(error);
+    let fileId: string | null = null;
+    try {
+      fileId = await this.drive!.findImageFileIdForSlug(folderIds, filenames);
+      if (!fileId) {
+        for (const filename of filenames) {
+          fileId = await this.findImageFileIdByFilename(filename);
+          if (fileId) break;
+        }
       }
-      if (fileId) break;
+    } catch (error) {
+      throw mapBlogImageError(error);
     }
 
     if (!fileId) {

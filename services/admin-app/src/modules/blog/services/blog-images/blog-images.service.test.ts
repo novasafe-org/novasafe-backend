@@ -19,6 +19,10 @@ function createMockDrive(handlers: {
   download?: (fileId: string) => Promise<DriveFileContent>;
   getParentFolderIds?: (folderId: string) => Promise<string[]>;
   findFileIdByNameInFolders?: (folderIds: readonly string[], filename: string) => Promise<string | null>;
+  findImageFileIdForSlug?: (
+    folderIds: readonly string[],
+    filenamesInPriorityOrder: readonly string[],
+  ) => Promise<string | null>;
   findFileIdByNameWithAncestorCheck?: (
     filename: string,
     allowedFolderIds: ReadonlySet<string> | readonly string[],
@@ -30,6 +34,7 @@ function createMockDrive(handlers: {
     download: handlers.download ?? (async () => ({ buffer: Buffer.from("x"), mimeType: "image/png" })),
     getParentFolderIds: handlers.getParentFolderIds ?? (async () => []),
     findFileIdByNameInFolders: handlers.findFileIdByNameInFolders ?? (async () => null),
+    findImageFileIdForSlug: handlers.findImageFileIdForSlug ?? (async () => null),
     findFileIdByNameWithAncestorCheck: handlers.findFileIdByNameWithAncestorCheck ?? (async () => null),
   };
 }
@@ -177,6 +182,8 @@ describe("BlogImagesService.serve", () => {
     const service = new BlogImagesService(
       baseConfig,
       createMockDrive({
+        findImageFileIdForSlug: async (_folders, names) =>
+          names.includes("my-post.png") ? fileId : null,
         findFileIdByNameInFolders: async (_folders, filename) =>
           filename === "my-post.png" ? fileId : null,
         getMetadata: async () => ({
