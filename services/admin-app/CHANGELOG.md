@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.11
+
+### Changed
+
+Blog: enforce content.manage on DELETE /posts/:id
+
 ## v1.1.10
 
 ### Changed
