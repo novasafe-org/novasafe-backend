@@ -5,7 +5,7 @@ import { cors } from "hono/cors";
 import { HTTP } from "@/lib/constants";
 import { isAppError } from "@/lib/errors";
 import { slugify } from "@/lib/utils";
-import { isAdminFromHeader, verifyAdminFromHeader } from "@/lib/auth";
+import { isAdminFromHeader, verifyAdminFromHeader, verifyContentManagerFromHeader } from "@/lib/auth";
 import { ok } from "@/lib/utils";
 import { getConfig } from "@/types/config";
 import type { AppConfig } from "@/types/config";
@@ -204,8 +204,10 @@ function createApiRouter(): Hono<{ Variables: AppVariables }> {
 
   api.delete("/posts/:id", withMongo, async (c) => {
     const repos = c.get("repos")!;
-    await verifyAdminFromHeader(c.req.header("Authorization"), c.get("config"));
+    await verifyContentManagerFromHeader(c.req.header("Authorization"), c.get("config"));
     const parsed = mongoIdParamSchema.parse({ id: c.req.param("id") });
+    const existing = await repos.posts.findById(parsed.id);
+    if (!existing) throw new NotFoundError("Post");
     await repos.posts.delete(parsed.id);
     return c.body(null, 204);
   });
