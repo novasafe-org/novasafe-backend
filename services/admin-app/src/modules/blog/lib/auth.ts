@@ -43,6 +43,59 @@ export async function verifyAdmin(
   );
 }
 
+/** Requires `content.manage` (human RBAC JWT or service-account API token). */
+export async function verifyContentManagerFromHeader(
+  authHeader: string | undefined,
+  config: AppConfig,
+): Promise<AdminContext> {
+  const token = extractBearerToken(authHeader);
+  if (!token) {
+    throw new UnauthorizedError("Missing or invalid Authorization header");
+  }
+
+  if (token.startsWith(API_TOKEN_PREFIX)) {
+    let principal: Awaited<ReturnType<typeof resolvePrincipalFromBearer>>;
+    try {
+      principal = await resolvePrincipalFromBearer(token);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message ? error.message : "Invalid or expired API token";
+      throw new UnauthorizedError(message);
+    }
+    const allowed = await principalHasPermission(principal, "content.manage", "manage");
+    if (!allowed) {
+      throw new UnauthorizedError("API token lacks content.manage permission");
+    }
+    return principalToAdminContext(principal);
+  }
+
+  const legacy = await verifyAccessToken(config, token);
+  if (legacy.valid) {
+    return {
+      id: legacy.claims.sub,
+      email: legacy.claims.email,
+      name: legacy.claims.email,
+      role: legacy.claims.role,
+    };
+  }
+
+  try {
+    const principal = await resolvePrincipalFromBearer(token);
+    const allowed = await principalHasPermission(principal, "content.manage", "manage");
+    if (!allowed) {
+      throw new UnauthorizedError("Insufficient permission for content.manage");
+    }
+    return principalToAdminContext(principal);
+  } catch (error) {
+    if (error instanceof UnauthorizedError) throw error;
+    const message =
+      legacy.valid === false && legacy.reason === "expired"
+        ? "Access token expired"
+        : "Invalid access token";
+    throw new UnauthorizedError(message);
+  }
+}
+
 export async function verifyAdminFromHeader(
   authHeader: string | undefined,
   _config: AppConfig,
