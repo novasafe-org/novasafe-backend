@@ -10,6 +10,8 @@ import { getOtpService } from './otp.service';
 import { getAuthResponseService } from './auth-response.service';
 import type { VaultOAuthUserRow } from '../types/auth.types';
 
+export type GoogleOauthFlow = 'login' | 'register';
+
 export class OAuthGoogleService {
   constructor(
     private readonly users = getUserRepository(),
@@ -33,7 +35,7 @@ export class OAuthGoogleService {
     };
   }
 
-  async signIn(req: Request, idToken: string) {
+  async signIn(req: Request, idToken: string, flow: GoogleOauthFlow = 'register') {
     if (!idToken) {
       return { status: 400, body: { success: false, message: 'Google idToken is required' } };
     }
@@ -50,6 +52,17 @@ export class OAuthGoogleService {
       });
 
       if (!user) {
+        if (flow === 'login') {
+          return {
+            status: 404,
+            body: {
+              success: false,
+              code: 'NO_ACCOUNT',
+              message: 'No NovaSafe account for this Google email. Please sign up first.',
+            },
+          };
+        }
+
         user = await this.users.create({
           email,
           name: fullName,
@@ -102,6 +115,17 @@ export class OAuthGoogleService {
       }
 
       if (!isNovaSafeEmailVerified(user)) {
+        if (flow === 'login') {
+          return {
+            status: 403,
+            body: {
+              success: false,
+              code: 'ACCOUNT_NOT_VERIFIED',
+              message:
+                'This account is not ready to sign in yet. Please finish creating your account on the sign up page.',
+            },
+          };
+        }
         return this.respondRequiresOtp(req, user, 'google_returning_pending_email');
       }
 
