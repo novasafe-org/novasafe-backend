@@ -42,7 +42,12 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
 };
 
 export const googleOAuth = async (req: Request, res: Response): Promise<void> => {
-  send(res, await getOAuthGoogleService().signIn(req, String(req.body?.idToken || '').trim()));
+  const flowRaw = String(req.body?.flow || 'register').trim().toLowerCase();
+  const flow = flowRaw === 'login' ? 'login' : 'register';
+  send(
+    res,
+    await getOAuthGoogleService().signIn(req, String(req.body?.idToken || '').trim(), flow),
+  );
 };
 
 export const googleVerifyOtp = async (req: Request, res: Response): Promise<void> => {

@@ -115,7 +115,10 @@ export const buildAuthOpenApiPaths = (): OpenApiDocument['paths'] => ({
       requestBody: jsonBody({
         type: 'object',
         required: ['idToken'],
-        properties: { idToken: { type: 'string' } },
+        properties: {
+          idToken: { type: 'string' },
+          flow: { type: 'string', enum: ['login', 'register'] },
+        },
       }),
       responses: successEnvelope(),
     },
