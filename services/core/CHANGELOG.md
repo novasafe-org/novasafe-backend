@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.7
+
+### Changed
+
+feat(auth): Google OAuth login flow — no auto signup
+
 ## v1.1.6
 
 ### Changed
