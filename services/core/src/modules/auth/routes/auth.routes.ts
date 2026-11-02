@@ -9,6 +9,7 @@ import {
   googleOAuth,
   googleResendOtp,
   googleVerifyOtp,
+  linkGoogleOAuth,
   login,
   logout,
   pairExtension,
@@ -34,6 +35,7 @@ export const createAuthRoutes = (): Router => {
   router.post('/oauth/google/complete-welcome', authMiddleware, asyncHandler(completeOAuthWelcome));
   router.post('/oauth/google/verify-otp', oauthPendingAuthMiddleware, authRateLimiter, asyncHandler(googleVerifyOtp));
   router.post('/oauth/google/resend-otp', oauthPendingAuthMiddleware, authRateLimiter, asyncHandler(googleResendOtp));
+  router.post('/oauth/google/link', authMiddleware, authRateLimiter, asyncHandler(linkGoogleOAuth));
   router.post('/oauth/apple/verify-otp', oauthPendingAuthMiddleware, authRateLimiter, asyncHandler(appleVerifyOtp));
   router.post('/oauth/apple/resend-otp', oauthPendingAuthMiddleware, authRateLimiter, asyncHandler(appleResendOtp));
   router.post('/2fa/verify', authRateLimiter, asyncHandler(verifyTwoFactor));
