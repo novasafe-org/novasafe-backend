@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../../middleware/async-handler';
 import { authRateLimiter } from '../../../middleware/rate-limit.middleware';
-import { checkEmail, createAccount, sendOtp, verifyOtp } from '../controllers/onboarding.controller';
+import { checkEmail, createAccount, createGoogleAccount, sendOtp, verifyOtp } from '../controllers/onboarding.controller';
 
 export const createOnboardingRoutes = (): Router => {
   const router = Router();
@@ -9,5 +9,6 @@ export const createOnboardingRoutes = (): Router => {
   router.post('/send-otp', authRateLimiter, asyncHandler(sendOtp));
   router.post('/verify-otp', authRateLimiter, asyncHandler(verifyOtp));
   router.post('/create-account', authRateLimiter, asyncHandler(createAccount));
+  router.post('/create-google-account', authRateLimiter, asyncHandler(createGoogleAccount));
   return router;
 };

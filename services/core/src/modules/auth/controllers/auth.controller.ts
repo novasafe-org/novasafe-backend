@@ -73,6 +73,17 @@ export const googleResendOtp = async (req: Request, res: Response): Promise<void
   );
 };
 
+export const linkGoogleOAuth = async (req: Request, res: Response): Promise<void> => {
+  send(
+    res,
+    await getOAuthGoogleService().linkGoogle(
+      req,
+      String(req.body?.idToken || '').trim(),
+      req.user?.id || '',
+    ),
+  );
+};
+
 export const completeOAuthWelcome = async (req: Request, res: Response): Promise<void> => {
   const result = await getSessionService().completeOAuthWelcome(req.user?.id || '');
   res.status(result.status).json({ ...result.body, source: req.source });

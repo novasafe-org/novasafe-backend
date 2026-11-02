@@ -47,6 +47,53 @@ export class JwtTokenService {
     return { token, tokenId };
   }
 
+  generateGoogleSignupIntentToken(payload: {
+    googleSub: string;
+    email: string;
+    name?: string;
+    picture?: string;
+  }): string {
+    assertAuthConfig();
+    return jwt.sign(
+      {
+        tokenType: 'google_signup_intent' as const,
+        googleSub: payload.googleSub,
+        email: payload.email,
+        name: payload.name,
+        picture: payload.picture,
+        id: payload.googleSub,
+      },
+      authConfig.jwt.secret,
+      {
+        expiresIn: authConfig.otp.signupProofTtlMs / 1000,
+        issuer: authConfig.jwt.issuer,
+        audience: authConfig.jwt.audience,
+      },
+    );
+  }
+
+  verifyGoogleSignupIntentToken(token: string): {
+    googleSub: string;
+    email: string;
+    name?: string;
+    picture?: string;
+  } {
+    assertAuthConfig();
+    const decoded = jwt.verify(token, authConfig.jwt.secret, {
+      issuer: authConfig.jwt.issuer,
+      audience: authConfig.jwt.audience,
+    }) as DecodedAuthToken;
+    if (decoded.tokenType !== 'google_signup_intent' || !decoded.googleSub || !decoded.email) {
+      throw new Error('Invalid Google signup intent token');
+    }
+    return {
+      googleSub: decoded.googleSub,
+      email: decoded.email.toLowerCase().trim(),
+      name: decoded.name,
+      picture: decoded.picture,
+    };
+  }
+
   verify(token: string): DecodedAuthToken {
     assertAuthConfig();
     return jwt.verify(token, authConfig.jwt.secret, {

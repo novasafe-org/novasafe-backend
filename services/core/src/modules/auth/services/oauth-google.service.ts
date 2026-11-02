@@ -8,9 +8,18 @@ import { getGoogleAuthProvider } from '../providers/google.provider';
 import { getUserRepository } from '../repositories/user.repository';
 import { getOtpService } from './otp.service';
 import { getAuthResponseService } from './auth-response.service';
+import { getJwtTokenService } from '../tokens/jwt.token.service';
 import type { VaultOAuthUserRow } from '../types/auth.types';
 
 export type GoogleOauthFlow = 'login' | 'register';
+
+function googleSubFilter(providerId: string) {
+  return { $or: [{ provider_id: providerId }, { googleId: providerId }] };
+}
+
+function isGoogleLinkedToSub(user: VaultOAuthUserRow, providerId: string): boolean {
+  return user.googleId === providerId || user.provider_id === providerId;
+}
 
 export class OAuthGoogleService {
   constructor(
@@ -35,6 +44,17 @@ export class OAuthGoogleService {
     };
   }
 
+  private async finishVerifiedGoogleSession(req: Request, user: VaultOAuthUserRow, oauthIntent: string) {
+    const requiresMasterPasswordSetup = !Boolean(user.passwordHash || user.has_password);
+    const requiresVaultSetup = Boolean(user.isFirstOAuthSignup);
+    const authResult = await this.authResponse.buildFullSession(req, user, {
+      requiresMasterPasswordSetup,
+      requiresVaultSetup,
+      oauthIntent,
+    });
+    return { status: 200, body: authResult };
+  }
+
   async signIn(req: Request, idToken: string, flow: GoogleOauthFlow = 'register') {
     if (!idToken) {
       return { status: 400, body: { success: false, message: 'Google idToken is required' } };
@@ -42,80 +62,59 @@ export class OAuthGoogleService {
     try {
       const payload = await this.google.verifyIdToken(idToken);
       const now = new Date();
-      const email = payload.email;
+      const email = payload.email.toLowerCase().trim();
       const providerId = payload.sub;
       const fullName = payload.name || payload.givenName || email.split('@')[0];
       const avatar = payload.picture || null;
 
-      let user = await this.users.findOAuthUser({
-        $or: [{ email }, { provider_id: providerId }, { googleId: providerId }],
-      });
+      if (!payload.emailVerified) {
+        return {
+          status: 403,
+          body: {
+            success: false,
+            code: 'GOOGLE_EMAIL_NOT_VERIFIED',
+            message: 'Google did not verify this email address. Use another sign-in method.',
+          },
+        };
+      }
 
-      if (!user) {
-        if (flow === 'login') {
+      let user = await this.users.findOAuthUser(googleSubFilter(providerId));
+
+      if (flow === 'login') {
+        if (!user || !isGoogleLinkedToSub(user, providerId)) {
+          const byEmail = await this.users.findByEmail(email);
+          if (byEmail) {
+            return {
+              status: 403,
+              body: {
+                success: false,
+                code: 'ACCOUNT_EXISTS_PROVIDER_NOT_LINKED',
+                message:
+                  'An account already exists with this email. Sign in with your existing method, then connect Google from account settings.',
+              },
+            };
+          }
           return {
             status: 404,
             body: {
               success: false,
               code: 'NO_ACCOUNT',
-              message: 'No NovaSafe account for this Google email. Please sign up first.',
+              message: 'No NovaSafe account is connected to this Google account. Please create an account first.',
             },
           };
         }
 
-        user = await this.users.create({
-          email,
-          name: fullName,
-          avatar_url: avatar,
-          picture: avatar,
-          auth_provider: 'google',
-          provider_id: providerId,
-          googleId: providerId,
-          auth_methods: ['google'],
-          has_password: false,
-          email_verified: payload.emailVerified,
-          novasafeEmailVerified: false,
-          isFirstOAuthSignup: true,
-          cloudSyncEnabled: false,
-          cloudSyncUpdatedAt: now,
-          createdAt: now,
-          updatedAt: now,
-          source: 'mobile',
+        await this.users.updateById(user._id.toString(), {
+          $set: {
+            picture: user.picture || avatar,
+            avatar_url: user.avatar_url || avatar,
+            email_verified: payload.emailVerified,
+            updatedAt: now,
+          },
         });
-        logger.info('OAuth Google: created pending OTP user', { userId: user._id.toString() });
-        return this.respondRequiresOtp(req, user, 'google_register_pending_email');
-      }
+        user = (await this.users.findByIdActive(user._id.toString())) as VaultOAuthUserRow;
 
-      const existingMethods = Array.isArray(user.auth_methods)
-        ? user.auth_methods
-        : user.passwordHash
-          ? ['local']
-          : [];
-      const authMethods = existingMethods.includes('google') ? existingMethods : [...existingMethods, 'google'];
-      const hasPassword =
-        typeof user.has_password === 'boolean' ? user.has_password : Boolean(user.passwordHash);
-
-      await this.users.updateById(user._id.toString(), {
-        $set: {
-          provider_id: user.provider_id || providerId,
-          googleId: user.googleId || providerId,
-          auth_provider: hasPassword ? user.auth_provider || 'local' : 'google',
-          auth_methods: authMethods,
-          has_password: hasPassword,
-          email_verified: payload.emailVerified,
-          picture: user.picture || avatar,
-          avatar_url: user.avatar_url || avatar,
-          updatedAt: now,
-        },
-      });
-
-      user = (await this.users.findByIdActive(user._id.toString())) as VaultOAuthUserRow;
-      if (!user) {
-        return { status: 500, body: { success: false, message: 'Unable to prepare OAuth session' } };
-      }
-
-      if (!isNovaSafeEmailVerified(user)) {
-        if (flow === 'login') {
+        if (!isNovaSafeEmailVerified(user)) {
           return {
             status: 403,
             body: {
@@ -126,17 +125,12 @@ export class OAuthGoogleService {
             },
           };
         }
-        return this.respondRequiresOtp(req, user, 'google_returning_pending_email');
+
+        return this.finishVerifiedGoogleSession(req, user, 'google_signed_in');
       }
 
-      const requiresMasterPasswordSetup = !Boolean(user.passwordHash || user.has_password);
-      const requiresVaultSetup = Boolean(user.isFirstOAuthSignup);
-      const authResult = await this.authResponse.buildFullSession(req, user, {
-        requiresMasterPasswordSetup,
-        requiresVaultSetup,
-        oauthIntent: 'google_signed_in',
-      });
-      return { status: 200, body: authResult };
+      // --- register flow: validate Google identity only (account created after NovaSafe OTP) ---
+      return await this.validateSignupIntent(req, email, providerId, fullName, avatar, payload.emailVerified);
     } catch (error: unknown) {
       const readable = toReadableError(error);
       logger.error(`OAuth Google failed: ${readable.message}`, {
@@ -148,7 +142,185 @@ export class OAuthGoogleService {
           ? readable.message
           : 'Invalid or expired Google token';
       const status = readable.code === 'DATABASE_UNAVAILABLE' ? 503 : 401;
-      return { status, body: { success: false, message: clientMessage, code: readable.code } };
+      return {
+        status,
+        body: { success: false, message: clientMessage, code: readable.code || 'GOOGLE_TOKEN_INVALID' },
+      };
+    }
+  }
+
+  /**
+   * Google sign-up step 1: validate ID token and return profile + short-lived intent JWT.
+   * Does not create a user (NovaSafe signup OTP + create-account follows).
+   */
+  private async validateSignupIntent(
+    req: Request,
+    email: string,
+    providerId: string,
+    fullName: string,
+    avatar: string | null,
+    emailVerified: boolean,
+  ) {
+    if (!emailVerified) {
+      return {
+        status: 403,
+        body: {
+          success: false,
+          code: 'GOOGLE_EMAIL_NOT_VERIFIED',
+          message: 'Google did not verify this email address.',
+        },
+      };
+    }
+
+    const linkedUser = await this.users.findOAuthUser(googleSubFilter(providerId));
+    if (linkedUser && isGoogleLinkedToSub(linkedUser, providerId)) {
+      return {
+        status: 409,
+        body: {
+          success: false,
+          code: 'ACCOUNT_ALREADY_EXISTS',
+          message: 'A NovaSafe account is already linked to this Google account. Please sign in instead.',
+        },
+      };
+    }
+
+    const byEmail = await this.users.findByEmail(email);
+    if (byEmail) {
+      return {
+        status: 403,
+        body: {
+          success: false,
+          code: 'ACCOUNT_EXISTS_PROVIDER_NOT_LINKED',
+          message:
+            'An account already exists with this email. Sign in with your existing method, then connect Google from account settings.',
+        },
+      };
+    }
+
+    const googleSignupIntentToken = getJwtTokenService().generateGoogleSignupIntentToken({
+      googleSub: providerId,
+      email,
+      name: fullName,
+      picture: avatar ?? undefined,
+    });
+
+    return {
+      status: 200,
+      body: {
+        success: true,
+        source: req.source,
+        signupIntent: true,
+        email,
+        fullName,
+        picture: avatar,
+        googleSignupIntentToken,
+      },
+    };
+  }
+
+  async linkGoogle(req: Request, idToken: string, authenticatedUserId: string) {
+    if (!authenticatedUserId) {
+      return {
+        status: 401,
+        body: {
+          success: false,
+          code: 'ACCOUNT_LINKING_REQUIRES_AUTHENTICATION',
+          message: 'Sign in before connecting Google.',
+        },
+      };
+    }
+    if (!idToken) {
+      return { status: 400, body: { success: false, message: 'Google idToken is required' } };
+    }
+
+    try {
+      const payload = await this.google.verifyIdToken(idToken);
+      const providerId = payload.sub;
+      const email = payload.email.toLowerCase().trim();
+      const now = new Date();
+
+      if (!payload.emailVerified) {
+        return {
+          status: 403,
+          body: {
+            success: false,
+            code: 'GOOGLE_EMAIL_NOT_VERIFIED',
+            message: 'Google did not verify this email address.',
+          },
+        };
+      }
+
+      const owner = await this.users.findByIdActive(authenticatedUserId);
+      if (!owner) {
+        return { status: 404, body: { success: false, code: 'ACCOUNT_NOT_FOUND', message: 'User not found' } };
+      }
+
+      const linkedElsewhere = await this.users.findOAuthUser(googleSubFilter(providerId));
+      if (linkedElsewhere && linkedElsewhere._id.toString() !== authenticatedUserId) {
+        return {
+          status: 409,
+          body: {
+            success: false,
+            code: 'GOOGLE_IDENTITY_ALREADY_LINKED',
+            message: 'This Google account is already connected to another NovaSafe account.',
+          },
+        };
+      }
+
+      if (owner.email.toLowerCase().trim() !== email) {
+        return {
+          status: 403,
+          body: {
+            success: false,
+            code: 'GOOGLE_EMAIL_MISMATCH',
+            message: 'This Google account email does not match your NovaSafe account email.',
+          },
+        };
+      }
+
+      const existingMethods = Array.isArray(owner.auth_methods)
+        ? owner.auth_methods
+        : owner.passwordHash
+          ? ['local']
+          : [];
+      const authMethods = existingMethods.includes('google') ? existingMethods : [...existingMethods, 'google'];
+      const hasPassword =
+        typeof owner.has_password === 'boolean' ? owner.has_password : Boolean(owner.passwordHash);
+
+      await this.users.updateById(authenticatedUserId, {
+        $set: {
+          provider_id: providerId,
+          googleId: providerId,
+          auth_methods: authMethods,
+          has_password: hasPassword,
+          auth_provider: hasPassword ? owner.auth_provider || 'local' : 'google',
+          email_verified: payload.emailVerified,
+          picture: owner.picture || payload.picture || null,
+          avatar_url: owner.avatar_url || payload.picture || null,
+          updatedAt: now,
+        },
+      });
+
+      return {
+        status: 200,
+        body: {
+          success: true,
+          source: req.source,
+          message: 'Google account connected.',
+          authMethods,
+          googleEmail: email,
+        },
+      };
+    } catch (error: unknown) {
+      const readable = toReadableError(error);
+      return {
+        status: 401,
+        body: {
+          success: false,
+          message: 'Invalid or expired Google token',
+          code: readable.code || 'GOOGLE_TOKEN_INVALID',
+        },
+      };
     }
   }
 
