@@ -8,6 +8,7 @@ import { getGoogleAuthProvider } from '../providers/google.provider';
 import { getUserRepository } from '../repositories/user.repository';
 import { getOtpService } from './otp.service';
 import { getAuthResponseService } from './auth-response.service';
+import { getJwtTokenService } from '../tokens/jwt.token.service';
 import type { VaultOAuthUserRow } from '../types/auth.types';
 
 export type GoogleOauthFlow = 'login' | 'register';
@@ -128,58 +129,8 @@ export class OAuthGoogleService {
         return this.finishVerifiedGoogleSession(req, user, 'google_signed_in');
       }
 
-      // --- register flow ---
-      if (user && isGoogleLinkedToSub(user, providerId)) {
-        if (isNovaSafeEmailVerified(user)) {
-          return {
-            status: 409,
-            body: {
-              success: false,
-              code: 'ACCOUNT_ALREADY_EXISTS',
-              message: 'A NovaSafe account is already linked to this Google account. Please sign in instead.',
-            },
-          };
-        }
-        return this.respondRequiresOtp(req, user, 'google_returning_pending_email');
-      }
-
-      const byEmail = await this.users.findByEmail(email);
-      if (byEmail) {
-        return {
-          status: 403,
-          body: {
-            success: false,
-            code: 'ACCOUNT_EXISTS_PROVIDER_NOT_LINKED',
-            message:
-              'An account already exists with this email. Sign in with your existing method, then connect Google from account settings.',
-          },
-        };
-      }
-
-      user = await this.users.create({
-        email,
-        name: fullName,
-        avatar_url: avatar,
-        picture: avatar,
-        auth_provider: 'google',
-        provider_id: providerId,
-        googleId: providerId,
-        auth_methods: ['google'],
-        has_password: false,
-        email_verified: payload.emailVerified,
-        novasafeEmailVerified: true,
-        isFirstOAuthSignup: true,
-        cloudSyncEnabled: false,
-        cloudSyncUpdatedAt: now,
-        createdAt: now,
-        updatedAt: now,
-        source: 'mobile',
-      });
-      logger.info('OAuth Google: registered user (Google-verified email, no NovaSafe OTP)', {
-        userId: user._id.toString(),
-      });
-
-      return this.finishVerifiedGoogleSession(req, user, 'google_register_verified');
+      // --- register flow: validate Google identity only (account created after NovaSafe OTP) ---
+      return await this.validateSignupIntent(req, email, providerId, fullName, avatar, payload.emailVerified);
     } catch (error: unknown) {
       const readable = toReadableError(error);
       logger.error(`OAuth Google failed: ${readable.message}`, {
@@ -196,6 +147,75 @@ export class OAuthGoogleService {
         body: { success: false, message: clientMessage, code: readable.code || 'GOOGLE_TOKEN_INVALID' },
       };
     }
+  }
+
+  /**
+   * Google sign-up step 1: validate ID token and return profile + short-lived intent JWT.
+   * Does not create a user (NovaSafe signup OTP + create-account follows).
+   */
+  private async validateSignupIntent(
+    req: Request,
+    email: string,
+    providerId: string,
+    fullName: string,
+    avatar: string | null,
+    emailVerified: boolean,
+  ) {
+    if (!emailVerified) {
+      return {
+        status: 403,
+        body: {
+          success: false,
+          code: 'GOOGLE_EMAIL_NOT_VERIFIED',
+          message: 'Google did not verify this email address.',
+        },
+      };
+    }
+
+    const linkedUser = await this.users.findOAuthUser(googleSubFilter(providerId));
+    if (linkedUser && isGoogleLinkedToSub(linkedUser, providerId)) {
+      return {
+        status: 409,
+        body: {
+          success: false,
+          code: 'ACCOUNT_ALREADY_EXISTS',
+          message: 'A NovaSafe account is already linked to this Google account. Please sign in instead.',
+        },
+      };
+    }
+
+    const byEmail = await this.users.findByEmail(email);
+    if (byEmail) {
+      return {
+        status: 403,
+        body: {
+          success: false,
+          code: 'ACCOUNT_EXISTS_PROVIDER_NOT_LINKED',
+          message:
+            'An account already exists with this email. Sign in with your existing method, then connect Google from account settings.',
+        },
+      };
+    }
+
+    const googleSignupIntentToken = getJwtTokenService().generateGoogleSignupIntentToken({
+      googleSub: providerId,
+      email,
+      name: fullName,
+      picture: avatar ?? undefined,
+    });
+
+    return {
+      status: 200,
+      body: {
+        success: true,
+        source: req.source,
+        signupIntent: true,
+        email,
+        fullName,
+        picture: avatar,
+        googleSignupIntentToken,
+      },
+    };
   }
 
   async linkGoogle(req: Request, idToken: string, authenticatedUserId: string) {

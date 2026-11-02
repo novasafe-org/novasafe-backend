@@ -8,6 +8,8 @@ import { getOtpRepository } from '../repositories/otp.repository';
 import { getOtpService } from './otp.service';
 import { AuthResponseService } from './auth-response.service';
 import { sendSignupOTPEmail } from './email.service';
+import { getGoogleAuthProvider } from '../providers/google.provider';
+import { getJwtTokenService } from '../tokens/jwt.token.service';
 
 export class SignUpService {
   constructor(
@@ -152,6 +154,142 @@ export class SignUpService {
         createdAt: now,
         updatedAt: now,
         novasafeEmailVerified: true,
+      });
+    }
+
+    await this.otpRepo.deleteByEmailPurpose(email, OtpPurpose.SignupProof);
+
+    return {
+      status: 201,
+      body: { success: true, source: req.source, message: 'Account created' },
+    };
+  }
+
+  async createGoogleAccount(
+    req: Request,
+    emailRaw: string,
+    fullName: string,
+    password: string,
+    signupProofToken: string | undefined,
+    googleSignupIntentToken: string | undefined,
+    idToken: string | undefined,
+  ) {
+    const email = emailRaw?.toLowerCase().trim();
+    if (!email || !fullName || !password || password.length < authConfig.password.minLength) {
+      return {
+        status: 400,
+        body: { success: false, message: 'email, fullName and strong password are required' },
+      };
+    }
+    if (!signupProofToken?.trim() || !googleSignupIntentToken?.trim() || !idToken?.trim()) {
+      return {
+        status: 403,
+        body: {
+          success: false,
+          code: 'OTP_INVALID',
+          message: 'Email verification and Google sign-up must be completed before creating an account',
+        },
+      };
+    }
+
+    let intent;
+    try {
+      intent = getJwtTokenService().verifyGoogleSignupIntentToken(googleSignupIntentToken.trim());
+    } catch {
+      return {
+        status: 403,
+        body: {
+          success: false,
+          code: 'OAUTH_TRANSACTION_EXPIRED',
+          message: 'Google sign-up expired. Start again with Sign up with Google.',
+        },
+      };
+    }
+
+    if (intent.email !== email) {
+      return {
+        status: 403,
+        body: { success: false, code: 'OAUTH_STATE_INVALID', message: 'Google sign-up does not match this email.' },
+      };
+    }
+
+    try {
+      const payload = await getGoogleAuthProvider().verifyIdToken(idToken.trim());
+      if (payload.sub !== intent.googleSub || payload.email !== intent.email) {
+        return {
+          status: 403,
+          body: { success: false, code: 'GOOGLE_TOKEN_INVALID', message: 'Google identity mismatch.' },
+        };
+      }
+    } catch {
+      return {
+        status: 401,
+        body: { success: false, code: 'GOOGLE_TOKEN_INVALID', message: 'Invalid or expired Google token' },
+      };
+    }
+
+    const proof = await this.otpRepo.findValid(email, OtpPurpose.SignupProof, signupProofToken.trim());
+    if (!proof) {
+      return {
+        status: 403,
+        body: {
+          success: false,
+          code: 'OTP_INVALID',
+          message: 'Invalid or expired email verification. Verify your OTP again.',
+        },
+      };
+    }
+
+    const linked = await this.users.findOAuthUser({
+      $or: [{ provider_id: intent.googleSub }, { googleId: intent.googleSub }],
+    });
+    if (linked) {
+      return {
+        status: 409,
+        body: { success: false, code: 'ACCOUNT_ALREADY_EXISTS', message: 'Google account already registered.' },
+      };
+    }
+
+    const existing = await this.users.findByEmailAny(email);
+    if (existing && existing.deleted !== true) {
+      return { status: 409, body: { success: false, message: 'Email already exists' } };
+    }
+
+    const passwordHash = await bcrypt.hash(password, authConfig.password.bcryptRounds);
+    const now = new Date();
+    const userFields = {
+      email,
+      name: fullName,
+      passwordHash,
+      auth_provider: 'google' as const,
+      provider_id: intent.googleSub,
+      googleId: intent.googleSub,
+      auth_methods: ['google', 'local'],
+      has_password: true,
+      email_verified: true,
+      novasafeEmailVerified: true,
+      isFirstOAuthSignup: true,
+      picture: intent.picture ?? null,
+      avatar_url: intent.picture ?? null,
+      source: 'mobile',
+      twoFactorEnabled: false,
+      cloudSyncEnabled: false,
+      cloudSyncUpdatedAt: now,
+      deleted: false,
+      deletedAt: null,
+      updatedAt: now,
+    };
+
+    if (existing && existing.deleted === true) {
+      await this.users.restoreDeletedAccount(existing._id.toString(), {
+        ...userFields,
+        deleted: false,
+        deletedAt: null,
+      });
+    } else {
+      await this.users.create({
+        ...userFields,
+        createdAt: now,
       });
     }
 

@@ -21,3 +21,19 @@ export const createAccount = async (req: Request, res: Response): Promise<void> 
   const { email, fullName, password, signupProofToken } = req.body || {};
   send(res, await getSignUpService().createAccount(req, email, fullName, password, signupProofToken));
 };
+
+export const createGoogleAccount = async (req: Request, res: Response): Promise<void> => {
+  const { email, fullName, password, signupProofToken, googleSignupIntentToken, idToken } = req.body || {};
+  send(
+    res,
+    await getSignUpService().createGoogleAccount(
+      req,
+      email,
+      fullName,
+      password,
+      signupProofToken,
+      googleSignupIntentToken,
+      idToken,
+    ),
+  );
+};
