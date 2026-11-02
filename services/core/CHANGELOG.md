@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.8
+
+### Changed
+
+feat(auth): Google login vs register vs link (no email auto-merge)
+
 ## v1.1.7
 
 ### Changed
