@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.12
+
+### Changed
+
+feat(auth): password reset verify step and proof token
+
 ## v1.1.11
 
 ### Changed
