@@ -53,7 +53,7 @@ ARG RELEASED_AT
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get upgrade -y \
+    && apt-get dist-upgrade -y \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates
