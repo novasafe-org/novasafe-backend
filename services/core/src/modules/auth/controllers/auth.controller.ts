@@ -167,14 +167,27 @@ export const requestPasswordReset = async (req: Request, res: Response): Promise
   send(res, await getPasswordResetService().requestReset(req, String(req.body?.email || '')));
 };
 
+export const verifyPasswordResetOtp = async (req: Request, res: Response): Promise<void> => {
+  send(
+    res,
+    await getPasswordResetService().verifyOtp(
+      req,
+      String(req.body?.email || ''),
+      String(req.body?.otp || ''),
+    ),
+  );
+};
+
 export const confirmPasswordReset = async (req: Request, res: Response): Promise<void> => {
+  const body = req.body || {};
   send(
     res,
     await getPasswordResetService().confirmReset(
       req,
-      String(req.body?.email || ''),
-      String(req.body?.otp || ''),
-      String(req.body?.newPassword || ''),
+      String(body.email || ''),
+      String(body.newPassword || ''),
+      body.otp ? String(body.otp) : undefined,
+      body.resetProofToken ? String(body.resetProofToken) : undefined,
     ),
   );
 };
