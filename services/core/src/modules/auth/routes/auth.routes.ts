@@ -16,6 +16,7 @@ import {
   createExtensionPairingHandoff,
   redeemExtensionPairing,
   requestPasswordReset,
+  verifyPasswordResetOtp,
   confirmPasswordReset,
   validateSession,
   verifyTwoFactor,
@@ -44,6 +45,7 @@ export const createAuthRoutes = (): Router => {
   router.post('/extension/pairing-handoff', authMiddleware, asyncHandler(createExtensionPairingHandoff));
   router.post('/extension/redeem-pairing', authRateLimiter, asyncHandler(redeemExtensionPairing));
   router.post('/password-reset/request', authRateLimiter, asyncHandler(requestPasswordReset));
+  router.post('/password-reset/verify-otp', authRateLimiter, asyncHandler(verifyPasswordResetOtp));
   router.post('/password-reset/confirm', authRateLimiter, asyncHandler(confirmPasswordReset));
   router.get('/validate-session', sessionOrPendingAuthMiddleware, asyncHandler(validateSession));
 
