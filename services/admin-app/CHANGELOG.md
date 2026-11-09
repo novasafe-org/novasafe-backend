@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.13
+
+### Changed
+
+feat(auth): forgot-password verify step, OTP email templates, and CI base fix
+
 ## v1.1.12
 
 ### Changed
