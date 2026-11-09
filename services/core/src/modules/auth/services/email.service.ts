@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import { authConfig } from '../../../config/auth.config';
 import { logger } from '../../../shared/logger';
+import { renderOtpCodeEmail } from '../email-templates';
 
 let resendClient: Resend | null = null;
 
@@ -40,22 +41,16 @@ export const sendMail = async (
   }
 };
 
-export const sendSignupOTPEmail = async (email: string, otp: string): Promise<boolean> =>
-  sendMail(
-    email,
-    'Your NovaSafe signup OTP',
-    `<div style="font-family:Inter,Segoe UI,Arial,sans-serif;background:#f4f7fb;padding:24px;">
-      <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;padding:28px;border:1px solid #e8edf5;">
-        <h1 style="margin:0 0 8px;color:#0f172a;font-size:24px;">Welcome to NovaSafe</h1>
-        <p style="margin:0 0 18px;color:#475569;">Use this one-time code to complete your sign up.</p>
-        <div style="background:#eef9f7;border:1px solid #c8ece6;color:#0f766e;padding:16px;border-radius:12px;text-align:center;">
-          <span style="font-size:28px;letter-spacing:6px;font-weight:700;">${otp}</span>
-        </div>
-        <p style="color:#64748b;font-size:13px;margin-top:16px;">Code expires in 10 minutes.</p>
-      </div>
-    </div>`,
-    `Your NovaSafe OTP is ${otp}. This code expires in 10 minutes.`,
-  );
+const otpTtlMinutes = () => Math.round(authConfig.otp.ttlMs / 60_000);
+
+export const sendSignupOTPEmail = async (email: string, otp: string): Promise<boolean> => {
+  const { html, text } = renderOtpCodeEmail({
+    variant: 'signup',
+    code: otp,
+    ttlMinutes: otpTtlMinutes(),
+  });
+  return sendMail(email, 'Your NovaSafe signup code', html, text);
+};
 
 export const sendShareInviteEmail = async (
   toEmail: string,
@@ -79,22 +74,14 @@ export const sendShareInviteEmail = async (
     `${senderName} shared ${itemName} with you on NovaSafe. Permission: ${permission}.`,
   );
 
-export const sendPasswordResetEmail = async (email: string, code: string): Promise<boolean> =>
-  sendMail(
-    email,
-    'Reset your NovaSafe password',
-    `<div style="font-family:Inter,Segoe UI,Arial,sans-serif;background:#f4f7fb;padding:24px;">
-      <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;padding:28px;border:1px solid #e8edf5;">
-        <h1 style="margin:0 0 8px;color:#0f172a;font-size:24px;">Password reset</h1>
-        <p style="margin:0 0 18px;color:#475569;">Use this code to set a new password for your account.</p>
-        <div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:16px;border-radius:12px;text-align:center;">
-          <span style="font-size:28px;letter-spacing:6px;font-weight:700;">${code}</span>
-        </div>
-        <p style="color:#64748b;font-size:13px;margin-top:16px;">Code expires in 10 minutes. If you did not request this, ignore this email.</p>
-      </div>
-    </div>`,
-    `Your NovaSafe password reset code is ${code}. This code expires in 10 minutes.`,
-  );
+export const sendPasswordResetEmail = async (email: string, code: string): Promise<boolean> => {
+  const { html, text } = renderOtpCodeEmail({
+    variant: 'password-reset',
+    code,
+    ttlMinutes: otpTtlMinutes(),
+  });
+  return sendMail(email, 'Your NovaSafe password reset code', html, text);
+};
 
 export const sendTwoFactorEmail = async (email: string, code: string): Promise<boolean> =>
   sendMail(
