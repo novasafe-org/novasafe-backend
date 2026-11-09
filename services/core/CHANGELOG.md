@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.10
+
+### Changed
+
+feat(auth): forgot password API, branded OTP emails, and UX hardening
+
 ## v1.1.9
 
 ### Changed
