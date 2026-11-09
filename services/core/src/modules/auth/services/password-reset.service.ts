@@ -26,6 +26,9 @@ export class PasswordResetService {
 
     const user = await this.users.findByEmail(email, true);
     if (!user?.passwordHash) {
+      // Same response as a real send (no account enumeration). No email is sent and
+      // no OTP is stored, so verify/confirm cannot succeed for unknown addresses.
+      await new Promise((resolve) => setTimeout(resolve, 400 + Math.floor(Math.random() * 200)));
       return {
         status: 200,
         body: {

@@ -1,3 +1,4 @@
+import { emailBrandHeaderHtml } from "./branding";
 import { escapeHtml } from "./escape";
 
 export type OtpEmailVariant = "signup" | "password-reset";
@@ -50,6 +51,7 @@ export const renderOtpCodeEmail = ({
   const copy = COPY[variant];
   const safeCode = escapeHtml(code);
   const year = new Date().getFullYear();
+  const brand = emailBrandHeaderHtml();
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -58,7 +60,8 @@ export const renderOtpCodeEmail = ({
       <table role="presentation" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;width:100%;border-collapse:collapse;">
         <tr>
           <td style="background:${NOVASAFE.cardBg};border:1px solid ${NOVASAFE.border};border-radius:16px;overflow:hidden;box-shadow:0 8px 28px rgba(15,23,42,0.06);">
-            <div style="background:linear-gradient(180deg, ${NOVASAFE.primary} 0%, ${NOVASAFE.primaryDark} 100%);padding:20px 28px;text-align:center;">
+            ${brand}
+            <div style="background:linear-gradient(180deg, ${NOVASAFE.primary} 0%, ${NOVASAFE.primaryDark} 100%);padding:20px 28px;text-align:center;margin-top:12px;">
               <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.02em;">${escapeHtml(copy.heading)}</h1>
             </div>
             <div style="padding:28px;">
