@@ -16,7 +16,7 @@ export const COLLECTIONS = {
   subscriptionEvents: 'mobileSubscriptionEvents',
   entitlements: 'mobileEntitlements',
   purchaseHistory: 'mobilePurchaseHistory',
-  /** Reserved for future folder hierarchy (not used in mobile_vault yet). */
+  /** Flat vault folders (one level; items reference via folderId). */
   folders: 'folders',
   /** Reserved for secure notes module. */
   notes: 'notes',

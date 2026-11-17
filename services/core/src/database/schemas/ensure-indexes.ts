@@ -18,6 +18,7 @@ import { applyVaultIndexes } from './vault';
 import {
   CUSTOM_FIELD_MODEL_NAME,
   PASSWORD_HISTORY_MODEL_NAME,
+  VAULT_FOLDER_MODEL_NAME,
   VAULT_ITEM_MODEL_NAME,
 } from './vault';
 import { applyVaultUserIndexes } from './users';
@@ -38,6 +39,7 @@ export const ensureAllSchemaIndexes = async (): Promise<void> => {
     ModelRegistry.get(VAULT_ITEM_MODEL_NAME),
     ModelRegistry.get(PASSWORD_HISTORY_MODEL_NAME),
     ModelRegistry.get(CUSTOM_FIELD_MODEL_NAME),
+    ModelRegistry.get(VAULT_FOLDER_MODEL_NAME),
   );
 
   await applyAuthIndexes(
