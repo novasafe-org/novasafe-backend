@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.11
+
+### Changed
+
+feat(folders): flat vault folders and item folder APIs
+
 ## v1.1.10
 
 ### Changed
