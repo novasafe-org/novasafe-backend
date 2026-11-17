@@ -17,6 +17,8 @@ import {
   CUSTOM_FIELD_MODEL_NAME,
   PasswordHistorySchema,
   PASSWORD_HISTORY_MODEL_NAME,
+  VaultFolderSchema,
+  VAULT_FOLDER_MODEL_NAME,
   VaultItemSchema,
   VAULT_ITEM_MODEL_NAME,
 } from '../schemas/vault';
@@ -56,6 +58,7 @@ export interface ModelRegistration {
 const registrations: ModelRegistration[] = [
   { modelName: VAULT_USER_MODEL_NAME, schema: VaultUserSchema, collection: COLLECTIONS.vaultUsers },
   { modelName: VAULT_ITEM_MODEL_NAME, schema: VaultItemSchema, collection: COLLECTIONS.vaultItems },
+  { modelName: VAULT_FOLDER_MODEL_NAME, schema: VaultFolderSchema, collection: COLLECTIONS.folders },
   { modelName: PASSWORD_HISTORY_MODEL_NAME, schema: PasswordHistorySchema, collection: COLLECTIONS.passwordVersions },
   { modelName: CUSTOM_FIELD_MODEL_NAME, schema: CustomFieldSchema, collection: COLLECTIONS.customFields },
   { modelName: SESSION_MODEL_NAME, schema: SessionSchema, collection: COLLECTIONS.sessions },

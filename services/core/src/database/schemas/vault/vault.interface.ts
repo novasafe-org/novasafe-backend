@@ -55,10 +55,9 @@ export interface ICustomField extends IBaseEntityDocument {
   deleted?: boolean;
 }
 
-/** Future: hierarchical folders (collection reserved). */
+/** Flat folders only (one level per user). */
 export interface IVaultFolder extends IBaseEntityDocument {
   userId: Types.ObjectId;
   name: string;
-  parentId?: Types.ObjectId | null;
   source?: string;
 }

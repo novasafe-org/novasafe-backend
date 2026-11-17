@@ -11,6 +11,7 @@ import {
   getVaultItem,
   getVaultItems,
   getVaultRevision,
+  moveVaultItemFolder,
   updateItemCustomField,
   updateVaultItem,
   vaultBulkSyncUpload,
@@ -25,6 +26,7 @@ export const createVaultRoutes = (): Router => {
   router.get('/items/:id', authMiddleware, getVaultItem);
   router.post('/items', authMiddleware, createVaultItem);
   router.put('/items/:id', authMiddleware, updateVaultItem);
+  router.put('/items/:id/folder', authMiddleware, moveVaultItemFolder);
   router.delete('/items/:id', authMiddleware, deleteVaultItem);
   router.post('/items/:id/custom-fields', authMiddleware, addItemCustomField);
   router.put('/items/:id/custom-fields/:fieldId', authMiddleware, updateItemCustomField);

@@ -12,6 +12,7 @@ import {
   getVaultDataRevisionForUser,
   listItems,
   markPasswordVersionExpired,
+  moveItemToFolder,
   pullSyncDeltaItems,
   updateCustomField,
   updateItemById,
@@ -45,7 +46,16 @@ export const getVaultItems = async (req: Request, res: Response): Promise<void> 
     return;
   }
   const { page, limit } = pagination(req);
-  const { items, total } = await listItems(userId, page, limit);
+  const folderIdRaw = req.query.folderId;
+  const unfiled =
+    String(req.query.unfiled || '') === 'true' ||
+    String(folderIdRaw || '').toLowerCase() === 'none' ||
+    String(folderIdRaw || '').toLowerCase() === 'null';
+  const folderId =
+    !unfiled && typeof folderIdRaw === 'string' && folderIdRaw.trim()
+      ? folderIdRaw.trim()
+      : undefined;
+  const { items, total } = await listItems(userId, page, limit, { folderId, unfiled });
   res.status(200).json({
     success: true,
     source: sendSource(req),
@@ -144,6 +154,45 @@ export const deleteVaultItem = async (req: Request, res: Response): Promise<void
     return;
   }
   res.status(200).json({ success: true, source: sendSource(req), message: 'Item deleted' });
+};
+
+export const moveVaultItemFolder = async (req: Request, res: Response): Promise<void> => {
+  const userId = requireUserId(req);
+  if (!userId) {
+    res.status(401).json({ success: false, message: 'Authentication required' });
+    return;
+  }
+  if (!ObjectId.isValid(req.params.id)) {
+    res.status(400).json({ success: false, message: 'Invalid item id' });
+    return;
+  }
+  const result = await moveItemToFolder(userId, req.params.id, {
+    folderId: req.body?.folderId,
+    newFolderId: req.body?.newFolderId,
+    oldFolderId: req.body?.oldFolderId,
+  });
+  if (!result.ok) {
+    if (result.reason === 'NOT_FOUND') {
+      res.status(404).json({ success: false, message: 'Item not found' });
+      return;
+    }
+    if (result.reason === 'FOLDER_NOT_FOUND') {
+      res.status(404).json({ success: false, code: 'FOLDER_NOT_FOUND', message: 'Folder not found' });
+      return;
+    }
+    res.status(409).json({
+      success: false,
+      code: 'FOLDER_MISMATCH',
+      message: 'Item is not in the expected folder',
+    });
+    return;
+  }
+  res.status(200).json({
+    success: true,
+    source: sendSource(req),
+    message: 'Item moved',
+    data: toMobileItemDetail((result.item || {}) as Record<string, unknown>),
+  });
 };
 
 export const expirePasswordVersion = async (req: Request, res: Response): Promise<void> => {

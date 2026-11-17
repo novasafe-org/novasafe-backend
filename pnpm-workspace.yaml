@@ -9,6 +9,8 @@ allowBuilds:
 overrides:
   core-service>bson: 6.10.4
   core-service>mongodb: 6.20.0
+  core-service>mongoose: 8.24.7
+  mongoose@8.24.0: 8.24.7
   jws@3.2.2: 3.2.3
   jws@4.0.0: 4.0.1
   path-to-regexp@0.1.12: 0.1.13

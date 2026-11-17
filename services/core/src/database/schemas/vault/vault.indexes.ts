@@ -1,10 +1,20 @@
-import type { CustomFieldModel, PasswordHistoryModel, VaultItemModel } from './vault.types';
+import type {
+  CustomFieldModel,
+  PasswordHistoryModel,
+  VaultFolderModel,
+  VaultItemModel,
+} from './vault.types';
 
 export const VAULT_ITEM_INDEX_SPECS = [
   { key: { userId: 1, category: 1 } },
   { key: { userId: 1, folderId: 1 }, sparse: true },
   { key: { userId: 1, createdAt: -1 } },
   { key: { userId: 1, isFavorite: 1 }, sparse: true },
+  { key: { userId: 1, deleted: 1, updatedAt: -1 } },
+] as const;
+
+export const VAULT_FOLDER_INDEX_SPECS = [
+  { key: { userId: 1, name: 1 } },
   { key: { userId: 1, deleted: 1, updatedAt: -1 } },
 ] as const;
 
@@ -22,10 +32,12 @@ export const applyVaultIndexes = async (
   vaultItemModel: VaultItemModel,
   passwordHistoryModel: PasswordHistoryModel,
   customFieldModel: CustomFieldModel,
+  vaultFolderModel?: VaultFolderModel,
 ): Promise<void> => {
   await Promise.all([
     vaultItemModel.syncIndexes(),
     passwordHistoryModel.syncIndexes(),
     customFieldModel.syncIndexes(),
+    vaultFolderModel ? vaultFolderModel.syncIndexes() : Promise.resolve(),
   ]);
 };

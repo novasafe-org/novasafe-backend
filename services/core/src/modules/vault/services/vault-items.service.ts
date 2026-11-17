@@ -8,6 +8,7 @@ import {
   type PasswordVersionRecord,
 } from '../utils/password-version-access';
 import { assertCanCreateVaultItem } from '../../subscriptions/services/subscription.service';
+import { assertFolderOwned } from '../../folders/services/folders.service';
 
 const collection = COLLECTIONS;
 const db = getNativeMongo();
@@ -335,13 +336,35 @@ const replaceCredentialCustomFields = async (
   }
 };
 
-export const listItems = async (userId: string, page: number, limit: number) => {
+export type ListItemsOptions = {
+  folderId?: string | null;
+  /** When true, only items with no folder. */
+  unfiled?: boolean;
+};
+
+export const listItems = async (
+  userId: string,
+  page: number,
+  limit: number,
+  options: ListItemsOptions = {},
+) => {
   const skip = (page - 1) * limit;
-  const query = {
+  const query: Record<string, unknown> = {
     ...userFilter(userId),
     deleted: { $ne: true },
     deleted_at: null,
   };
+
+  if (options.unfiled) {
+    query.$and = [
+      ...(Array.isArray(query.$and) ? (query.$and as object[]) : []),
+      { $or: [{ folderId: null }, { folderId: { $exists: false } }] },
+    ];
+  } else if (options.folderId) {
+    if (ObjectId.isValid(options.folderId)) {
+      query.folderId = new ObjectId(options.folderId);
+    }
+  }
 
   const [items, total] = await Promise.all([
     db.findMany(collection.vaultItems, query, { skip, limit, sort: { updatedAt: -1 } }),
@@ -388,6 +411,14 @@ export const createItem = async (userId: string, payload: any) => {
   const tags = normalizeTags(payload.tags);
   const logoUrl = deriveLogoUrl(normalizedPayload.url, normalizedPayload.title);
   const encrypted = encryptPayload(normalizedPayload);
+
+  // Optional folderId — omitted/null is allowed (no error). Invalid id is ignored → null.
+  let folderId: ObjectId | null = null;
+  if (payload.folderId) {
+    const folderCheck = await assertFolderOwned(userId, String(payload.folderId));
+    folderId = folderCheck.ok ? folderCheck.folderId : null;
+  }
+
   const doc = {
     userId: new ObjectId(userId),
     encrypted_data: encrypted.encrypted_data,
@@ -395,7 +426,7 @@ export const createItem = async (userId: string, payload: any) => {
     authTag: encrypted.authTag,
     category: normalizedPayload.category,
     title: normalizedPayload.title,
-    folderId: payload.folderId ? new ObjectId(payload.folderId) : null,
+    folderId,
     tags,
     logoUrl,
     isFavorite: Boolean(payload.isFavorite),
@@ -465,8 +496,16 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
     field_count: payload.field_count ?? existing.field_count ?? 0,
     attachment_count: payload.attachment_count ?? existing.attachment_count ?? 0,
   };
-  if (payload.folderId !== undefined) {
-    updateData.folderId = payload.folderId ? new ObjectId(payload.folderId) : null;
+  // Replace folder when provided (supports oldFolderId + new folderId).
+  if (payload.folderId !== undefined || payload.newFolderId !== undefined) {
+    const nextFolderRaw =
+      payload.newFolderId !== undefined ? payload.newFolderId : payload.folderId;
+    if (nextFolderRaw === null || nextFolderRaw === '') {
+      updateData.folderId = null;
+    } else {
+      const folderCheck = await assertFolderOwned(userId, String(nextFolderRaw));
+      updateData.folderId = folderCheck.ok ? folderCheck.folderId : existing.folderId ?? null;
+    }
   }
 
   const filter = {
@@ -496,6 +535,55 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
     password_versions: versions,
     custom_fields: customFields,
   };
+};
+
+/** Move item between folders (or to no folder). Accepts oldFolderId + new folderId. */
+export const moveItemToFolder = async (
+  userId: string,
+  id: string,
+  payload: { folderId?: string | null; newFolderId?: string | null; oldFolderId?: string | null },
+) => {
+  const existing: any = await getItemById(userId, id);
+  if (!existing) return { ok: false as const, reason: 'NOT_FOUND' as const };
+
+  const currentFolderId =
+    existing.folderId?.toString?.() || (existing.folderId as string | null) || null;
+
+  if (payload.oldFolderId !== undefined && payload.oldFolderId !== null) {
+    const expected = String(payload.oldFolderId);
+    if ((currentFolderId || '') !== expected) {
+      return { ok: false as const, reason: 'FOLDER_MISMATCH' as const };
+    }
+  } else if (payload.oldFolderId === null && currentFolderId) {
+    return { ok: false as const, reason: 'FOLDER_MISMATCH' as const };
+  }
+
+  const nextRaw = payload.newFolderId !== undefined ? payload.newFolderId : payload.folderId;
+  let nextFolderId: ObjectId | null = null;
+  if (nextRaw !== undefined && nextRaw !== null && nextRaw !== '') {
+    const folderCheck = await assertFolderOwned(userId, String(nextRaw));
+    if (!folderCheck.ok) {
+      return { ok: false as const, reason: 'FOLDER_NOT_FOUND' as const };
+    }
+    nextFolderId = folderCheck.folderId;
+  }
+
+  const filter = {
+    $and: [{ $or: [{ _id: new ObjectId(id) }, { id }] }, userFilter(userId), { deleted: { $ne: true } }],
+  };
+  await db.updateOne(collection.vaultItems, filter, {
+    $set: {
+      folderId: nextFolderId,
+      updatedAt: new Date(),
+      source: 'mobile',
+      sync_status: 'synced',
+      synced_at: new Date(),
+      cloud_version: Number(existing.cloud_version || 0) + 1,
+    },
+  });
+  await bumpVaultDataRevision(userId);
+  const item = await getItemById(userId, id, true);
+  return { ok: true as const, item };
 };
 
 export const deleteItemById = async (userId: string, id: string) => {

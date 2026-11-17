@@ -4,6 +4,7 @@ export {
   applyVaultIndexes,
   CUSTOM_FIELD_INDEX_SPECS,
   PASSWORD_HISTORY_INDEX_SPECS,
+  VAULT_FOLDER_INDEX_SPECS,
   VAULT_ITEM_INDEX_SPECS,
 } from './vault.indexes';
 export {
