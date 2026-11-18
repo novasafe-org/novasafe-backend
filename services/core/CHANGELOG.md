@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.16
+
+### Changed
+
+feat(sharing): vault item sharing APIs for mobile Shared flow
+
 ## v1.1.15
 
 ### Changed
