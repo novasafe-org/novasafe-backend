@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.12
+
+### Changed
+
+feat(folders): persist folder color as hex
+
 ## v1.1.11
 
 ### Changed
