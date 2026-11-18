@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.14
+
+### Changed
+
+fix(ci): exclude *.test.ts from core tsc and drop import.meta
+
 ## v1.1.13
 
 ### Changed
