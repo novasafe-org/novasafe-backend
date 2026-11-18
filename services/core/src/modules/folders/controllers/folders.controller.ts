@@ -45,7 +45,7 @@ export const createFolderHandler = async (req: Request, res: Response): Promise<
     res.status(401).json({ success: false, message: 'Authentication required' });
     return;
   }
-  const result = await createFolder(userId, req.body?.name);
+  const result = await createFolder(userId, req.body?.name, req.body?.color);
   if (!result.ok) {
     const status = result.error.code === 'FOLDER_NAME_EXISTS' ? 409 : 400;
     res.status(status).json({ success: false, code: result.error.code, message: result.error.message });
@@ -64,7 +64,7 @@ export const updateFolderHandler = async (req: Request, res: Response): Promise<
     res.status(400).json({ success: false, message: 'Invalid folder id' });
     return;
   }
-  const result = await updateFolder(userId, req.params.id, req.body?.name);
+  const result = await updateFolder(userId, req.params.id, req.body?.name, req.body?.color);
   if (!result.ok) {
     const status =
       result.error.code === 'FOLDER_NOT_FOUND'

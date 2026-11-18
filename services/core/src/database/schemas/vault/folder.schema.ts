@@ -11,6 +11,8 @@ import type { IVaultFolder } from './vault.interface';
 const folderDefinition = {
   ...userIdField,
   name: { type: String, required: true, trim: true },
+  /** Hex color code for folder tint, e.g. `#E8F0EB`. */
+  color: { type: String, default: null, trim: true },
   ...sourceField,
 };
 
