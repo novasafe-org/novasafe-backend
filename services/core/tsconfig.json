@@ -10,5 +10,5 @@
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/runtimes/**"]
+  "exclude": ["node_modules", "dist", "src/runtimes/**", "src/**/*.test.ts"]
 }
