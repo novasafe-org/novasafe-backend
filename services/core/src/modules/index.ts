@@ -9,6 +9,7 @@ import { registerSubscriptionsModule } from './subscriptions';
 import { registerUsersModule } from './users';
 import { registerVaultModule } from './vault';
 import { registerFoldersModule } from './folders';
+import { registerDocumentsModule } from './documents';
 import { registerStatusPageModule } from './status-page';
 import { registerBlogProxyModule } from './blog-proxy';
 import { registerBlogImagesProxyModule } from './blog-images-proxy';
@@ -27,6 +28,7 @@ export const registerModuleRoutes = (app: Express): void => {
   registerUsersModule(app, prefix);
   registerVaultModule(app, prefix);
   registerFoldersModule(app, prefix);
+  registerDocumentsModule(app, prefix);
   registerSettingsModule(app, prefix);
   registerDashboardModule(app, prefix);
   registerSharingModule(app, prefix);

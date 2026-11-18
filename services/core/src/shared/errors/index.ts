@@ -1,5 +1,5 @@
 /**
- * Application error types and mappers — placeholder.
+ * Application error types — safe for API responses (no upstream leakage).
  */
 
 export class AppError extends Error {
@@ -10,5 +10,13 @@ export class AppError extends Error {
   ) {
     super(message);
     this.name = 'AppError';
+  }
+
+  toJSON() {
+    return {
+      success: false as const,
+      code: this.code,
+      message: this.message,
+    };
   }
 }

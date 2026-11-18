@@ -36,6 +36,8 @@ export const COLLECTIONS = {
   statusSnapshots: 'service_status_snapshots',
   /** Feature flag overrides (written by admin-api, read by mobile-api). */
   featureFlags: 'feature_flags',
+  /** Platform metadata — encrypted NAS agent auth token (exact Mongo collection name). */
+  novaSafeMetadata: 'NovaSafe metadata',
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
