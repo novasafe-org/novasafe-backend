@@ -17,6 +17,7 @@ import {
   updateCustomField,
   updateItemById,
 } from '../services/vault-items.service';
+import { findShareAccessForItem } from '../../sharing/services/sharing.service';
 import { toMobileItemDetail, toMobileItemSummary } from '../utils/mobile-item.formatter';
 
 const pagination = (req: Request) => {
@@ -75,7 +76,20 @@ export const getVaultItem = async (req: Request, res: Response): Promise<void> =
     return;
   }
   const revealSensitive = String(req.query.revealSensitive || 'false') === 'true';
-  const item = await getItemById(userId, req.params.id, revealSensitive);
+  let item = await getItemById(userId, req.params.id, revealSensitive);
+  let sharedPermission: string | undefined;
+  if (!item) {
+    const access = await findShareAccessForItem(
+      userId,
+      req.user?.email || '',
+      req.params.id,
+      'view',
+    );
+    if (access?.ownerUserId) {
+      item = await getItemById(access.ownerUserId, req.params.id, revealSensitive);
+      sharedPermission = access.permissionLabel;
+    }
+  }
   if (!item) {
     res.status(404).json({ success: false, message: 'Item not found' });
     return;
@@ -83,6 +97,7 @@ export const getVaultItem = async (req: Request, res: Response): Promise<void> =
   res.status(200).json({
     success: true,
     source: sendSource(req),
+    ...(sharedPermission ? { sharedPermission, shared: true } : {}),
     data: toMobileItemDetail(item as Record<string, unknown>),
   });
 };
@@ -126,7 +141,18 @@ export const updateVaultItem = async (req: Request, res: Response): Promise<void
     res.status(400).json({ success: false, message: 'Invalid item id' });
     return;
   }
-  const item = await updateItemById(userId, req.params.id, req.body || {});
+  let item = await updateItemById(userId, req.params.id, req.body || {});
+  if (!item) {
+    const access = await findShareAccessForItem(
+      userId,
+      req.user?.email || '',
+      req.params.id,
+      'edit',
+    );
+    if (access?.ownerUserId) {
+      item = await updateItemById(access.ownerUserId, req.params.id, req.body || {});
+    }
+  }
   if (!item) {
     res.status(404).json({ success: false, message: 'Item not found' });
     return;
