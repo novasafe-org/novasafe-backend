@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.17
+
+### Changed
+
+fix: share create 500 and invite emails
+
 ## v1.1.16
 
 ### Changed
