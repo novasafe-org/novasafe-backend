@@ -197,6 +197,9 @@ importers:
       mongoose:
         specifier: 8.24.7
         version: 8.24.7(socks@2.8.7)
+      multer:
+        specifier: ^2.5.0
+        version: 2.5.0
       picocolors:
         specifier: ^1.1.1
         version: 1.1.1
@@ -222,6 +225,9 @@ importers:
       '@types/jsonwebtoken':
         specifier: ^9.0.5
         version: 9.0.10
+      '@types/multer':
+        specifier: ^1.4.13
+        version: 1.4.13
       '@types/node':
         specifier: ^20.10.0
         version: 20.19.29

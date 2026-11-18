@@ -11,4 +11,5 @@ export * from './audit';
 export * from './notes';
 export * from './documents';
 export * from './notifications';
+export * from './nova-safe-metadata';
 export { ensureAllSchemaIndexes } from './ensure-indexes';

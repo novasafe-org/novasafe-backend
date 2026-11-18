@@ -48,6 +48,14 @@ import {
   DeviceSchema,
   DEVICE_MODEL_NAME,
 } from '../schemas/devices';
+import {
+  NovaSafeMetadataSchema,
+  NOVA_SAFE_METADATA_MODEL_NAME,
+} from '../schemas/nova-safe-metadata';
+import {
+  DocumentSchema,
+  DOCUMENT_MODEL_NAME,
+} from '../schemas/documents';
 
 export interface ModelRegistration {
   modelName: string;
@@ -72,6 +80,12 @@ const registrations: ModelRegistration[] = [
   { modelName: PURCHASE_HISTORY_MODEL_NAME, schema: PurchaseHistorySchema, collection: COLLECTIONS.purchaseHistory },
   { modelName: ENTITLEMENT_RECORD_MODEL_NAME, schema: EntitlementRecordSchema, collection: COLLECTIONS.entitlements },
   { modelName: AUDIT_LOG_MODEL_NAME, schema: AuditLogSchema, collection: COLLECTIONS.auditLogs },
+  {
+    modelName: NOVA_SAFE_METADATA_MODEL_NAME,
+    schema: NovaSafeMetadataSchema,
+    collection: COLLECTIONS.novaSafeMetadata,
+  },
+  { modelName: DOCUMENT_MODEL_NAME, schema: DocumentSchema, collection: COLLECTIONS.documents },
 ];
 
 /**
