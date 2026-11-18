@@ -32,9 +32,21 @@ export type FolderConflictError = {
   message: string;
 };
 
+const HEX_COLOR_RE = /^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})$/;
+
+export const normalizeFolderColor = (raw: unknown): string | null => {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const value = String(raw).trim();
+  if (!HEX_COLOR_RE.test(value)) return null;
+  return value.length === 4
+    ? `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toUpperCase()
+    : value.toUpperCase();
+};
+
 export const toFolderResponse = (folder: Record<string, unknown>, itemCount = 0) => ({
   id: String((folder as { _id?: { toString?: () => string } })._id?.toString?.() || folder.id || ''),
   name: String(folder.name || ''),
+  color: normalizeFolderColor(folder.color),
   itemCount,
   createdAt: folder.createdAt,
   updatedAt: folder.updatedAt,
@@ -98,13 +110,24 @@ export const assertFolderOwned = async (userId: string, folderId: string | null 
   return { ok: true as const, folderId: new ObjectId(folderId) };
 };
 
-export const createFolder = async (userId: string, name: string) => {
+export const createFolder = async (userId: string, name: string, colorRaw?: unknown) => {
   const trimmed = String(name || '').trim();
   if (!trimmed) {
     return {
       ok: false as const,
       error: { code: 'INVALID_FOLDER' as const, message: 'Folder name is required' },
     };
+  }
+
+  let color: string | null = null;
+  if (colorRaw !== undefined && colorRaw !== null && String(colorRaw).trim() !== '') {
+    color = normalizeFolderColor(colorRaw);
+    if (!color) {
+      return {
+        ok: false as const,
+        error: { code: 'INVALID_FOLDER' as const, message: 'color must be a hex value like #E8F0EB' },
+      };
+    }
   }
 
   const existing = await db.findOne(
@@ -122,6 +145,7 @@ export const createFolder = async (userId: string, name: string) => {
   const doc = {
     userId: new ObjectId(userId),
     name: trimmed,
+    color,
     source: 'mobile',
     createdAt: now,
     updatedAt: now,
@@ -137,7 +161,12 @@ export const createFolder = async (userId: string, name: string) => {
   };
 };
 
-export const updateFolder = async (userId: string, id: string, name: string) => {
+export const updateFolder = async (
+  userId: string,
+  id: string,
+  name: string,
+  colorRaw?: unknown,
+) => {
   if (!ObjectId.isValid(id)) {
     return {
       ok: false as const,
@@ -175,10 +204,30 @@ export const updateFolder = async (userId: string, id: string, name: string) => 
     };
   }
 
+  const update: Record<string, unknown> = {
+    name: trimmed,
+    updatedAt: new Date(),
+    source: 'mobile',
+  };
+  if (colorRaw !== undefined) {
+    if (colorRaw === null || String(colorRaw).trim() === '') {
+      update.color = null;
+    } else {
+      const color = normalizeFolderColor(colorRaw);
+      if (!color) {
+        return {
+          ok: false as const,
+          error: { code: 'INVALID_FOLDER' as const, message: 'color must be a hex value like #E8F0EB' },
+        };
+      }
+      update.color = color;
+    }
+  }
+
   await db.updateOne(
     COLLECTIONS.folders,
     { _id: new ObjectId(id), ...userFilter(userId) },
-    { $set: { name: trimmed, updatedAt: new Date(), source: 'mobile' } },
+    { $set: update },
   );
   await bumpVaultDataRevision(userId);
   const updated = await getFolderById(userId, id);

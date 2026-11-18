@@ -59,5 +59,7 @@ export interface ICustomField extends IBaseEntityDocument {
 export interface IVaultFolder extends IBaseEntityDocument {
   userId: Types.ObjectId;
   name: string;
+  /** Folder tint as hex, e.g. `#E8F0EB`. */
+  color?: string | null;
   source?: string;
 }
