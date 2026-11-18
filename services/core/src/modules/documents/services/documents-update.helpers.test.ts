@@ -1,8 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { ObjectId } from '../../../database/object-id';
 import { StorageError, StorageErrorCodes } from '../../../shared/storage';
 import {
@@ -10,7 +9,8 @@ import {
   prepareDocumentMetadataUpdate,
 } from './documents-update.helpers';
 
-const here = dirname(fileURLToPath(import.meta.url));
+/** Paths relative to services/core (node:test cwd). Avoids import.meta for CommonJS tsc. */
+const docsRoot = join(process.cwd(), 'src/modules/documents');
 const validId = new ObjectId().toHexString();
 const validFolderId = new ObjectId().toHexString();
 
@@ -69,12 +69,12 @@ describe('prepareDocumentMetadataUpdate', () => {
 
 describe('documents update route wiring (static)', () => {
   it('registers PUT and PATCH /:id without calling storage in updateDocument source', () => {
-    const routesSrc = readFileSync(join(here, '../routes/documents.routes.ts'), 'utf8');
+    const routesSrc = readFileSync(join(docsRoot, 'routes/documents.routes.ts'), 'utf8');
     assert.match(routesSrc, /router\.put\('\/:id'/);
     assert.match(routesSrc, /router\.patch\('\/:id'/);
     assert.match(routesSrc, /updateDocumentHandler/);
 
-    const serviceSrc = readFileSync(join(here, './documents.service.ts'), 'utf8');
+    const serviceSrc = readFileSync(join(docsRoot, 'services/documents.service.ts'), 'utf8');
     const updateBlock = serviceSrc.slice(
       serviceSrc.indexOf('export const updateDocument'),
       serviceSrc.indexOf('export const downloadDocument'),
@@ -86,7 +86,7 @@ describe('documents update route wiring (static)', () => {
 
 describe('updateDocumentHandler response shape (static)', () => {
   it('returns success + data JSON on update handler', () => {
-    const controllerSrc = readFileSync(join(here, '../controllers/documents.controller.ts'), 'utf8');
+    const controllerSrc = readFileSync(join(docsRoot, 'controllers/documents.controller.ts'), 'utf8');
     assert.match(controllerSrc, /export const updateDocumentHandler/);
     assert.match(
       controllerSrc,
