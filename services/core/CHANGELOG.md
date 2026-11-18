@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.15
+
+### Changed
+
+fix(documents): resolve upload MIME from filename when generic
+
 ## v1.1.14
 
 ### Changed
