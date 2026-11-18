@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.13
+
+### Changed
+
+feat(documents): NAS-backed storage and document update APIs
+
 ## v1.1.12
 
 ### Changed
