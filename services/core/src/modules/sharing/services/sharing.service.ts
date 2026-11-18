@@ -268,18 +268,20 @@ const loadOwnedVaultItem = async (userId: string, resourceId: string) => {
 const buildRecipients = async (emails: string[]) => {
   const users = getUserRepository();
   const now = new Date();
-  const recipients = [];
+  const recipients: Array<Record<string, unknown>> = [];
   for (const email of emails) {
     const user = await users.findByEmail(email);
     const isNovaSafeUser = Boolean(user);
+    // Registered users must OMIT accessToken (not null). A unique sparse index on
+    // recipients.accessToken treats explicit null as a value and breaks share create.
     recipients.push({
       _id: new ObjectId(),
       email,
       userId: user ? new ObjectId(user._id.toString()) : null,
       displayName: user?.name || null,
       isNovaSafeUser,
-      accessToken: isNovaSafeUser ? null : generateAccessToken(),
-      status: isNovaSafeUser ? ShareRecipientStatus.Pending : ShareRecipientStatus.Pending,
+      ...(isNovaSafeUser ? {} : { accessToken: generateAccessToken() }),
+      status: ShareRecipientStatus.Pending,
       invitedAt: now,
       acceptedAt: null,
       revokedAt: null,
@@ -349,11 +351,42 @@ export const createShares = async (params: {
       };
     }
     const itemName = String((item as any).title || 'Vault item');
-    const recipientsCopy = recipients.map((r) => ({
-      ...r,
-      _id: new ObjectId(),
-      accessToken: r.isNovaSafeUser ? null : generateAccessToken(),
-    }));
+    const recipientsCopy = recipients.map((r) => {
+      const isNovaSafeUser = Boolean(r.isNovaSafeUser);
+      const { accessToken: _drop, ...rest } = r;
+      const copy: {
+        _id: ObjectId;
+        email: string;
+        userId: ObjectId | null;
+        displayName: string | null;
+        isNovaSafeUser: boolean;
+        accessToken?: string;
+        status: string;
+        invitedAt: Date;
+        acceptedAt: null;
+        revokedAt: null;
+        suspendedAt: null;
+        lastAccessedAt: null;
+      } = {
+        ...(rest as Omit<typeof r, 'accessToken'>),
+        _id: new ObjectId(),
+        email: String(r.email),
+        userId: (r.userId as ObjectId | null) ?? null,
+        displayName: (r.displayName as string | null) ?? null,
+        isNovaSafeUser,
+        status: ShareRecipientStatus.Pending,
+        invitedAt: (r.invitedAt as Date) || now,
+        acceptedAt: null,
+        revokedAt: null,
+        suspendedAt: null,
+        lastAccessedAt: null,
+      };
+      // Guests only: unique web-access token. Never persist null for registered users.
+      if (!isNovaSafeUser) {
+        copy.accessToken = generateAccessToken();
+      }
+      return copy;
+    });
 
     const record = {
       resourceId: new ObjectId(resourceId),
@@ -383,16 +416,23 @@ export const createShares = async (params: {
     const result = await col().insertOne(record);
     const saved = { ...record, _id: result.insertedId };
 
-    for (const recipient of recipientsCopy) {
-      const link = recipient.accessToken ? accessUrlForToken(recipient.accessToken) : undefined;
-      await sendShareInviteEmail(
-        recipient.email,
-        record.senderName,
-        itemName,
-        permissionLabel(permission),
-        link,
-      );
-    }
+    // Email every recipient (guest = web link, registered = in-app Shared instructions).
+    // sendShareInviteEmail never throws; run in parallel so one slow send doesn't serialize create.
+    const openInAppUrl = `${shareWebBase()}/shared`;
+    await Promise.all(
+      recipientsCopy.map((recipient) => {
+        const token = typeof recipient.accessToken === 'string' ? recipient.accessToken : undefined;
+        const webLink = token ? accessUrlForToken(token) : undefined;
+        return sendShareInviteEmail(
+          String(recipient.email),
+          record.senderName,
+          itemName,
+          permissionLabel(permission),
+          webLink,
+          recipient.isNovaSafeUser ? openInAppUrl : undefined,
+        );
+      }),
+    );
 
     created.push(toShareSummary(saved));
   }

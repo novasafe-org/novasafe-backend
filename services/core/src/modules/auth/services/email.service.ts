@@ -52,17 +52,33 @@ export const sendSignupOTPEmail = async (email: string, otp: string): Promise<bo
   return sendMail(email, 'Your NovaSafe signup code', html, text);
 };
 
+/**
+ * Share invite mail for both recipient types:
+ * - Guest (`accessUrl`): web link CTA to open the shared item.
+ * - Registered NovaSafe user (`openInAppUrl`): link + instructions to open Shared → With me in the app.
+ */
 export const sendShareInviteEmail = async (
   toEmail: string,
   senderName: string,
   itemName: string,
   permission: string,
   accessUrl?: string,
+  openInAppUrl?: string,
 ): Promise<boolean> => {
   const linkBlock = accessUrl
     ? `<p style="margin:18px 0 0;"><a href="${accessUrl}" style="display:inline-block;background:#0f766e;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:600;">Open shared item</a></p>
-        <p style="margin:10px 0 0;color:#64748b;font-size:12px;">Or paste this link: ${accessUrl}</p>`
-    : `<p style="margin:18px 0 0;color:#475569;">Open the NovaSafe app and check <b>Shared → With me</b> to accept this item.</p>`;
+        <p style="margin:10px 0 0;color:#64748b;font-size:12px;">Or paste this link: ${accessUrl}</p>
+        <p style="margin:12px 0 0;color:#475569;font-size:13px;">You don’t need a NovaSafe account — this secure web link opens the shared item.</p>`
+    : `<p style="margin:18px 0 0;color:#475569;">Open the NovaSafe app and go to <b>Shared → With me</b> to accept this item.</p>
+        ${
+          openInAppUrl
+            ? `<p style="margin:18px 0 0;"><a href="${openInAppUrl}" style="display:inline-block;background:#0f766e;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:600;">Open Shared in NovaSafe</a></p>
+        <p style="margin:10px 0 0;color:#64748b;font-size:12px;">Or paste this link: ${openInAppUrl}</p>`
+            : ''
+        }`;
+  const textTail = accessUrl
+    ? ` Open this secure web link: ${accessUrl}`
+    : ` Open NovaSafe → Shared → With me to accept.${openInAppUrl ? ` Or visit: ${openInAppUrl}` : ''}`;
   return sendMail(
     toEmail,
     `${senderName} shared an item with you on NovaSafe`,
@@ -77,9 +93,7 @@ export const sendShareInviteEmail = async (
         ${linkBlock}
       </div>
     </div>`,
-    `${senderName} shared ${itemName} with you on NovaSafe. Permission: ${permission}.${
-      accessUrl ? ` Open: ${accessUrl}` : ' Open NovaSafe → Shared → With me to accept.'
-    }`,
+    `${senderName} shared ${itemName} with you on NovaSafe. Permission: ${permission}.${textTail}`,
   );
 };
 

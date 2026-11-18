@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../auth';
+import { asyncHandler } from '../../../middleware/async-handler';
 import {
   acceptShareInvite,
   createShare,
@@ -19,22 +20,35 @@ import {
 export const createShareRoutes = (): Router => {
   const router = Router();
 
-  router.get('/list', authMiddleware, listShares);
-  router.post('/resolve-recipients', authMiddleware, resolveShareRecipients);
-  router.post('/create', authMiddleware, createShare);
+  // asyncHandler so create/email failures reach Express error middleware (not bare API GW 500s).
+  router.get('/list', authMiddleware, asyncHandler(listShares));
+  router.post('/resolve-recipients', authMiddleware, asyncHandler(resolveShareRecipients));
+  router.post('/create', authMiddleware, asyncHandler(createShare));
   /** Legacy path used by older clients / web. */
-  router.post('/send', authMiddleware, sendShareInvite);
+  router.post('/send', authMiddleware, asyncHandler(sendShareInvite));
 
-  router.get('/access/:token', publicAccessByToken);
+  router.get('/access/:token', asyncHandler(publicAccessByToken));
 
-  router.get('/:shareId', authMiddleware, getShare);
-  router.post('/:shareId/revoke-all', authMiddleware, revokeShareAll);
-  router.post('/:shareId/accept', authMiddleware, acceptShareInvite);
-  router.post('/:shareId/decline', authMiddleware, declineShareInvite);
-  router.post('/:shareId/touch', authMiddleware, openReceivedShare);
-  router.post('/:shareId/recipients/:recipientId/revoke', authMiddleware, revokeShareRecipient);
-  router.post('/:shareId/recipients/:recipientId/suspend', authMiddleware, suspendShareRecipient);
-  router.post('/:shareId/recipients/:recipientId/unsuspend', authMiddleware, unsuspendShareRecipient);
+  router.get('/:shareId', authMiddleware, asyncHandler(getShare));
+  router.post('/:shareId/revoke-all', authMiddleware, asyncHandler(revokeShareAll));
+  router.post('/:shareId/accept', authMiddleware, asyncHandler(acceptShareInvite));
+  router.post('/:shareId/decline', authMiddleware, asyncHandler(declineShareInvite));
+  router.post('/:shareId/touch', authMiddleware, asyncHandler(openReceivedShare));
+  router.post(
+    '/:shareId/recipients/:recipientId/revoke',
+    authMiddleware,
+    asyncHandler(revokeShareRecipient),
+  );
+  router.post(
+    '/:shareId/recipients/:recipientId/suspend',
+    authMiddleware,
+    asyncHandler(suspendShareRecipient),
+  );
+  router.post(
+    '/:shareId/recipients/:recipientId/unsuspend',
+    authMiddleware,
+    asyncHandler(unsuspendShareRecipient),
+  );
 
   return router;
 };
