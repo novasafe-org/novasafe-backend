@@ -20,6 +20,62 @@ const sendAppError = (res: Response, err: unknown): boolean => {
   return false;
 };
 
+const isGenericMime = (mime?: string | null): boolean => {
+  const m = (mime || '').trim().toLowerCase();
+  return !m || m === 'application/octet-stream' || m === 'binary/octet-stream';
+};
+
+const mimeFromFilename = (filename: string): string | undefined => {
+  const ext = filename.includes('.') ? filename.split('.').pop()!.toLowerCase() : '';
+  switch (ext) {
+    case 'pdf':
+      return 'application/pdf';
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'heic':
+      return 'image/heic';
+    case 'bmp':
+      return 'image/bmp';
+    case 'txt':
+    case 'log':
+      return 'text/plain';
+    case 'md':
+      return 'text/markdown';
+    case 'csv':
+      return 'text/csv';
+    case 'doc':
+      return 'application/msword';
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'xls':
+      return 'application/vnd.ms-excel';
+    case 'xlsx':
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    case 'zip':
+      return 'application/zip';
+    default:
+      return undefined;
+  }
+};
+
+/** Prefer concrete MIME from body/part; fall back to extension so PDFs are not stored as octet-stream. */
+const resolveUploadMimeType = (
+  partMime: string | undefined,
+  filename: string,
+  bodyMime?: string,
+): string => {
+  if (bodyMime && !isGenericMime(bodyMime)) return bodyMime;
+  if (partMime && !isGenericMime(partMime)) return partMime;
+  return mimeFromFilename(filename) || partMime || 'application/octet-stream';
+};
+
 export const getDocuments = async (req: Request, res: Response): Promise<void> => {
   const userId = requireUserId(req);
   if (!userId) {
@@ -82,10 +138,17 @@ export const uploadDocumentHandler = async (req: Request, res: Response): Promis
         ? req.body.folderId.trim()
         : null;
 
+    const filename = file.originalname || 'upload.bin';
+    const bodyMime =
+      typeof req.body?.mimeType === 'string' && req.body.mimeType.trim()
+        ? req.body.mimeType.trim()
+        : undefined;
+    const mimeType = resolveUploadMimeType(file.mimetype, filename, bodyMime);
+
     const data = await uploadDocument(userId, {
       title,
-      filename: file.originalname || 'upload.bin',
-      mimeType: file.mimetype,
+      filename,
+      mimeType,
       buffer: file.buffer,
       folderId,
     });
