@@ -57,8 +57,13 @@ export const sendShareInviteEmail = async (
   senderName: string,
   itemName: string,
   permission: string,
-): Promise<boolean> =>
-  sendMail(
+  accessUrl?: string,
+): Promise<boolean> => {
+  const linkBlock = accessUrl
+    ? `<p style="margin:18px 0 0;"><a href="${accessUrl}" style="display:inline-block;background:#0f766e;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:600;">Open shared item</a></p>
+        <p style="margin:10px 0 0;color:#64748b;font-size:12px;">Or paste this link: ${accessUrl}</p>`
+    : `<p style="margin:18px 0 0;color:#475569;">Open the NovaSafe app and check <b>Shared → With me</b> to accept this item.</p>`;
+  return sendMail(
     toEmail,
     `${senderName} shared an item with you on NovaSafe`,
     `<div style="font-family:Inter,Segoe UI,Arial,sans-serif;background:#f4f7fb;padding:24px;">
@@ -69,10 +74,14 @@ export const sendShareInviteEmail = async (
           <p style="margin:0;color:#0f172a;"><b>Item:</b> ${itemName}</p>
           <p style="margin:8px 0 0;color:#334155;"><b>Permission:</b> ${permission}</p>
         </div>
+        ${linkBlock}
       </div>
     </div>`,
-    `${senderName} shared ${itemName} with you on NovaSafe. Permission: ${permission}.`,
+    `${senderName} shared ${itemName} with you on NovaSafe. Permission: ${permission}.${
+      accessUrl ? ` Open: ${accessUrl}` : ' Open NovaSafe → Shared → With me to accept.'
+    }`,
   );
+};
 
 export const sendPasswordResetEmail = async (email: string, code: string): Promise<boolean> => {
   const { html, text } = renderOtpCodeEmail({
