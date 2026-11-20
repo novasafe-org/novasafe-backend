@@ -91,14 +91,24 @@ const toRecipientDto = (r: any) => ({
   hasWebLink: Boolean(r.accessToken) && !r.isNovaSafeUser,
 });
 
+const recipientStatusesForSummary = (shareStatus: string) => {
+  const base = [
+    ShareRecipientStatus.Pending,
+    ShareRecipientStatus.Active,
+    ShareRecipientStatus.Suspended,
+  ];
+  // Fully revoked shares must still expose recipient names in list/detail DTOs.
+  if (shareStatus === ShareStatus.Revoked) {
+    return [...base, ShareRecipientStatus.Revoked];
+  }
+  return base;
+};
+
 const toShareSummary = (doc: any) => {
   const share = maybeMarkExpired(doc);
   const recipients = Array.isArray(share.recipients) ? share.recipients : [];
-  const visible = recipients.filter((r: any) =>
-    [ShareRecipientStatus.Pending, ShareRecipientStatus.Active, ShareRecipientStatus.Suspended].includes(
-      r.status,
-    ),
-  );
+  const allowed = recipientStatusesForSummary(String(share.status || ''));
+  const visible = recipients.filter((r: any) => allowed.includes(r.status));
   const names = visible.map((r: any) => r.displayName || r.email).filter(Boolean);
   const preview = names.slice(0, 2);
   const overflow = Math.max(0, names.length - preview.length);
@@ -445,24 +455,30 @@ export const createShares = async (params: {
   };
 };
 
-/** Group sent shares by resourceId for By me cards. */
-export const listSentShares = async (senderId: string) => {
-  const docs = await col()
-    .find(
-      activeShareFilter({
-        senderId: new ObjectId(senderId),
-        status: { $in: [ShareStatus.Active, ShareStatus.Expired] },
-      }),
-    )
-    .sort({ createdAt: -1 })
-    .limit(100)
-    .toArray();
+const SENT_LIST_STATUSES_DEFAULT = [
+  ShareStatus.Active,
+  ShareStatus.Expired,
+  ShareStatus.Revoked,
+] as const;
 
+const parseSentStatusFilter = (status?: string): string[] => {
+  const raw = String(status || '')
+    .trim()
+    .toLowerCase();
+  if (!raw || raw === 'all') return [...SENT_LIST_STATUSES_DEFAULT];
+  if (raw === ShareStatus.Active) return [ShareStatus.Active];
+  if (raw === ShareStatus.Expired) return [ShareStatus.Expired];
+  if (raw === ShareStatus.Revoked) return [ShareStatus.Revoked];
+  // Unknown value → default (include revoked) so clients never lose revoked rows by typo.
+  return [...SENT_LIST_STATUSES_DEFAULT];
+};
+
+const groupSentSharesByResource = (docs: any[], revokedBucket: boolean) => {
   const byResource = new Map<string, any[]>();
   for (const doc of docs) {
     const key = doc.resourceId?.toString?.() || String(doc.resourceId);
     const list = byResource.get(key) || [];
-    list.push(maybeMarkExpired(doc));
+    list.push(doc);
     byResource.set(key, list);
   }
 
@@ -473,20 +489,15 @@ export const listSentShares = async (senderId: string) => {
     const seen = new Set<string>();
     let lastAccessedAt: Date | null = primary.lastAccessedAt || null;
     let expiresAt: Date | null = primary.expiresAt || null;
+    const allowedRecipientStatuses = recipientStatusesForSummary(
+      revokedBucket ? ShareStatus.Revoked : String(primary.status || ''),
+    );
 
     for (const share of shares) {
       for (const r of share.recipients || []) {
         const email = String(r.email || '').toLowerCase();
         if (!email || seen.has(email)) continue;
-        if (
-          ![
-            ShareRecipientStatus.Pending,
-            ShareRecipientStatus.Active,
-            ShareRecipientStatus.Suspended,
-          ].includes(r.status)
-        ) {
-          continue;
-        }
+        if (!allowedRecipientStatuses.includes(r.status)) continue;
         seen.add(email);
         allRecipients.push(r);
       }
@@ -507,7 +518,7 @@ export const listSentShares = async (senderId: string) => {
       itemName: primary.itemName,
       permission: primary.permission,
       permissionLabel: permissionLabel(primary.permission),
-      status: primary.status,
+      status: revokedBucket ? ShareStatus.Revoked : primary.status,
       expiresAt,
       lastAccessedAt,
       recipientCount: allRecipients.length,
@@ -519,6 +530,39 @@ export const listSentShares = async (senderId: string) => {
       updatedAt: primary.updatedAt,
     });
   }
+  return grouped;
+};
+
+/** Group sent shares by resourceId for By me cards (active/expired + revoked). */
+export const listSentShares = async (
+  senderId: string,
+  options?: { status?: string },
+) => {
+  const statuses = parseSentStatusFilter(options?.status);
+  const docs = await col()
+    .find(
+      activeShareFilter({
+        senderId: new ObjectId(senderId),
+        status: { $in: statuses },
+      }),
+    )
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .toArray();
+
+  const activeOrExpired: any[] = [];
+  const revoked: any[] = [];
+  for (const doc of docs) {
+    const marked = maybeMarkExpired(doc);
+    if (marked.status === ShareStatus.Revoked) revoked.push(marked);
+    else activeOrExpired.push(marked);
+  }
+
+  // Keep revoked cards separate so they don't merge into a newer active share of the same item.
+  const grouped = [
+    ...groupSentSharesByResource(activeOrExpired, false),
+    ...groupSentSharesByResource(revoked, true),
+  ];
 
   grouped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return grouped;
