@@ -136,7 +136,11 @@ export const listShares = async (req: Request, res: Response): Promise<void> => 
     res.status(200).json({ success: true, source: source(req), shares });
     return;
   }
-  const shares = await listSentShares(user.id);
+  const status =
+    req.query.status != null && String(req.query.status).trim() !== ''
+      ? String(req.query.status)
+      : undefined;
+  const shares = await listSentShares(user.id, { status });
   res.status(200).json({ success: true, source: source(req), shares });
 };
 
