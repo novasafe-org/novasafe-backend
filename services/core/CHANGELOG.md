@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.18
+
+### Changed
+
+feat(sharing): include revoked shares in sent list
+
 ## v1.1.17
 
 ### Changed
