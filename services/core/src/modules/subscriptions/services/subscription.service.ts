@@ -11,9 +11,11 @@ import {
   defaultSubscriptionState,
   hasEntitlement,
   isProFromState,
+  withAppFreeOverride,
   withTierEntitlements,
 } from "../revenuecat/subscriptionStateMapper";
 import {
+  findVaultUserById,
   getPersistedSubscriptionState,
   listPurchaseHistoryForUser,
   listSubscriptionEventsForUser,
@@ -27,14 +29,50 @@ const db = getNativeMongo();
 export { ensureSubscriptionIndexes };
 export { processRevenueCatWebhook } from "../revenuecat/revenueCatWebhookProcessor";
 
+async function isUserAppFreeOverride(userId: string): Promise<boolean> {
+  const user = await findVaultUserById(userId);
+  return Boolean(user && (user as { appFreeOverride?: boolean }).appFreeOverride === true);
+}
+
+/**
+ * Merge vaultUsers.appFreeOverride into a resolved subscription state (read-time only).
+ * Ensures maxDocuments is always present for older persisted free/pro states.
+ */
+export async function applyAppFreeOverrideForUser(
+  userId: string,
+  state: SubscriptionState,
+): Promise<SubscriptionState> {
+  if (await isUserAppFreeOverride(userId)) {
+    return withAppFreeOverride(state);
+  }
+  const limits = state.limits ?? {
+    maxPasswords: SUBSCRIPTION_CONFIG.freeLimits.maxPasswords,
+    maxSecureNotes: SUBSCRIPTION_CONFIG.freeLimits.maxSecureNotes,
+    maxDevices: SUBSCRIPTION_CONFIG.freeLimits.maxDevices,
+    maxDocuments: SUBSCRIPTION_CONFIG.freeLimits.maxDocuments,
+  };
+  return {
+    ...state,
+    appFreeOverride: false,
+    limits: {
+      ...limits,
+      maxDocuments:
+        limits.maxDocuments ??
+        (state.isPro
+          ? Number.MAX_SAFE_INTEGER
+          : SUBSCRIPTION_CONFIG.freeLimits.maxDocuments),
+    },
+  };
+}
+
 export async function getSubscriptionStateForUser(
   userId: string,
   options?: { forceRefresh?: boolean },
 ): Promise<SubscriptionState> {
-  if (options?.forceRefresh) {
-    return refreshSubscriptionStateFromRevenueCat(userId);
-  }
-  return getPersistedSubscriptionStateForUser(userId);
+  const base = options?.forceRefresh
+    ? await refreshSubscriptionStateFromRevenueCat(userId)
+    : await getPersistedSubscriptionStateForUser(userId);
+  return applyAppFreeOverrideForUser(userId, base);
 }
 
 export async function getPersistedSubscriptionStateForUser(userId: string): Promise<SubscriptionState> {
@@ -80,10 +118,11 @@ export async function assertEntitlementWithRefresh(
 
   try {
     const refreshed = await refreshSubscriptionStateFromRevenueCat(userId);
-    if (hasEntitlement(refreshed, entitlement)) {
-      return { ok: true, state: refreshed };
+    const state = await applyAppFreeOverrideForUser(userId, refreshed);
+    if (hasEntitlement(state, entitlement)) {
+      return { ok: true, state };
     }
-    return { ok: false, state: refreshed, message: entitlementDeniedMessage(entitlement) };
+    return { ok: false, state, message: entitlementDeniedMessage(entitlement) };
   } catch {
     return first;
   }
@@ -94,6 +133,8 @@ export async function assertCanCreateVaultItem(
   category: string,
 ): Promise<{ ok: true } | { ok: false; message: string; state: SubscriptionState }> {
   const state = await getSubscriptionStateForUser(userId);
+  if (state.appFreeOverride) return { ok: true };
+
   const normalized = String(category || "login").toLowerCase();
   const isNote = normalized.includes("note");
   const query = {
@@ -127,6 +168,37 @@ export async function assertCanCreateVaultItem(
   return { ok: true };
 }
 
+/**
+ * Free-tier document upload cap (Documents module). Pro / appFreeOverride → unlimited.
+ */
+export async function assertCanUploadDocument(
+  userId: string,
+): Promise<{ ok: true; state: SubscriptionState } | { ok: false; message: string; state: SubscriptionState }> {
+  const state = await getSubscriptionStateForUser(userId);
+  if (state.appFreeOverride || state.isPro) {
+    return { ok: true, state };
+  }
+
+  const maxDocuments = state.limits.maxDocuments ?? SUBSCRIPTION_CONFIG.freeLimits.maxDocuments;
+  if (maxDocuments >= Number.MAX_SAFE_INTEGER / 2) {
+    return { ok: true, state };
+  }
+
+  const total = await db.getDb().collection(COLLECTIONS.documents).countDocuments({
+    $or: [{ userId: new ObjectId(userId) }, { userId }],
+    deleted: { $ne: true },
+  });
+
+  if (total >= maxDocuments) {
+    return {
+      ok: false,
+      message: `Free plan supports up to ${maxDocuments} documents.`,
+      state,
+    };
+  }
+  return { ok: true, state };
+}
+
 export async function getSubscriptionOfferings() {
   const rc = await fetchRevenueCatOfferings();
   if (!rc) {
@@ -142,7 +214,8 @@ export async function getSubscriptionOfferings() {
 }
 
 export async function syncPurchaseForUser(userId: string): Promise<SubscriptionState> {
-  return refreshSubscriptionStateFromRevenueCat(userId);
+  const refreshed = await refreshSubscriptionStateFromRevenueCat(userId);
+  return applyAppFreeOverrideForUser(userId, refreshed);
 }
 
 export async function getSubscriptionDebugSnapshot(userId: string): Promise<{
@@ -168,10 +241,14 @@ export async function getSubscriptionDebugSnapshot(userId: string): Promise<{
     generatedAt: string;
   };
 }> {
-  const [storedState, currentState, events] = await Promise.all([
+  const [storedRaw, currentRaw, events] = await Promise.all([
     getPersistedSubscriptionStateForUser(userId),
     refreshSubscriptionStateFromRevenueCat(userId),
     listSubscriptionEventsForUser(userId, 10),
+  ]);
+  const [storedState, currentState] = await Promise.all([
+    applyAppFreeOverrideForUser(userId, storedRaw),
+    applyAppFreeOverrideForUser(userId, currentRaw),
   ]);
 
   return {

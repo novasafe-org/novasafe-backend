@@ -11,6 +11,7 @@ export interface SubscriptionLimits {
   maxPasswords: number;
   maxSecureNotes: number;
   maxDevices: number;
+  maxDocuments?: number;
 }
 
 export interface EntitlementMap {
@@ -38,6 +39,7 @@ export interface ISubscriptionState {
   subscriptionStatus: SubscriptionLifecycleStatus | string;
   entitlements: EntitlementMap;
   limits: SubscriptionLimits;
+  appFreeOverride?: boolean;
   updatedAt: string;
 }
 

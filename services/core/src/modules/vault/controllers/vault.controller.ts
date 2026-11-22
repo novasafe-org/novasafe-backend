@@ -17,7 +17,11 @@ import {
   updateCustomField,
   updateItemById,
 } from '../services/vault-items.service';
-import { findShareAccessForItem } from '../../sharing/services/sharing.service';
+import {
+  ACCESS_REVOKED_ERROR,
+  findShareAccessForItem,
+  hasRevokedShareAccessForItem,
+} from '../../sharing/services/sharing.service';
 import { toMobileItemDetail, toMobileItemSummary } from '../utils/mobile-item.formatter';
 
 const pagination = (req: Request) => {
@@ -88,6 +92,15 @@ export const getVaultItem = async (req: Request, res: Response): Promise<void> =
     if (access?.ownerUserId) {
       item = await getItemById(access.ownerUserId, req.params.id, revealSensitive);
       sharedPermission = access.permissionLabel;
+    } else if (
+      await hasRevokedShareAccessForItem(userId, req.user?.email || '', req.params.id)
+    ) {
+      res.status(403).json({
+        success: false,
+        code: ACCESS_REVOKED_ERROR.code,
+        message: ACCESS_REVOKED_ERROR.message,
+      });
+      return;
     }
   }
   if (!item) {
@@ -151,6 +164,15 @@ export const updateVaultItem = async (req: Request, res: Response): Promise<void
     );
     if (access?.ownerUserId) {
       item = await updateItemById(access.ownerUserId, req.params.id, req.body || {});
+    } else if (
+      await hasRevokedShareAccessForItem(userId, req.user?.email || '', req.params.id)
+    ) {
+      res.status(403).json({
+        success: false,
+        code: ACCESS_REVOKED_ERROR.code,
+        message: ACCESS_REVOKED_ERROR.message,
+      });
+      return;
     }
   }
   if (!item) {

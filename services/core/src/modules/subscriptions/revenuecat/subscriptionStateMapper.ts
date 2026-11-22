@@ -40,7 +40,9 @@ export function defaultSubscriptionState(now = new Date()): SubscriptionState {
         maxPasswords: SUBSCRIPTION_CONFIG.freeLimits.maxPasswords,
         maxSecureNotes: SUBSCRIPTION_CONFIG.freeLimits.maxSecureNotes,
         maxDevices: SUBSCRIPTION_CONFIG.freeLimits.maxDevices,
+        maxDocuments: SUBSCRIPTION_CONFIG.freeLimits.maxDocuments,
       },
+      appFreeOverride: false,
       updatedAt: now.toISOString(),
     },
     "free",
@@ -73,7 +75,36 @@ export function withTierEntitlements(
         grantPro ? Number.MAX_SAFE_INTEGER : SUBSCRIPTION_CONFIG.freeLimits.maxSecureNotes,
       maxDevices:
         grantPro ? Number.MAX_SAFE_INTEGER : SUBSCRIPTION_CONFIG.freeLimits.maxDevices,
+      maxDocuments:
+        grantPro ? Number.MAX_SAFE_INTEGER : SUBSCRIPTION_CONFIG.freeLimits.maxDocuments,
     },
+    appFreeOverride: Boolean(state.appFreeOverride),
+  };
+}
+
+/**
+ * Ops unlock: treat the account as Pro for entitlements/limits without a paid subscription.
+ * Does not mutate persisted RevenueCat state — applied at read time from vaultUsers.appFreeOverride.
+ */
+export function withAppFreeOverride(state: SubscriptionState): SubscriptionState {
+  const granted = withTierEntitlements(
+    {
+      ...state,
+      isActive: true,
+      inGracePeriod: false,
+      // Clear billing expiry so clients that gate on expiresAt still treat override as Pro.
+      expiresAt: null,
+      renewsAt: null,
+      subscriptionStatus: "active",
+      tier: "pro",
+      appFreeOverride: true,
+    },
+    "pro",
+  );
+  return {
+    ...granted,
+    isPro: true,
+    appFreeOverride: true,
   };
 }
 
@@ -172,6 +203,7 @@ export function mapRevenueCatSubscriberToState(
 }
 
 export function hasEntitlement(state: SubscriptionState, key: EntitlementKey): boolean {
+  if (state.appFreeOverride) return Boolean(PRO_ENTITLEMENTS[key]);
   if (state.inGracePeriod) return Boolean(PRO_ENTITLEMENTS[key]);
   if (isProFromState(state)) return Boolean(PRO_ENTITLEMENTS[key]);
   return Boolean(state.entitlements[key]);

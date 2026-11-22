@@ -13,9 +13,11 @@ export const SUBSCRIPTION_CONFIG = {
   offeringDefault:
     process.env.REVENUECAT_DEFAULT_OFFERING_ID || "default",
   freeLimits: {
-    maxPasswords: Number(process.env.FREE_PLAN_MAX_PASSWORDS || 15),
+    maxPasswords: Number(process.env.FREE_PLAN_MAX_PASSWORDS || 3),
     maxSecureNotes: Number(process.env.FREE_PLAN_MAX_SECURE_NOTES || 5),
     maxDevices: Number(process.env.FREE_PLAN_MAX_DEVICES || 1),
+    /** Free-tier vault document uploads (Documents module). */
+    maxDocuments: Number(process.env.FREE_PLAN_MAX_DOCUMENTS || 3),
   },
   emailFrom:
     process.env.SUBSCRIPTION_EMAIL_FROM ||

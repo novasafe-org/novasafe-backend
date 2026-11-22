@@ -28,6 +28,12 @@ const userDefinition = {
   lastVaultSyncedAt: { type: Date, default: null },
   vaultDataRevision: { type: Number, default: 0 },
   vaultDataRevisionUpdatedAt: { type: Date, default: null },
+  /**
+   * When true, this account is treated as fully unlocked: Pro entitlements,
+   * no free-tier item/document caps, no subscription paywall.
+   * Set manually in Mongo (admin/ops); default false for all users.
+   */
+  appFreeOverride: { type: Boolean, default: false },
   ...sourceField,
 };
 

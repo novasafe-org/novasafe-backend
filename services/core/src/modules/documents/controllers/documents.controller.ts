@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { ObjectId } from '../../../database/object-id';
 import { AppError } from '../../../shared/errors';
 import { StorageErrorCodes } from '../../../shared/storage';
+import { assertCanUploadDocument } from '../../subscriptions/services/subscription.service';
 import {
   deleteDocument,
   downloadDocument,
@@ -137,6 +138,17 @@ export const uploadDocumentHandler = async (req: Request, res: Response): Promis
       success: false,
       code: StorageErrorCodes.DOCUMENT_INVALID_UPLOAD,
       message: 'Invalid file upload. Check the file and try again.',
+    });
+    return;
+  }
+
+  const allowed = await assertCanUploadDocument(userId);
+  if (!allowed.ok && 'message' in allowed) {
+    res.status(403).json({
+      success: false,
+      code: 'NOVASAFE_SUBSCRIPTION_REQUIRED',
+      message: allowed.message,
+      subscription: allowed.state,
     });
     return;
   }

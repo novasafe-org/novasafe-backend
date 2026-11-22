@@ -155,9 +155,24 @@ const normalizeEmails = (emails: unknown): string[] => {
 /** Exported for unit tests. */
 export const normalizeEmailsForTest = (emails: unknown): string[] => normalizeEmails(emails);
 
+export const ACCESS_REVOKED_ERROR = {
+  code: 'ACCESS_REVOKED',
+  message: 'This share has been revoked and is no longer accessible',
+} as const;
+
+const isDeniedRecipientStatus = (status: unknown) => {
+  const s = String(status || '').trim().toLowerCase();
+  return (
+    s === ShareRecipientStatus.Revoked ||
+    s === ShareRecipientStatus.Suspended ||
+    s === ShareRecipientStatus.Declined
+  );
+};
+
 /**
  * Resolve active share access for a vault item (With me viewer/editor).
  * Returns owner userId so vault can load/update the underlying item.
+ * Never grants access when the share or recipient is revoked/suspended.
  */
 export const findShareAccessForItem = async (
   userId: string,
@@ -190,9 +205,11 @@ export const findShareAccessForItem = async (
     .toArray();
 
   for (const doc of docs) {
+    if (doc.status !== ShareStatus.Active) continue;
     if (doc.expiresAt && new Date(doc.expiresAt).getTime() <= Date.now()) continue;
     const mine = findMyRecipient(doc, userId, email);
     if (!mine) continue;
+    if (isDeniedRecipientStatus(mine.status)) continue;
     if (mode === 'edit' && permissionLabel(doc.permission) !== 'Can edit') continue;
     if (mode === 'edit' && mine.status !== ShareRecipientStatus.Active) continue;
     return {
@@ -204,6 +221,79 @@ export const findShareAccessForItem = async (
     };
   }
   return null;
+};
+
+/**
+ * True when this user was a recipient of the item but access is revoked/suspended
+ * (so vault can return ACCESS_REVOKED instead of a generic 404).
+ */
+export const hasRevokedShareAccessForItem = async (
+  userId: string,
+  userEmail: string,
+  resourceId: string,
+): Promise<boolean> => {
+  if (!ObjectId.isValid(resourceId) || !ObjectId.isValid(userId)) return false;
+  const email = userEmail.toLowerCase().trim();
+  const docs = await col()
+    .find(
+      activeShareFilter({
+        resourceId: new ObjectId(resourceId),
+        recipients: {
+          $elemMatch: {
+            $or: [{ userId: new ObjectId(userId) }, { email }],
+          },
+        },
+      }),
+    )
+    .sort({ createdAt: -1 })
+    .limit(10)
+    .toArray();
+
+  for (const doc of docs) {
+    const mine = findMyRecipient(doc, userId, email);
+    if (!mine) continue;
+    if (doc.status === ShareStatus.Revoked) return true;
+    if (isDeniedRecipientStatus(mine.status)) return true;
+  }
+  return false;
+};
+
+/**
+ * Recipient-side gate for shareId routes (touch / open).
+ */
+export const assertRecipientShareAccess = async (
+  shareId: string,
+  userId: string,
+  userEmail: string,
+): Promise<
+  | { ok: true; shareId: string }
+  | { ok: false; error: { code: string; message: string } }
+> => {
+  if (!ObjectId.isValid(shareId)) {
+    return { ok: false, error: { code: 'INVALID_SHARE', message: 'Invalid share id' } };
+  }
+  const email = userEmail.toLowerCase().trim();
+  const doc = await col().findOne(activeShareFilter({ _id: new ObjectId(shareId) }));
+  if (!doc) {
+    return { ok: false, error: { code: 'SHARE_NOT_FOUND', message: 'Share not found' } };
+  }
+  const mine = findMyRecipient(doc, userId, email);
+  if (!mine) {
+    return {
+      ok: false,
+      error: { code: 'NOT_A_RECIPIENT', message: 'You are not a recipient of this share' },
+    };
+  }
+  if (doc.status === ShareStatus.Revoked || isDeniedRecipientStatus(mine.status)) {
+    return { ok: false, error: { ...ACCESS_REVOKED_ERROR } };
+  }
+  if (doc.status !== ShareStatus.Active) {
+    return { ok: false, error: { code: 'SHARE_NOT_FOUND', message: 'Share not found' } };
+  }
+  if (doc.expiresAt && new Date(doc.expiresAt).getTime() <= Date.now()) {
+    return { ok: false, error: { code: 'SHARE_EXPIRED', message: 'This share has expired' } };
+  }
+  return { ok: true, shareId: doc._id.toString() };
 };
 
 /** Look up the newest owned vault item by title (legacy /send without resourceId). */
@@ -754,7 +844,13 @@ export const acceptShare = async (shareId: string, userId: string, userEmail: st
     return { ok: false as const, error: { code: 'INVALID_SHARE', message: 'Invalid share id' } };
   }
   const doc = await col().findOne(activeShareFilter({ _id: new ObjectId(shareId) }));
-  if (!doc || doc.status !== ShareStatus.Active) {
+  if (!doc) {
+    return { ok: false as const, error: { code: 'SHARE_NOT_FOUND', message: 'Share not found' } };
+  }
+  if (doc.status === ShareStatus.Revoked) {
+    return { ok: false as const, error: { ...ACCESS_REVOKED_ERROR } };
+  }
+  if (doc.status !== ShareStatus.Active) {
     return { ok: false as const, error: { code: 'SHARE_NOT_FOUND', message: 'Share not found' } };
   }
   if (doc.expiresAt && new Date(doc.expiresAt).getTime() <= Date.now()) {
@@ -769,12 +865,8 @@ export const acceptShare = async (shareId: string, userId: string, userEmail: st
   if (idx < 0) {
     return { ok: false as const, error: { code: 'NOT_A_RECIPIENT', message: 'You are not a recipient of this share' } };
   }
-  if (
-    recipients[idx].status === ShareRecipientStatus.Revoked ||
-    recipients[idx].status === ShareRecipientStatus.Suspended ||
-    recipients[idx].status === ShareRecipientStatus.Declined
-  ) {
-    return { ok: false as const, error: { code: 'ACCESS_REVOKED', message: 'Access has been revoked' } };
+  if (isDeniedRecipientStatus(recipients[idx].status)) {
+    return { ok: false as const, error: { ...ACCESS_REVOKED_ERROR } };
   }
   recipients[idx].status = ShareRecipientStatus.Active;
   recipients[idx].acceptedAt = new Date();
@@ -833,18 +925,24 @@ export const accessByToken = async (token: string) => {
   if (!accessToken) {
     return { ok: false as const, error: { code: 'INVALID_TOKEN', message: 'Access token required' } };
   }
+  // Look up without requiring Active so revoked shares return ACCESS_REVOKED (not INVALID_TOKEN).
   const doc = await col().findOne(
     activeShareFilter({
-      status: ShareStatus.Active,
       'recipients.accessToken': accessToken,
     }),
   );
   if (!doc) {
     return { ok: false as const, error: { code: 'INVALID_TOKEN', message: 'Invalid or expired access link' } };
   }
+  if (doc.status === ShareStatus.Revoked) {
+    return { ok: false as const, error: { ...ACCESS_REVOKED_ERROR } };
+  }
   if (doc.expiresAt && new Date(doc.expiresAt).getTime() <= Date.now()) {
     await col().updateOne({ _id: doc._id }, { $set: { status: ShareStatus.Expired, updatedAt: new Date() } });
     return { ok: false as const, error: { code: 'SHARE_EXPIRED', message: 'This share has expired' } };
+  }
+  if (doc.status !== ShareStatus.Active) {
+    return { ok: false as const, error: { code: 'INVALID_TOKEN', message: 'Invalid or expired access link' } };
   }
   const recipients = [...(doc.recipients || [])];
   const idx = recipients.findIndex((r) => r.accessToken === accessToken);
@@ -852,12 +950,8 @@ export const accessByToken = async (token: string) => {
     return { ok: false as const, error: { code: 'INVALID_TOKEN', message: 'Invalid or expired access link' } };
   }
   const recipient = recipients[idx];
-  if (
-    recipient.status === ShareRecipientStatus.Revoked ||
-    recipient.status === ShareRecipientStatus.Suspended ||
-    recipient.status === ShareRecipientStatus.Declined
-  ) {
-    return { ok: false as const, error: { code: 'ACCESS_REVOKED', message: 'Access has been revoked' } };
+  if (isDeniedRecipientStatus(recipient.status)) {
+    return { ok: false as const, error: { ...ACCESS_REVOKED_ERROR } };
   }
 
   const now = new Date();
@@ -896,18 +990,34 @@ export const accessByToken = async (token: string) => {
 };
 
 export const touchReceivedAccess = async (shareId: string, userId: string, userEmail: string) => {
-  if (!ObjectId.isValid(shareId)) return;
+  const gate = await assertRecipientShareAccess(shareId, userId, userEmail);
+  if (gate.ok === false) {
+    return { ok: false as const, error: gate.error };
+  }
   const doc = await col().findOne(activeShareFilter({ _id: new ObjectId(shareId) }));
-  if (!doc) return;
+  if (!doc) {
+    return { ok: false as const, error: { code: 'SHARE_NOT_FOUND', message: 'Share not found' } };
+  }
   const recipients = [...(doc.recipients || [])];
   const mine = findMyRecipient({ recipients }, userId, userEmail);
-  if (!mine) return;
+  if (!mine) {
+    return {
+      ok: false as const,
+      error: { code: 'NOT_A_RECIPIENT', message: 'You are not a recipient of this share' },
+    };
+  }
   const idx = findRecipientIndex(recipients, mine._id.toString());
-  if (idx < 0) return;
+  if (idx < 0) {
+    return {
+      ok: false as const,
+      error: { code: 'NOT_A_RECIPIENT', message: 'You are not a recipient of this share' },
+    };
+  }
   const now = new Date();
   recipients[idx].lastAccessedAt = now;
   await col().updateOne(
     { _id: doc._id },
     { $set: { recipients, lastAccessedAt: now, updatedAt: now } },
   );
+  return { ok: true as const };
 };
