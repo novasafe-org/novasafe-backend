@@ -65,16 +65,35 @@ const parseFieldType = (fieldType: string) => {
   return normalized;
 };
 
-const normalizeCredentialPayload = (payload: any, existing?: any) => ({
-  title: payload.title ?? existing?.title,
-  username: payload.username ?? existing?.username,
-  url: payload.url ?? existing?.url,
-  notes: payload.notes ?? existing?.notes,
-  cardNumber: payload.cardNumber ?? existing?.cardNumber,
-  apiKey: payload.apiKey ?? existing?.apiKey,
-  type: payload.type ?? existing?.type ?? 'login',
-  category: payload.category ?? existing?.category ?? 'login',
-});
+const readMfaSecret = (source: any): string | null | undefined => {
+  if (!source || typeof source !== 'object') return undefined;
+  if (source.mfaSecret !== undefined) return source.mfaSecret;
+  if (source.mfa_secret !== undefined) return source.mfa_secret;
+  return undefined;
+};
+
+const normalizeCredentialPayload = (payload: any, existing?: any) => {
+  const incomingMfa = readMfaSecret(payload);
+  const existingMfa = readMfaSecret(existing);
+  return {
+    title: payload.title ?? existing?.title,
+    username: payload.username ?? existing?.username,
+    url: payload.url ?? existing?.url,
+    notes: payload.notes ?? existing?.notes,
+    cardNumber: payload.cardNumber ?? existing?.cardNumber,
+    apiKey: payload.apiKey ?? existing?.apiKey,
+    // Encrypted TOTP secret for login MFA (same payload encryption as other credential fields).
+    // Always persist into the encrypted blob so update/create keep 2FA across reloads.
+    mfaSecret:
+      incomingMfa !== undefined
+        ? String(incomingMfa || '').trim() || null
+        : existingMfa !== undefined
+          ? String(existingMfa || '').trim() || null
+          : null,
+    type: payload.type ?? existing?.type ?? 'login',
+    category: payload.category ?? existing?.category ?? 'login',
+  };
+};
 
 const normalizeTags = (tags: any): string[] => {
   if (!Array.isArray(tags)) return [];
@@ -394,10 +413,14 @@ export const getItemById = async (userId: string, id: string, revealSensitive = 
   const activePassword = await getActivePasswordVersion(userId, item._id);
   const passwordVersions = await resolvePasswordVersionsForResponse(userId, item._id);
   const customFields = await getCustomFields(userId, item._id, revealSensitive);
+  const mfaSecret = readMfaSecret(decrypted);
   return {
     ...item,
     ...decrypted,
     password: revealSensitive ? activePassword?.password : undefined,
+    // Always expose decrypted MFA for update merges + mobile detail formatter.
+    // (Do not set undefined when !revealSensitive — that wiped secrets on merge.)
+    mfaSecret: mfaSecret ? String(mfaSecret) : null,
     tags: item.tags || [],
     logoUrl: item.logoUrl || null,
     password_versions: passwordVersions,
