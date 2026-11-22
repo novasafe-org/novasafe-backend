@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.21
+
+### Changed
+
+feat: appFreeOverride free limits and revoked share ACCESS_REVOKED enforcement
+
 ## v1.1.20
 
 ### Changed
