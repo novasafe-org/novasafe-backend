@@ -35,16 +35,26 @@ export const toMobileItemSummary = (item: Record<string, unknown>): MobileItemSu
   createdAt: item.createdAt as Date | string | undefined,
 });
 
-export const toMobileItemDetail = (item: Record<string, unknown>): Record<string, unknown> => ({
-  ...toMobileItemSummary(item),
-  type: item.type || item.category || 'login',
-  username: item.username,
-  password: item.password,
-  url: item.url,
-  notes: item.notes,
-  cardNumber: item.cardNumber,
-  apiKey: item.apiKey,
-  tags: (item.tags as string[]) || [],
-  password_versions: item.password_versions || [],
-  custom_fields: item.custom_fields || [],
-});
+export const toMobileItemDetail = (item: Record<string, unknown>): Record<string, unknown> => {
+  const rawMfa = item.mfaSecret ?? item.mfa_secret;
+  const mfaSecret =
+    rawMfa === undefined || rawMfa === null || String(rawMfa).trim() === ''
+      ? null
+      : String(rawMfa).trim();
+
+  return {
+    ...toMobileItemSummary(item),
+    type: item.type || item.category || 'login',
+    username: item.username,
+    password: item.password,
+    url: item.url,
+    notes: item.notes,
+    cardNumber: item.cardNumber,
+    apiKey: item.apiKey,
+    // Encrypted TOTP secret — must round-trip on create/update/get or edit reload drops 2FA.
+    mfaSecret,
+    tags: (item.tags as string[]) || [],
+    password_versions: item.password_versions || [],
+    custom_fields: item.custom_fields || [],
+  };
+};
