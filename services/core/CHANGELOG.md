@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.19
+
+### Changed
+
+fix(vault): persist MFA secret on item update
+
 ## v1.1.18
 
 ### Changed
