@@ -29,7 +29,7 @@ import {
 const attachmentUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: Number(process.env.NAS_MAX_UPLOAD_BYTES || 10 * 1024 * 1024),
+    fileSize: Number(process.env.NAS_MAX_UPLOAD_BYTES || 5 * 1024 * 1024),
   },
 });
 

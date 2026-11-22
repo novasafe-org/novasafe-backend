@@ -24,6 +24,8 @@ export interface IVaultUser extends IBaseEntityDocument {
   lastVaultSyncedAt?: Date;
   vaultDataRevision?: number;
   vaultDataRevisionUpdatedAt?: Date;
+  /** Ops flag: unlock full app without a paid subscription. */
+  appFreeOverride?: boolean;
   deleted?: boolean;
   source?: string;
   createdBy?: Types.ObjectId;

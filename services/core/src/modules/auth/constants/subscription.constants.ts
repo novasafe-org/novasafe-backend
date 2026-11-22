@@ -29,5 +29,6 @@ export const PRO_ENTITLEMENTS: Record<EntitlementKey, boolean> = {
 };
 
 export const FREE_PLAN_MAX_DEVICES = Number(process.env.FREE_PLAN_MAX_DEVICES || 1);
-export const FREE_PLAN_MAX_PASSWORDS = Number(process.env.FREE_PLAN_MAX_PASSWORDS || 15);
+export const FREE_PLAN_MAX_PASSWORDS = Number(process.env.FREE_PLAN_MAX_PASSWORDS || 3);
 export const FREE_PLAN_MAX_SECURE_NOTES = Number(process.env.FREE_PLAN_MAX_SECURE_NOTES || 5);
+export const FREE_PLAN_MAX_DOCUMENTS = Number(process.env.FREE_PLAN_MAX_DOCUMENTS || 3);

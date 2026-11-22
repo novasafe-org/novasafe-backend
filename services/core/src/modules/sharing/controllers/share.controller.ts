@@ -29,6 +29,13 @@ const requireUser = (req: Request): { id: string; email: string; name: string } 
 
 const source = (req: Request) => req.source || 'mobile';
 
+const shareErrorStatus = (code: string): number => {
+  if (code === 'ACCESS_REVOKED') return 403;
+  if (code === 'SHARE_EXPIRED') return 410;
+  if (code === 'SHARE_NOT_FOUND' || code === 'INVALID_TOKEN') return 404;
+  return 400;
+};
+
 export const resolveShareRecipients = async (req: Request, res: Response): Promise<void> => {
   if (!requireUser(req)) {
     res.status(401).json({ success: false, message: 'Authentication required' });
@@ -233,8 +240,11 @@ export const acceptShareInvite = async (req: Request, res: Response): Promise<vo
   }
   const result = await acceptShare(req.params.shareId, user.id, user.email);
   if (!result.ok) {
-    const status = result.error.code === 'SHARE_NOT_FOUND' ? 404 : 400;
-    res.status(status).json({ success: false, code: result.error.code, message: result.error.message });
+    res.status(shareErrorStatus(result.error.code)).json({
+      success: false,
+      code: result.error.code,
+      message: result.error.message,
+    });
     return;
   }
   res.status(200).json({ success: true, source: source(req), message: result.message });
@@ -261,15 +271,26 @@ export const openReceivedShare = async (req: Request, res: Response): Promise<vo
     res.status(401).json({ success: false, message: 'Authentication required' });
     return;
   }
-  await touchReceivedAccess(req.params.shareId, user.id, user.email);
+  const result = await touchReceivedAccess(req.params.shareId, user.id, user.email);
+  if (!result.ok) {
+    res.status(shareErrorStatus(result.error.code)).json({
+      success: false,
+      code: result.error.code,
+      message: result.error.message,
+    });
+    return;
+  }
   res.status(200).json({ success: true, source: source(req), message: 'Access recorded' });
 };
 
 export const publicAccessByToken = async (req: Request, res: Response): Promise<void> => {
   const result = await accessByToken(req.params.token);
   if (!result.ok) {
-    const status = result.error.code === 'SHARE_EXPIRED' ? 410 : 404;
-    res.status(status).json({ success: false, code: result.error.code, message: result.error.message });
+    res.status(shareErrorStatus(result.error.code)).json({
+      success: false,
+      code: result.error.code,
+      message: result.error.message,
+    });
     return;
   }
   res.status(200).json({ success: true, access: result.access });

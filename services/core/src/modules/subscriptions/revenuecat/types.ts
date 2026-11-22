@@ -39,7 +39,12 @@ export type SubscriptionState = {
     maxPasswords: number;
     maxSecureNotes: number;
     maxDevices: number;
+    maxDocuments: number;
   };
+  /**
+   * True when vaultUsers.appFreeOverride is set — full Pro access without billing.
+   */
+  appFreeOverride?: boolean;
   updatedAt: string;
 };
 

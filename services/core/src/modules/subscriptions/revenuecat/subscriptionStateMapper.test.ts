@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { mapRevenueCatSubscriberToState } from "./subscriptionStateMapper";
+import {
+  defaultSubscriptionState,
+  hasEntitlement,
+  mapRevenueCatSubscriberToState,
+  withAppFreeOverride,
+} from "./subscriptionStateMapper";
 import type { RevenueCatSubscriberResponse } from "../services/revenue-cat.service";
 
 describe("subscriptionStateMapper lifecycle", () => {
@@ -127,5 +132,22 @@ describe("subscriptionStateMapper lifecycle", () => {
     assert.equal(state.tier, "free");
     assert.equal(state.isActive, false);
     assert.equal(state.entitlements.canUsePasswordHistory, false);
+  });
+
+  it("free defaults include maxDocuments and appFreeOverride unlocks Pro", () => {
+    const free = defaultSubscriptionState();
+    assert.equal(free.limits.maxPasswords, 3);
+    assert.equal(free.limits.maxDocuments, 3);
+    assert.equal(free.appFreeOverride, false);
+    assert.equal(hasEntitlement(free, "canUseUnlimitedPasswords"), false);
+
+    const unlocked = withAppFreeOverride(free);
+    assert.equal(unlocked.appFreeOverride, true);
+    assert.equal(unlocked.isPro, true);
+    assert.equal(unlocked.tier, "pro");
+    assert.equal(unlocked.entitlements.canUseUnlimitedPasswords, true);
+    assert.equal(unlocked.limits.maxPasswords, Number.MAX_SAFE_INTEGER);
+    assert.equal(unlocked.limits.maxDocuments, Number.MAX_SAFE_INTEGER);
+    assert.equal(hasEntitlement(unlocked, "canUsePasswordHistory"), true);
   });
 });

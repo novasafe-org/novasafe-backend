@@ -5,6 +5,7 @@ export const SUBSCRIPTIONS_MODULE_NAME = 'subscriptions';
 
 export {
   assertCanCreateVaultItem,
+  assertCanUploadDocument,
   assertEntitlement,
   getSubscriptionStateForUser,
   hasEntitlement,
