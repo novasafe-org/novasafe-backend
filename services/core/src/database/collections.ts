@@ -20,8 +20,10 @@ export const COLLECTIONS = {
   folders: 'folders',
   /** Reserved for secure notes module. */
   notes: 'notes',
-  /** Reserved for document attachments module. */
+  /** Vault documents module (NAS under userId/documents). */
   documents: 'documents',
+  /** Per-vault-item file attachments (NAS under userId/items attachments/<itemId>). */
+  itemAttachments: 'itemAttachments',
   /** Trusted device registry (multi-device policy). */
   devices: 'devices',
   /** Reserved for in-app / push notification records. */

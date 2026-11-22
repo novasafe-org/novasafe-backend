@@ -2,11 +2,15 @@ import crypto from 'crypto';
 import { ObjectId } from '../../../database/object-id';
 import { COLLECTIONS } from '../../../database/collections';
 import { getNativeMongo } from '../../../database/adapters/native-mongo.adapter';
-import { AppError } from '../../../shared/errors';
 import {
-  getStorage,
+  buildDocumentRelativePath,
+  safeStorageDeleteBestEffort,
+  safeStorageDownload,
+  safeStorageUpload,
+  sanitizeFilename,
   StorageError,
   StorageErrorCodes,
+  validateUploadPayload,
 } from '../../../shared/storage';
 import {
   hasDocumentMetadataChanges,
@@ -93,13 +97,12 @@ export const uploadDocument = async (
     folderId?: string | null;
   },
 ): Promise<DocumentResponse> => {
-  if (!input.buffer?.length) {
-    throw new StorageError(
-      'Invalid file upload. Check the file and try again.',
-      400,
-      StorageErrorCodes.DOCUMENT_INVALID_UPLOAD,
-    );
-  }
+  validateUploadPayload({
+    filename: input.filename,
+    sizeBytes: input.buffer?.length ?? 0,
+    mimeType: input.mimeType,
+    kind: 'document',
+  });
 
   let folderId: ObjectId | null = null;
   if (input.folderId) {
@@ -109,11 +112,12 @@ export const uploadDocument = async (
     folderId = new ObjectId(input.folderId);
   }
 
-  const safeName = input.filename.replace(/[\\/]+/g, '_').trim() || 'upload.bin';
-  const relativePath = `novasafe/${userId}/${Date.now()}-${safeName}`;
+  const safeName = sanitizeFilename(input.filename);
+  // New layout: novasafe/<userId>/documents/<timestamp>-<filename>
+  const relativePath = buildDocumentRelativePath(userId, safeName);
   const checksum = crypto.createHash('sha256').update(input.buffer).digest('hex');
 
-  const stored = await getStorage().upload({
+  const stored = await safeStorageUpload({
     filename: safeName,
     mimeType: input.mimeType,
     buffer: input.buffer,
@@ -163,11 +167,14 @@ export const updateDocument = async (
   }
 
   const $set = { ...fields, updatedAt: new Date() };
-  await db.updateOne(
+  const result = await db.updateOne(
     COLLECTIONS.documents,
     { _id: new ObjectId(documentId), ...userFilter(userId), deleted: { $ne: true } },
     { $set },
   );
+  if (!result.matchedCount) {
+    throw new StorageError('Document not found.', 404, StorageErrorCodes.DOCUMENT_NOT_FOUND);
+  }
 
   const updated = await db.findOne(
     COLLECTIONS.documents,
@@ -187,7 +194,7 @@ export const downloadDocument = async (
   if (!doc?.storageKey) {
     throw new StorageError('Document not found.', 404, StorageErrorCodes.DOCUMENT_NOT_FOUND);
   }
-  const upstream = await getStorage().download(doc.storageKey);
+  const upstream = await safeStorageDownload(doc.storageKey);
   return { doc, upstream };
 };
 
@@ -197,21 +204,10 @@ export const deleteDocument = async (userId: string, documentId: string): Promis
     throw new StorageError('Document not found.', 404, StorageErrorCodes.DOCUMENT_NOT_FOUND);
   }
 
-  if (doc.storageKey) {
-    try {
-      await getStorage().delete(doc.storageKey);
-    } catch (err) {
-      const missing =
-        err instanceof AppError &&
-        (err.code === StorageErrorCodes.STORAGE_OBJECT_NOT_FOUND ||
-          err.code === StorageErrorCodes.DOCUMENT_NOT_FOUND);
-      if (!missing) throw err;
-    }
-  }
-
-  await db.updateOne(
+  // Soft-delete Mongo first so the doc never stays visible if NAS cleanup fails.
+  const result = await db.updateOne(
     COLLECTIONS.documents,
-    { _id: new ObjectId(documentId), ...userFilter(userId) },
+    { _id: new ObjectId(documentId), ...userFilter(userId), deleted: { $ne: true } },
     {
       $set: {
         deleted: true,
@@ -221,4 +217,15 @@ export const deleteDocument = async (userId: string, documentId: string): Promis
       },
     },
   );
+  if (!result.matchedCount) {
+    throw new StorageError('Document not found.', 404, StorageErrorCodes.DOCUMENT_NOT_FOUND);
+  }
+
+  if (doc.storageKey) {
+    await safeStorageDeleteBestEffort(doc.storageKey, {
+      userId,
+      documentId,
+      op: 'deleteDocument',
+    });
+  }
 };

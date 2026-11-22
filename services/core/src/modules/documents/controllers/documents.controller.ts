@@ -1,5 +1,7 @@
 import type { Request, Response } from 'express';
+import { ObjectId } from '../../../database/object-id';
 import { AppError } from '../../../shared/errors';
+import { StorageErrorCodes } from '../../../shared/storage';
 import {
   deleteDocument,
   downloadDocument,
@@ -18,6 +20,16 @@ const sendAppError = (res: Response, err: unknown): boolean => {
     return true;
   }
   return false;
+};
+
+const rejectInvalidDocumentId = (res: Response, id: string | undefined): boolean => {
+  if (id && ObjectId.isValid(id)) return false;
+  res.status(400).json({
+    success: false,
+    code: StorageErrorCodes.DOCUMENT_INVALID_ID,
+    message: 'Invalid document id',
+  });
+  return true;
 };
 
 const isGenericMime = (mime?: string | null): boolean => {
@@ -98,6 +110,7 @@ export const getDocument = async (req: Request, res: Response): Promise<void> =>
     res.status(401).json({ success: false, message: 'Authentication required' });
     return;
   }
+  if (rejectInvalidDocumentId(res, req.params.id)) return;
   try {
     const doc = await getDocumentById(userId, req.params.id);
     if (!doc) {
@@ -122,7 +135,7 @@ export const uploadDocumentHandler = async (req: Request, res: Response): Promis
   if (!file?.buffer?.length) {
     res.status(400).json({
       success: false,
-      code: 'DOCUMENT_INVALID_UPLOAD',
+      code: StorageErrorCodes.DOCUMENT_INVALID_UPLOAD,
       message: 'Invalid file upload. Check the file and try again.',
     });
     return;
@@ -165,6 +178,7 @@ export const updateDocumentHandler = async (req: Request, res: Response): Promis
     res.status(401).json({ success: false, message: 'Authentication required' });
     return;
   }
+  if (rejectInvalidDocumentId(res, req.params.id)) return;
   try {
     const title = typeof req.body?.title === 'string' ? req.body.title : undefined;
     const folderId =
@@ -188,6 +202,7 @@ export const downloadDocumentHandler = async (req: Request, res: Response): Prom
     res.status(401).json({ success: false, message: 'Authentication required' });
     return;
   }
+  if (rejectInvalidDocumentId(res, req.params.id)) return;
   try {
     const { doc, upstream } = await downloadDocument(userId, req.params.id);
     const contentType =
@@ -218,6 +233,7 @@ export const deleteDocumentHandler = async (req: Request, res: Response): Promis
     res.status(401).json({ success: false, message: 'Authentication required' });
     return;
   }
+  if (rejectInvalidDocumentId(res, req.params.id)) return;
   try {
     await deleteDocument(userId, req.params.id);
     res.status(200).json({ success: true, source: sendSource(req), message: 'Document deleted' });

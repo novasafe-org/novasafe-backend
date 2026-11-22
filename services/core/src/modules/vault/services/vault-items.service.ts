@@ -621,6 +621,12 @@ export const deleteItemById = async (userId: string, id: string) => {
       { credentialId: new ObjectId(id), ...userFilter(userId), deleted: { $ne: true } },
       { $set: { deleted: true, deletedAt: new Date(), source: 'mobile' } },
     );
+    try {
+      const { deleteAllAttachmentsForItem } = await import('./item-attachments.service');
+      await deleteAllAttachmentsForItem(userId, id);
+    } catch {
+      // Best-effort NAS/metadata cleanup — item soft-delete already succeeded.
+    }
     await bumpVaultDataRevision(userId);
   }
   return result.matchedCount > 0;
