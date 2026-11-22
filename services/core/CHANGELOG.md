@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.20
+
+### Changed
+
+feat(vault): item attachments NAS storage and documents delete harden
+
 ## v1.1.19
 
 ### Changed
