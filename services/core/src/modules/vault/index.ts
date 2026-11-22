@@ -4,7 +4,8 @@ import { createVaultRoutes } from './routes/vault.routes';
 export const VAULT_MODULE_NAME = 'vault';
 
 /**
- * Vault module — credentials, custom fields, password history, sync.
+ * Vault module — credentials, custom fields, password history, sync,
+ * and per-item NAS attachments (`/items/:itemId/attachments`).
  * Registers `/api/v1/vault/*` and legacy `/mobile/vault/*` (mobile_vault parity).
  */
 export const registerVaultModule = (app: Express, apiPrefix: string): void => {
