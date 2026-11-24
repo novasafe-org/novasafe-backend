@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.27
+
+### Changed
+
+fix(sharing): include revoked shares in received list
+
 ## v1.1.26
 
 ### Changed
