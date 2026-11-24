@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.22
+
+### Changed
+
+feat: authenticator module, appFreeOverride limits, and revoked share access
+
 ## v1.1.21
 
 ### Changed
