@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.28
+
+### Changed
+
+fix: set hasLinkedAuthenticator on dashboard items for recently-used 2FA
+
 ## v1.1.27
 
 ### Changed
