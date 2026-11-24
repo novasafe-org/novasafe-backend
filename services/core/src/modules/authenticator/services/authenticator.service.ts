@@ -1,9 +1,12 @@
 import { ObjectId } from '../../../database/object-id';
 import { COLLECTIONS } from '../../../database/collections';
 import { getNativeMongo } from '../../../database/adapters/native-mongo.adapter';
-import { decryptText, encryptText } from '../../../shared/crypto/vault-crypto';
+import { decryptPayload, decryptText, encryptText } from '../../../shared/crypto/vault-crypto';
 
 const db = getNativeMongo();
+
+/** Cap vault scan when backfilling MFA → authenticatorEntries on list. */
+const BACKFILL_VAULT_SCAN_LIMIT = 500;
 
 const userFilter = (userId: string) => ({
   $or: [{ userId: new ObjectId(userId) }, { userId }],
@@ -14,6 +17,15 @@ const activeFilter = (userId: string, extra: Record<string, unknown> = {}) => ({
   deleted: { $ne: true },
   ...extra,
 });
+
+const readVaultMfaSecret = (source: Record<string, unknown> | null | undefined): string | null => {
+  if (!source) return null;
+  const raw = source.mfaSecret ?? source.mfa_secret;
+  if (raw === undefined || raw === null) return null;
+  const s = String(raw).trim();
+  if (!s || s === 'null' || s === 'undefined') return null;
+  return s;
+};
 
 const bumpVaultDataRevision = async (userId: string): Promise<void> => {
   if (!userId || !ObjectId.isValid(userId)) return;
@@ -126,24 +138,6 @@ export type CreateAuthenticatorInput = {
   digits?: number;
   period?: number;
   counter?: number | null;
-};
-
-export const listAuthenticatorEntries = async (
-  userId: string,
-  opts?: { recent?: boolean; limit?: number; revealSecret?: boolean },
-): Promise<AuthenticatorEntryResponse[]> => {
-  const limit = Math.min(Math.max(opts?.limit ?? 100, 1), 200);
-  const sort: Record<string, 1 | -1> = opts?.recent
-    ? { lastUsedAt: -1, updatedAt: -1 }
-    : { updatedAt: -1 };
-
-  const rows = await db.findMany(COLLECTIONS.authenticatorEntries, activeFilter(userId), {
-    sort,
-    limit,
-  });
-  return rows.map((r) =>
-    toAuthenticatorResponse(r as Record<string, unknown>, { revealSecret: opts?.revealSecret !== false }),
-  );
 };
 
 export const getAuthenticatorEntryById = async (
@@ -444,6 +438,91 @@ export const syncAuthenticatorForVaultItem = async (
     issuer: opts.issuer,
     accountName: opts.accountName,
   });
+};
+
+/**
+ * Legacy vault items stored TOTP as encrypted `mfaSecret` on the item blob.
+ * Authenticator screen only reads `authenticatorEntries` — backfill linked rows
+ * for any item secret that does not already have an entry (standalone stay as-is;
+ * linked rows are created so item 2FA shows on the authenticator list).
+ */
+export const backfillAuthenticatorEntriesFromVaultMfa = async (userId: string): Promise<number> => {
+  if (!userId || !ObjectId.isValid(userId)) return 0;
+
+  const [items, existingLinks] = await Promise.all([
+    db.findMany(COLLECTIONS.vaultItems, activeFilter(userId), {
+      limit: BACKFILL_VAULT_SCAN_LIMIT,
+      sort: { updatedAt: -1 },
+    }),
+    db.findMany(
+      COLLECTIONS.authenticatorEntries,
+      { ...activeFilter(userId), vaultItemId: { $ne: null } },
+      { limit: BACKFILL_VAULT_SCAN_LIMIT },
+    ),
+  ]);
+
+  const linkedItemIds = new Set(
+    existingLinks
+      .map((a: { vaultItemId?: { toString?: () => string } | string | null }) =>
+        a.vaultItemId != null
+          ? String((a.vaultItemId as { toString?: () => string }).toString?.() || a.vaultItemId)
+          : '',
+      )
+      .filter(Boolean),
+  );
+
+  let created = 0;
+  for (const item of items) {
+    const itemId = String((item as { _id?: { toString?: () => string } })._id?.toString?.() || '');
+    if (!itemId || linkedItemIds.has(itemId)) continue;
+
+    const decrypted = decryptPayload(item as Parameters<typeof decryptPayload>[0]) || {};
+    const mfaSecret = readVaultMfaSecret(decrypted as Record<string, unknown>);
+    if (!mfaSecret) continue;
+
+    try {
+      await syncAuthenticatorForVaultItem(userId, itemId, {
+        mfaSecret,
+        issuer: (decrypted as { issuer?: string }).issuer ?? null,
+        accountName:
+          (decrypted as { accountName?: string; title?: string }).accountName ??
+          (decrypted as { title?: string }).title ??
+          (item as { title?: string }).title ??
+          null,
+      });
+      linkedItemIds.add(itemId);
+      created += 1;
+    } catch {
+      /* skip bad/legacy secrets — do not fail the list */
+    }
+  }
+
+  return created;
+};
+
+export const listAuthenticatorEntries = async (
+  userId: string,
+  opts?: { recent?: boolean; limit?: number; revealSecret?: boolean },
+): Promise<AuthenticatorEntryResponse[]> => {
+  const limit = Math.min(Math.max(opts?.limit ?? 100, 1), 200);
+  const sort: Record<string, 1 | -1> = opts?.recent
+    ? { lastUsedAt: -1, updatedAt: -1 }
+    : { updatedAt: -1 };
+
+  // Ensure item-linked 2FA secrets appear alongside standalone authenticator apps.
+  try {
+    await backfillAuthenticatorEntriesFromVaultMfa(userId);
+  } catch {
+    /* non-fatal */
+  }
+
+  const rows = await db.findMany(COLLECTIONS.authenticatorEntries, activeFilter(userId), {
+    sort,
+    limit,
+  });
+  return rows.map((r) =>
+    toAuthenticatorResponse(r as Record<string, unknown>, { revealSecret: opts?.revealSecret !== false }),
+  );
 };
 
 export const touchAuthenticatorLastUsed = async (userId: string, id: string): Promise<void> => {

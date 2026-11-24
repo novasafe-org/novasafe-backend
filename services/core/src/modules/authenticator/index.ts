@@ -18,4 +18,5 @@ export {
   syncAuthenticatorForVaultItem,
   linkAuthenticatorToItem,
   findAuthenticatorByVaultItemId,
+  backfillAuthenticatorEntriesFromVaultMfa,
 } from './services/authenticator.service';
