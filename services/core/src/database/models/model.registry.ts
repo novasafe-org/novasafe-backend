@@ -56,6 +56,10 @@ import {
   DocumentSchema,
   DOCUMENT_MODEL_NAME,
 } from '../schemas/documents';
+import {
+  AuthenticatorEntrySchema,
+  AUTHENTICATOR_ENTRY_MODEL_NAME,
+} from '../schemas/authenticator';
 
 export interface ModelRegistration {
   modelName: string;
@@ -86,6 +90,11 @@ const registrations: ModelRegistration[] = [
     collection: COLLECTIONS.novaSafeMetadata,
   },
   { modelName: DOCUMENT_MODEL_NAME, schema: DocumentSchema, collection: COLLECTIONS.documents },
+  {
+    modelName: AUTHENTICATOR_ENTRY_MODEL_NAME,
+    schema: AuthenticatorEntrySchema,
+    collection: COLLECTIONS.authenticatorEntries,
+  },
 ];
 
 /**
