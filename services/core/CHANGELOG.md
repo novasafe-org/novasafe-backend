@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.25
+
+### Changed
+
+fix(authenticator): fix backfill TypeScript error breaking Lambda CI
+
 ## v1.1.24
 
 ### Changed
