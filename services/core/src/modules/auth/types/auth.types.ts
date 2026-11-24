@@ -14,17 +14,27 @@ export interface DevicePolicyDto {
   isPro: boolean;
 }
 
+export type SessionStepUpPreferred = 'biometric' | 'otp' | null;
+
+export interface SessionPolicyDto {
+  nextRotationAt: string;
+  rotationIntervalMs: number;
+  requiresStepUp: SessionStepUpPreferred;
+  riskSignals: string[];
+}
+
 export interface AuthSuccessResponse {
   success: true;
   source?: string;
   token: string;
   accessToken: string;
-  refreshToken: null;
+  refreshToken: string | null;
   user: AuthUserDto;
   requiresMasterPasswordSetup?: boolean;
   requiresVaultSetup?: boolean;
   oauthIntent?: string;
   devicePolicy?: DevicePolicyDto;
+  sessionPolicy?: SessionPolicyDto;
 }
 
 /** @deprecated Use AuthDeviceBlockedResponse — kept for client compatibility */

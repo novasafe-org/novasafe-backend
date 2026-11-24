@@ -21,6 +21,13 @@ import {
   resolveDeviceKey,
   touchSessionDeviceId,
 } from './device-trust.service';
+import { isMobileAppClient } from '../helpers/mobile-client.helper';
+import {
+  evaluateSessionRisk,
+  hashDeviceFingerprint,
+  ipRangePrefix,
+  parseRefreshExpiresInMs,
+} from './session-risk.service';
 
 export class AuthResponseService {
   constructor(
@@ -58,6 +65,8 @@ export class AuthResponseService {
     const snap = platformCtx?.snapshot;
     const isWebClient =
       snap?.platform === ClientPlatform.Web || snap?.declaredSource === RequestSource.WebApp;
+    /** Refresh + adaptive rotation are native mobile app only. */
+    const issueMobileRefresh = isMobileAppClient(req);
     const tokenResult = this.tokens.generateAccessToken(
       {
         id: userId,
@@ -67,9 +76,19 @@ export class AuthResponseService {
       },
       isWebClient ? { expiresIn: authConfig.jwt.webAccessExpiresIn } : undefined,
     );
+    const refresh = issueMobileRefresh ? this.tokens.generateRefreshToken() : null;
+    const now = new Date();
+    const refreshExpiresAt = refresh
+      ? new Date(now.getTime() + parseRefreshExpiresInMs())
+      : null;
 
     const ipAddress = resolveClientIp(req);
     const device = resolveDeviceInfo(req);
+    const osVersion = String(req.body?.deviceOsVersion || '').trim();
+    const geoCountry = String(snap?.flags?.geoCountry || req.headers['x-client-country'] || '').trim().toUpperCase();
+    const geoRegion = String(snap?.region || req.headers['x-client-region'] || '').trim().toUpperCase();
+    const fingerprint = hashDeviceFingerprint(deviceKey, device.platform, osVersion);
+
     const sessionPayload: Record<string, unknown> = {
       userId: new ObjectId(userId),
       tokenId: tokenResult.tokenId,
@@ -80,10 +99,53 @@ export class AuthResponseService {
       platform: device.platform,
       userAgent: device.userAgent,
       deviceId: deviceKey,
-      createdAt: new Date(),
-      lastActivity: new Date(),
+      createdAt: now,
+      lastActivity: now,
       ...(platformCtx ? platformCtx.toSessionFields() : {}),
     };
+
+    if (issueMobileRefresh && refresh && refreshExpiresAt) {
+      const risk = evaluateSessionRisk(
+        {
+          deviceFingerprint: fingerprint,
+          deviceId: deviceKey,
+          osVersion,
+          lastIpPrefix: ipRangePrefix(ipAddress),
+          lastGeoCountry: geoCountry || null,
+          lastGeoRegion: geoRegion || null,
+          biometricFailCount: 0,
+          nextRotationAt: new Date(now.getTime() + authConfig.session.baseRotationMs),
+          rotationIntervalMs: authConfig.session.baseRotationMs,
+        },
+        {
+          deviceId: deviceKey,
+          platform: device.platform,
+          osVersion,
+          ipAddress,
+          geoCountry,
+          geoRegion,
+          now,
+        },
+      );
+      Object.assign(sessionPayload, {
+        refreshTokenHash: refresh.tokenHash,
+        refreshExpiresAt,
+        refreshRotatedAt: now,
+        deviceFingerprint: fingerprint,
+        osVersion: osVersion || null,
+        lastIpPrefix: ipRangePrefix(ipAddress),
+        lastGeoCountry: geoCountry || null,
+        lastGeoRegion: geoRegion || null,
+        biometricFailCount: 0,
+        rotationIntervalMs: risk.rotationIntervalMs || authConfig.session.baseRotationMs,
+        nextRotationAt: new Date(
+          now.getTime() + (risk.rotationIntervalMs || authConfig.session.baseRotationMs),
+        ),
+        riskSignals: [],
+        preferredStepUp: null,
+      });
+    }
+
     await this.sessions.create(sessionPayload as Partial<ISession>);
     await registerTrustedDeviceForLogin(req, userId, deviceKey);
     await touchSessionDeviceId(tokenResult.tokenId, deviceKey);
@@ -93,19 +155,31 @@ export class AuthResponseService {
       platform: device.platform,
       deviceKey,
       trustedDeviceCount: deviceDecision.policy.trustedDeviceCount,
+      mobileRefresh: issueMobileRefresh,
     });
+
+    const nextRotationAt = sessionPayload.nextRotationAt as Date | undefined;
 
     return {
       success: true,
       source: req.source,
       token: tokenResult.token,
       accessToken: tokenResult.token,
-      refreshToken: null,
+      refreshToken: refresh?.token ?? null,
       user: toAuthUser(user),
       requiresMasterPasswordSetup: Boolean(options?.requiresMasterPasswordSetup),
       requiresVaultSetup: Boolean(options?.requiresVaultSetup),
       oauthIntent: options?.oauthIntent,
       devicePolicy: deviceDecision.policy,
+      sessionPolicy:
+        issueMobileRefresh && nextRotationAt
+          ? {
+              nextRotationAt: nextRotationAt.toISOString(),
+              rotationIntervalMs: Number(sessionPayload.rotationIntervalMs),
+              requiresStepUp: null,
+              riskSignals: [],
+            }
+          : undefined,
     };
   }
 

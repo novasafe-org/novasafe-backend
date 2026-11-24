@@ -6,4 +6,6 @@ export enum OtpPurpose {
   PasswordReset = 'password_reset',
   PasswordResetProof = 'password_reset_proof',
   ExtensionPairing = 'extension_pairing',
+  /** Step-up when biometric refresh rotation fails or is unavailable. */
+  SessionStepUp = 'session_step_up',
 }

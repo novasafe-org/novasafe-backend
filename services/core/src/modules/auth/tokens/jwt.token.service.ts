@@ -1,10 +1,11 @@
 import crypto from 'node:crypto';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import { assertAuthConfig, authConfig } from '../../../config/auth.config';
-import type { DecodedAuthToken, OauthOtpProvider, TokenPair, UserPayload } from './token.types';
+import type { DecodedAuthToken, OauthOtpProvider, RefreshTokenPack, TokenPair, UserPayload } from './token.types';
 
 /**
  * JWT issuance and verification (compatible with mobile_vault tokens).
+ * Refresh tokens are opaque (not JWT) and stored hashed on the session row.
  */
 export class JwtTokenService {
   generateAccessToken(user: UserPayload, options?: { expiresIn?: string }): TokenPair {
@@ -22,6 +23,16 @@ export class JwtTokenService {
       },
     );
     return { token, tokenId };
+  }
+
+  /** Opaque refresh token + SHA-256 hash for DB storage. */
+  generateRefreshToken(): RefreshTokenPack {
+    const token = crypto.randomBytes(48).toString('base64url');
+    return { token, tokenHash: this.hashRefreshToken(token) };
+  }
+
+  hashRefreshToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
   }
 
   generateOauthPendingToken(user: UserPayload, oauthOtpProvider: OauthOtpProvider): TokenPair {

@@ -55,6 +55,15 @@ export const sendSignupOTPEmail = async (email: string, otp: string): Promise<bo
   });
 };
 
+export const sendSessionStepUpOTPEmail = async (email: string, otp: string): Promise<boolean> => {
+  const { html, text } = renderOtpCodeEmail({
+    variant: 'session-step-up',
+    code: otp,
+    ttlMinutes: otpTtlMinutes(),
+  });
+  return sendMail(email, 'Confirm your NovaSafe session', html, text);
+};
+
 /**
  * Share invite mail for both recipient types:
  * - Guest (`accessUrl`): web link CTA to open the shared item.
