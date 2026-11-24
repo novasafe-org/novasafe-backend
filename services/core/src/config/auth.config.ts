@@ -1,6 +1,8 @@
 /**
  * Auth configuration (ported from mobile_vault; env-driven).
  */
+import { getEmailFrom } from './email-from.config';
+
 export const authConfig = {
   jwt: {
     secret: process.env.JWT_SECRET || '',
@@ -28,11 +30,8 @@ export const authConfig = {
   },
   email: {
     apiKey: process.env.RESEND_API_KEY || '',
-    from:
-      process.env.RESEND_FROM ||
-      process.env.SMTP_FROM ||
-      process.env.SUBSCRIPTION_EMAIL_FROM ||
-      'no-reply@novasafe.io',
+    /** Default from (password reset, signup OTP, 2FA). See `email-from.config`. */
+    from: getEmailFrom('default'),
   },
   otp: {
     ttlMs: 10 * 60 * 1000,

@@ -1,4 +1,4 @@
-import { SUBSCRIPTION_CONFIG } from "../config/subscription.config";
+import { getEmailFrom } from '../../../config/email-from.config';
 import { sendMail } from '../../auth/services/email.service';
 
 type SubscriptionEmailTemplate =
@@ -54,6 +54,6 @@ export async function sendSubscriptionLifecycleEmail(
   `;
   const text = `${title}\nPlan: ${planName}\nRenewal: ${renewal}\n${amount ? `Amount: ${amount}\n` : ""}If this wasn't you, contact support.`;
   return sendMail(toEmail, subject, html, text, {
-    from: SUBSCRIPTION_CONFIG.emailFrom,
+    from: getEmailFrom('subscription'),
   });
 }

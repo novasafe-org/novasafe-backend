@@ -660,10 +660,13 @@ export const listSentShares = async (
 
 export const listReceivedShares = async (userId: string, userEmail: string) => {
   const email = userEmail.toLowerCase().trim();
+  // Include revoked so With me can show Active + Revoked sections (read-only badge).
   const docs = await col()
     .find(
       activeShareFilter({
-        status: { $in: [ShareStatus.Active, ShareStatus.Expired] },
+        status: {
+          $in: [ShareStatus.Active, ShareStatus.Expired, ShareStatus.Revoked],
+        },
         recipients: {
           $elemMatch: {
             $or: [{ userId: new ObjectId(userId) }, { email }],
@@ -672,6 +675,7 @@ export const listReceivedShares = async (userId: string, userEmail: string) => {
                 ShareRecipientStatus.Pending,
                 ShareRecipientStatus.Active,
                 ShareRecipientStatus.Suspended,
+                ShareRecipientStatus.Revoked,
               ],
             },
           },
@@ -690,23 +694,38 @@ export const listReceivedShares = async (userId: string, userEmail: string) => {
           r.userId?.toString?.() === userId || String(r.email || '').toLowerCase() === email,
       );
       if (!mine) return null;
-      if (doc.status === ShareStatus.Expired && mine.status !== ShareRecipientStatus.Active) {
+      // Hide expired shares the recipient never accepted; keep revoked visible.
+      if (
+        doc.status === ShareStatus.Expired &&
+        mine.status !== ShareRecipientStatus.Active &&
+        mine.status !== ShareRecipientStatus.Revoked
+      ) {
         return null;
       }
+      // Decline is not shown in With me.
+      if (mine.status === ShareRecipientStatus.Declined) return null;
+      const recipientStatus = String(mine.status || '');
+      const shareStatus =
+        recipientStatus === ShareRecipientStatus.Revoked || doc.status === ShareStatus.Revoked
+          ? ShareStatus.Revoked
+          : doc.status;
       return {
         id: doc._id.toString(),
         resourceId: doc.resourceId?.toString?.(),
         itemName: doc.itemName,
         permission: doc.permission,
         permissionLabel: permissionLabel(doc.permission),
-        status: doc.status,
-        recipientStatus: mine.status,
+        status: shareStatus,
+        recipientStatus,
         expiresAt: doc.expiresAt || null,
         lastAccessedAt: mine.lastAccessedAt || doc.lastAccessedAt || null,
         senderName: doc.senderName || 'Someone',
         senderEmail: doc.senderEmail,
         createdAt: doc.createdAt,
-        canEdit: permissionLabel(doc.permission) === 'Can edit' && mine.status === ShareRecipientStatus.Active,
+        canEdit:
+          permissionLabel(doc.permission) === 'Can edit' &&
+          mine.status === ShareRecipientStatus.Active &&
+          shareStatus === ShareStatus.Active,
       };
     })
     .filter(Boolean);
