@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.23
+
+### Changed
+
+fix(authenticator): restore Lambda cold start (partial index)
+
 ## v1.1.22
 
 ### Changed
