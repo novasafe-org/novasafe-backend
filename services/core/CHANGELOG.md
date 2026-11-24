@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.26
+
+### Changed
+
+fix(authenticator): cascade soft-delete for linked 2FA and vault items
+
 ## v1.1.25
 
 ### Changed
