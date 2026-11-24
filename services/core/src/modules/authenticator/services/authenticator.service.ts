@@ -463,11 +463,14 @@ export const backfillAuthenticatorEntriesFromVaultMfa = async (userId: string): 
 
   const linkedItemIds = new Set(
     existingLinks
-      .map((a: { vaultItemId?: { toString?: () => string } | string | null }) =>
-        a.vaultItemId != null
-          ? String((a.vaultItemId as { toString?: () => string }).toString?.() || a.vaultItemId)
-          : '',
-      )
+      .map((doc) => {
+        const vaultItemId = (doc as { vaultItemId?: { toString?: () => string } | string | null })
+          .vaultItemId;
+        if (vaultItemId == null) return '';
+        return String(
+          (vaultItemId as { toString?: () => string }).toString?.() || vaultItemId,
+        );
+      })
       .filter(Boolean),
   );
 
