@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { authConfig } from '../../../config/auth.config';
+import { getEmailFrom } from '../../../config/email-from.config';
 import { logger } from '../../../shared/logger';
 import { renderOtpCodeEmail } from '../email-templates';
 
@@ -49,7 +50,9 @@ export const sendSignupOTPEmail = async (email: string, otp: string): Promise<bo
     code: otp,
     ttlMinutes: otpTtlMinutes(),
   });
-  return sendMail(email, 'Your NovaSafe signup code', html, text);
+  return sendMail(email, 'Your NovaSafe signup code', html, text, {
+    from: getEmailFrom('signup'),
+  });
 };
 
 /**
@@ -94,6 +97,7 @@ export const sendShareInviteEmail = async (
       </div>
     </div>`,
     `${senderName} shared ${itemName} with you on NovaSafe. Permission: ${permission}.${textTail}`,
+    { from: getEmailFrom('item_sharing') },
   );
 };
 
@@ -103,7 +107,9 @@ export const sendPasswordResetEmail = async (email: string, code: string): Promi
     code,
     ttlMinutes: otpTtlMinutes(),
   });
-  return sendMail(email, 'Your NovaSafe password reset code', html, text);
+  return sendMail(email, 'Your NovaSafe password reset code', html, text, {
+    from: getEmailFrom('password_reset'),
+  });
 };
 
 export const sendTwoFactorEmail = async (email: string, code: string): Promise<boolean> =>
@@ -121,4 +127,5 @@ export const sendTwoFactorEmail = async (email: string, code: string): Promise<b
       </div>
     </div>`,
     `Your NovaSafe 2FA code is ${code}. This code expires in 10 minutes.`,
+    { from: getEmailFrom('two_factor') },
   );

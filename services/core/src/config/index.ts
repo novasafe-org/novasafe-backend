@@ -4,6 +4,12 @@
  */
 
 export { authConfig, assertAuthConfig } from './auth.config';
+export {
+  EMAIL_FROM_USE_CASES,
+  emailFromByUseCase,
+  getEmailFrom,
+  type EmailFromUseCase,
+} from './email-from.config';
 
 export const appConfig = {
   nodeEnv: process.env.NODE_ENV || 'development',
