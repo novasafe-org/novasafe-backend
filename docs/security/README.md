@@ -9,6 +9,7 @@
 | [SECURITY_OVERVIEW.md](./SECURITY_OVERVIEW.md) | 1-page context (prod API path, risk flows) |
 | [PRODUCTION_READINESS_AUDIT.md](../PRODUCTION_READINESS_AUDIT.md) | Full security review (source) |
 | [PHASE1_SECURITY_FIX_REPORT.md](./PHASE1_SECURITY_FIX_REPORT.md) | Password history fix already in `core` |
+| [session-auth-env-setup.md](../auth/session-auth-env-setup.md) | Mobile dual-token / attestation env vars (local → prod) |
 
 Internal only — not on `novasafe.io/security`.
 
