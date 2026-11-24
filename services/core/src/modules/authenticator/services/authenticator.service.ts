@@ -313,6 +313,40 @@ export const deleteAuthenticatorEntry = async (
     { _id: new ObjectId(id), ...userFilter(userId) },
     { $set: { deleted: true, deleted_at: now, deletedAt: now, updatedAt: now } },
   );
+
+  // Linked entries: also soft-delete the vault item (and related rows) so 2FA + login stay in sync.
+  const linkedRaw = (existing as { vaultItemId?: unknown }).vaultItemId;
+  const linkedId =
+    linkedRaw == null || linkedRaw === ''
+      ? null
+      : String((linkedRaw as { toString?: () => string }).toString?.() || linkedRaw);
+  if (linkedId && ObjectId.isValid(linkedId)) {
+    const itemFilter = {
+      $and: [
+        { $or: [{ _id: new ObjectId(linkedId) }, { id: linkedId }] },
+        userFilter(userId),
+        { deleted: { $ne: true } },
+      ],
+    };
+    const itemResult = await db.updateOne(COLLECTIONS.vaultItems, itemFilter, {
+      $set: { deleted: true, deleted_at: now, deletedAt: now, source: 'mobile' },
+    });
+    if (itemResult.matchedCount) {
+      await db.getDb().collection(COLLECTIONS.customFields).updateMany(
+        { credentialId: new ObjectId(linkedId), ...userFilter(userId), deleted: { $ne: true } },
+        { $set: { deleted: true, deletedAt: now, source: 'mobile' } },
+      );
+      try {
+        const { deleteAllAttachmentsForItem } = await import(
+          '../../vault/services/item-attachments.service'
+        );
+        await deleteAllAttachmentsForItem(userId, linkedId);
+      } catch {
+        // Best-effort NAS/metadata cleanup — item soft-delete already succeeded.
+      }
+    }
+  }
+
   await bumpVaultDataRevision(userId);
   return { ok: true };
 };

@@ -747,6 +747,18 @@ export const deleteItemById = async (userId: string, id: string) => {
       { credentialId: new ObjectId(id), ...userFilter(userId), deleted: { $ne: true } },
       { $set: { deleted: true, deletedAt: new Date(), source: 'mobile' } },
     );
+    // Soft-delete linked authenticator entries so the Tools → Authenticator list stays in sync.
+    if (ObjectId.isValid(id)) {
+      const now = new Date();
+      await db.getDb().collection(collection.authenticatorEntries).updateMany(
+        {
+          ...userFilter(userId),
+          deleted: { $ne: true },
+          vaultItemId: new ObjectId(id),
+        },
+        { $set: { deleted: true, deleted_at: now, deletedAt: now, updatedAt: now } },
+      );
+    }
     try {
       const { deleteAllAttachmentsForItem } = await import('./item-attachments.service');
       await deleteAllAttachmentsForItem(userId, id);
