@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.24
+
+### Changed
+
+fix(authenticator): backfill vault MFA into list so screen is not empty
+
 ## v1.1.23
 
 ### Changed
