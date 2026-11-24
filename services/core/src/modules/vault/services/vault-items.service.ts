@@ -987,19 +987,32 @@ export const getDashboardStats = async (userId: string) => {
   });
   const totalItems = await db.getDb().collection(collection.vaultItems).countDocuments(query);
 
+  const authLinks = await db.findMany(
+    collection.authenticatorEntries,
+    { ...userFilter(userId), deleted: { $ne: true }, vaultItemId: { $ne: null } },
+    { limit: 500 },
+  );
+  const linkedItemIds = new Set(
+    authLinks
+      .map((a: any) => a.vaultItemId?.toString?.() || String(a.vaultItemId || ''))
+      .filter(Boolean),
+  );
+
   const enrichedItems = await Promise.all(
     allItems.map(async (item: any) => {
       const decrypted = decryptPayload(item as any) || {};
       const activePassword = await getActivePasswordVersion(userId, item._id);
       const password = activePassword?.password;
       const mfaSecret = readMfaSecret(decrypted);
-      // Explicit mfaSecret so toMobileItemSummary.hasMfa is reliable for recently-used.
+      const itemId = String(item._id?.toString?.() || item._id || '');
+      // Explicit mfaSecret / linked flag so toMobileItemSummary.hasMfa is reliable for recently-used.
       return {
         ...item,
         ...decrypted,
         password,
         strength: getPasswordStrength(password),
         mfaSecret: mfaSecret ? String(mfaSecret) : null,
+        hasLinkedAuthenticator: !mfaSecret && linkedItemIds.has(itemId),
       };
     }),
   );
