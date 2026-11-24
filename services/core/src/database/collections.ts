@@ -22,6 +22,11 @@ export const COLLECTIONS = {
   notes: 'notes',
   /** Vault documents module (NAS under userId/documents). */
   documents: 'documents',
+  /**
+   * Authenticator / TOTP entries (standalone or linked to a vault item).
+   * Secrets encrypted; metadata (issuer, account, algo, digits, period) plaintext for listing.
+   */
+  authenticatorEntries: 'authenticatorEntries',
   /** Per-vault-item file attachments (NAS under userId/items attachments/<itemId>). */
   itemAttachments: 'itemAttachments',
   /** Trusted device registry (multi-device policy). */

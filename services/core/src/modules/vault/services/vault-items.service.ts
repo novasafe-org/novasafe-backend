@@ -9,6 +9,10 @@ import {
 } from '../utils/password-version-access';
 import { assertCanCreateVaultItem } from '../../subscriptions/services/subscription.service';
 import { assertFolderOwned } from '../../folders/services/folders.service';
+import {
+  findAuthenticatorByVaultItemId,
+  syncAuthenticatorForVaultItem,
+} from '../../authenticator';
 
 const collection = COLLECTIONS;
 const db = getNativeMongo();
@@ -60,9 +64,46 @@ const maskValue = (value: string, fieldType: string) => {
 };
 
 const parseFieldType = (fieldType: string) => {
-  const normalized = String(fieldType || 'TEXT').toUpperCase();
+  let normalized = String(fieldType || 'TEXT').toUpperCase().trim();
+  // Flutter UI "Secret" / aliases → allowed sensitive types.
+  if (normalized === 'SECRET') normalized = 'PASSWORD';
+  if (normalized === 'MULTILINE') normalized = 'NOTE';
   if (!CUSTOM_FIELD_TYPES.has(normalized)) return null;
   return normalized;
+};
+
+/** Expire every active password version (explicit clear / empty password on save). */
+const clearActivePasswordVersions = async (userId: string, credentialId: ObjectId) => {
+  const now = new Date();
+  await db.getDb().collection(collection.passwordVersions).updateMany(
+    {
+      credentialId,
+      ...userFilter(userId),
+      deleted: { $ne: true },
+      is_expired: { $ne: true },
+    },
+    { $set: { is_expired: true, updatedAt: now, source: 'mobile' } },
+  );
+};
+
+const applyPasswordFromPayload = async (
+  userId: string,
+  credentialId: ObjectId,
+  payload: any,
+) => {
+  // Only act when the client explicitly sends `password` (including empty string).
+  if (payload == null || !Object.prototype.hasOwnProperty.call(payload, 'password')) {
+    return;
+  }
+  if (payload.password === null || payload.password === undefined) {
+    return;
+  }
+  const next = String(payload.password);
+  if (next.length > 0) {
+    await createPasswordVersion(userId, credentialId, next);
+  } else {
+    await clearActivePasswordVersions(userId, credentialId);
+  }
 };
 
 const readMfaSecret = (source: any): string | null | undefined => {
@@ -385,16 +426,37 @@ export const listItems = async (
     }
   }
 
-  const [items, total] = await Promise.all([
+  const [items, total, authLinks] = await Promise.all([
     db.findMany(collection.vaultItems, query, { skip, limit, sort: { updatedAt: -1 } }),
     db.getDb().collection(collection.vaultItems).countDocuments(query),
+    db.findMany(
+      collection.authenticatorEntries,
+      { ...userFilter(userId), deleted: { $ne: true }, vaultItemId: { $ne: null } },
+      { limit: 500 },
+    ),
   ]);
+
+  const linkedItemIds = new Set(
+    authLinks
+      .map((a: any) => a.vaultItemId?.toString?.() || String(a.vaultItemId || ''))
+      .filter(Boolean),
+  );
 
   const itemsWithDecrypted = await Promise.all(items.map(async (item: any) => {
     const decrypted = decryptPayload(item as any) || {};
     const activePassword = await getActivePasswordVersion(userId, item._id);
     const password = activePassword?.password;
-    return { ...item, ...decrypted, password, tags: item.tags || [], logoUrl: item.logoUrl || null, strength: getPasswordStrength(password) };
+    const mfaSecret = readMfaSecret(decrypted);
+    return {
+      ...item,
+      ...decrypted,
+      password,
+      mfaSecret: mfaSecret ? String(mfaSecret) : null,
+      hasLinkedAuthenticator: !mfaSecret && linkedItemIds.has(String(item._id)),
+      tags: item.tags || [],
+      logoUrl: item.logoUrl || null,
+      strength: getPasswordStrength(password),
+    };
   }));
 
   return { items: itemsWithDecrypted, total };
@@ -413,7 +475,13 @@ export const getItemById = async (userId: string, id: string, revealSensitive = 
   const activePassword = await getActivePasswordVersion(userId, item._id);
   const passwordVersions = await resolvePasswordVersionsForResponse(userId, item._id);
   const customFields = await getCustomFields(userId, item._id, revealSensitive);
-  const mfaSecret = readMfaSecret(decrypted);
+  let mfaSecret = readMfaSecret(decrypted);
+  if (!mfaSecret) {
+    const linked = await findAuthenticatorByVaultItemId(userId, String(item._id), {
+      revealSecret: true,
+    });
+    mfaSecret = linked?.secret ?? null;
+  }
   return {
     ...item,
     ...decrypted,
@@ -433,6 +501,14 @@ export const createItem = async (userId: string, payload: any) => {
   const normalizedPayload = normalizeCredentialPayload(payload);
   const tags = normalizeTags(payload.tags);
   const logoUrl = deriveLogoUrl(normalizedPayload.url, normalizedPayload.title);
+
+  // Link-by-reference: do not duplicate TOTP secret into the item blob.
+  const authenticatorEntryIdForCreate =
+    payload.authenticatorEntryId != null ? String(payload.authenticatorEntryId).trim() : '';
+  if (authenticatorEntryIdForCreate) {
+    normalizedPayload.mfaSecret = null;
+  }
+
   const encrypted = encryptPayload(normalizedPayload);
 
   // Optional folderId — omitted/null is allowed (no error). Invalid id is ignored → null.
@@ -470,21 +546,44 @@ export const createItem = async (userId: string, payload: any) => {
   };
 
   const result = await db.insertOne(collection.vaultItems, doc);
-  if (payload.password) {
-    await createPasswordVersion(userId, result.insertedId, String(payload.password));
-  }
+  await applyPasswordFromPayload(userId, result.insertedId, payload);
   const incomingCustomFields = normalizeIncomingCustomFields(payload);
   if (incomingCustomFields.length > 0) {
     await replaceCredentialCustomFields(userId, result.insertedId, incomingCustomFields);
   }
+
+  // Authenticator sync: link existing entry by reference, or create linked entry from mfaSecret.
+  try {
+    await syncAuthenticatorForVaultItem(userId, String(result.insertedId), {
+      authenticatorEntryId: authenticatorEntryIdForCreate || null,
+      mfaSecret: authenticatorEntryIdForCreate
+        ? null
+        : (normalizedPayload.mfaSecret as string | null),
+      issuer: payload.issuer ?? payload.mfaIssuer ?? null,
+      accountName: payload.accountName ?? payload.mfaAccountName ?? normalizedPayload.title ?? null,
+    });
+  } catch {
+    /* non-fatal — item still created */
+  }
+
   const inserted = await db.findOne(collection.vaultItems, { _id: result.insertedId });
   const activePassword = await getActivePasswordVersion(userId, result.insertedId);
   const versions = await resolvePasswordVersionsForResponse(userId, result.insertedId);
   const customFields = await getCustomFields(userId, result.insertedId, true);
   await bumpVaultDataRevision(userId);
+
+  let mfaSecret = normalizedPayload.mfaSecret as string | null;
+  if (!mfaSecret) {
+    const linked = await findAuthenticatorByVaultItemId(userId, String(result.insertedId), {
+      revealSecret: true,
+    });
+    mfaSecret = linked?.secret ?? null;
+  }
+
   return {
     ...inserted,
     ...normalizedPayload,
+    mfaSecret,
     tags,
     logoUrl,
     password: activePassword?.password,
@@ -537,21 +636,48 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
 
   const result = await db.updateOne(collection.vaultItems, filter, { $set: updateData });
   if (!result.matchedCount) return null;
-  if (payload.password) {
-    await createPasswordVersion(userId, new ObjectId(id), String(payload.password));
-  }
+  await applyPasswordFromPayload(userId, new ObjectId(id), payload);
   const incomingCustomFields = normalizeIncomingCustomFields(payload);
   if (incomingCustomFields.length > 0 || payload.custom_fields || payload.customFields) {
     await replaceCredentialCustomFields(userId, new ObjectId(id), incomingCustomFields);
   }
+
+  const authenticatorEntryId =
+    payload.authenticatorEntryId != null ? String(payload.authenticatorEntryId).trim() : '';
+  const incomingMfa = readMfaSecret(payload);
+  if (authenticatorEntryId || incomingMfa !== undefined) {
+    try {
+      await syncAuthenticatorForVaultItem(userId, id, {
+        authenticatorEntryId: authenticatorEntryId || null,
+        mfaSecret: authenticatorEntryId
+          ? null
+          : incomingMfa !== undefined
+            ? String(incomingMfa || '').trim() || null
+            : undefined,
+        issuer: payload.issuer ?? payload.mfaIssuer ?? null,
+        accountName: payload.accountName ?? payload.mfaAccountName ?? mergedPlain.title ?? null,
+      });
+    } catch {
+      /* non-fatal */
+    }
+  }
+
   const updated = await db.findOne(collection.vaultItems, filter);
   const activePassword = await getActivePasswordVersion(userId, new ObjectId(id));
   const versions = await resolvePasswordVersionsForResponse(userId, new ObjectId(id));
   const customFields = await getCustomFields(userId, new ObjectId(id), true);
   await bumpVaultDataRevision(userId);
+
+  let mfaSecret = mergedPlain.mfaSecret as string | null;
+  if (!mfaSecret) {
+    const linked = await findAuthenticatorByVaultItemId(userId, id, { revealSecret: true });
+    mfaSecret = linked?.secret ?? null;
+  }
+
   return {
     ...updated,
     ...mergedPlain,
+    mfaSecret,
     tags,
     logoUrl,
     password: activePassword?.password,
@@ -854,7 +980,15 @@ export const getDashboardStats = async (userId: string) => {
       const decrypted = decryptPayload(item as any) || {};
       const activePassword = await getActivePasswordVersion(userId, item._id);
       const password = activePassword?.password;
-      return { ...item, ...decrypted, password, strength: getPasswordStrength(password) };
+      const mfaSecret = readMfaSecret(decrypted);
+      // Explicit mfaSecret so toMobileItemSummary.hasMfa is reliable for recently-used.
+      return {
+        ...item,
+        ...decrypted,
+        password,
+        strength: getPasswordStrength(password),
+        mfaSecret: mfaSecret ? String(mfaSecret) : null,
+      };
     }),
   );
 

@@ -10,6 +10,7 @@ import { registerUsersModule } from './users';
 import { registerVaultModule } from './vault';
 import { registerFoldersModule } from './folders';
 import { registerDocumentsModule } from './documents';
+import { registerAuthenticatorModule } from './authenticator';
 import { registerStatusPageModule } from './status-page';
 import { registerBlogProxyModule } from './blog-proxy';
 import { registerBlogImagesProxyModule } from './blog-images-proxy';
@@ -29,6 +30,7 @@ export const registerModuleRoutes = (app: Express): void => {
   registerVaultModule(app, prefix);
   registerFoldersModule(app, prefix);
   registerDocumentsModule(app, prefix);
+  registerAuthenticatorModule(app, prefix);
   registerSettingsModule(app, prefix);
   registerDashboardModule(app, prefix);
   registerSharingModule(app, prefix);

@@ -4,6 +4,7 @@ export interface MobileItemSummary {
   category?: string;
   folderId?: string;
   isFavorite?: boolean;
+  hasMfa?: boolean;
   field_count?: number;
   attachment_count?: number;
   accessCount?: number;
@@ -16,6 +17,15 @@ export interface MobileItemSummary {
   url?: string | null;
 }
 
+/** True when decrypted payload carries a TOTP secret, or a linked authenticator entry exists. */
+export const itemHasMfa = (item: Record<string, unknown>): boolean => {
+  if (item.hasLinkedAuthenticator === true) return true;
+  const raw = item.mfaSecret ?? item.mfa_secret;
+  if (raw === undefined || raw === null) return false;
+  const s = String(raw).trim();
+  return s.length > 0 && s !== 'null' && s !== 'undefined';
+};
+
 export const toMobileItemSummary = (item: Record<string, unknown>): MobileItemSummary => ({
   id: String((item as { _id?: { toString?: () => string }; id?: string })._id?.toString?.() || item.id || ''),
   title: item.title as string | undefined,
@@ -23,6 +33,7 @@ export const toMobileItemSummary = (item: Record<string, unknown>): MobileItemSu
   folderId:
     (item.folderId as { toString?: () => string })?.toString?.() || (item.folderId as string | undefined),
   isFavorite: Boolean(item.isFavorite),
+  hasMfa: itemHasMfa(item),
   field_count: (item.field_count as number) || 0,
   attachment_count: (item.attachment_count as number) || 0,
   accessCount: (item.accessCount as number) || 0,
