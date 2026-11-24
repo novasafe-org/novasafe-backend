@@ -37,13 +37,24 @@ const shareErrorStatus = (code: string): number => {
 };
 
 export const resolveShareRecipients = async (req: Request, res: Response): Promise<void> => {
-  if (!requireUser(req)) {
+  const user = requireUser(req);
+  if (!user) {
     res.status(401).json({ success: false, message: 'Authentication required' });
     return;
   }
-  const result = await resolveRecipients(req.body?.emails ?? req.body?.recipientEmails);
+  const result = await resolveRecipients(req.body?.emails ?? req.body?.recipientEmails, {
+    senderId: user.id,
+  });
   if (!result.ok) {
-    res.status(400).json({ success: false, code: result.error.code, message: result.error.message });
+    const status =
+      result.error.code === 'NOVASAFE_SUBSCRIPTION_REQUIRED' ||
+      result.error.code === 'NOVASAFE_SUBSCRIPTION_READ_ONLY' ||
+      result.error.code === 'SHARE_FREE_RECIPIENT_CAP' ||
+      result.error.code === 'SHARE_FREE_INCOMING_CAP' ||
+      result.error.code === 'SHARE_RATE_LIMITED'
+        ? 403
+        : 400;
+    res.status(status).json({ success: false, code: result.error.code, message: result.error.message });
     return;
   }
   res.status(200).json({ success: true, source: source(req), recipients: result.recipients });
@@ -82,8 +93,12 @@ export const createShare = async (req: Request, res: Response): Promise<void> =>
     const status =
       result.error.code === 'ITEM_NOT_FOUND'
         ? 404
-        : result.error.code === 'TOO_MANY_RECIPIENTS'
-          ? 400
+        : result.error.code === 'NOVASAFE_SUBSCRIPTION_REQUIRED' ||
+            result.error.code === 'NOVASAFE_SUBSCRIPTION_READ_ONLY' ||
+            result.error.code === 'SHARE_FREE_RECIPIENT_CAP' ||
+            result.error.code === 'SHARE_FREE_INCOMING_CAP' ||
+            result.error.code === 'SHARE_RATE_LIMITED'
+          ? 403
           : 400;
     res.status(status).json({ success: false, code: result.error.code, message: result.error.message });
     return;

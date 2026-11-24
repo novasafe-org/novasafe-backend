@@ -15,6 +15,8 @@ import {
   validateUploadPayload,
 } from '../../../shared/storage';
 import { getItemById } from './vault-items.service';
+import { assertCanAddAttachment } from '../../subscriptions/services/subscription.service';
+import { AppError } from '../../../shared/errors';
 
 const db = getNativeMongo();
 
@@ -131,6 +133,15 @@ export const uploadItemAttachment = async (
     buffer: Buffer;
   },
 ): Promise<ItemAttachmentResponse> => {
+  const allowed = await assertCanAddAttachment(userId);
+  if (allowed.ok === false) {
+    throw new AppError(
+      allowed.message,
+      403,
+      allowed.code || 'NOVASAFE_SUBSCRIPTION_REQUIRED',
+    );
+  }
+
   await assertItemOwned(userId, itemId);
 
   validateUploadPayload({

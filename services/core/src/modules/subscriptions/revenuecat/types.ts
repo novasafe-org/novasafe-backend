@@ -36,6 +36,8 @@ export type SubscriptionState = {
   subscriptionStatus: SubscriptionLifecycleStatus;
   entitlements: EntitlementMap;
   limits: {
+    /** Free hard cap across all vault item categories. */
+    maxVaultItems: number;
     maxPasswords: number;
     maxSecureNotes: number;
     maxDevices: number;
@@ -45,6 +47,10 @@ export type SubscriptionState = {
    * True when vaultUsers.appFreeOverride is set — full Pro access without billing.
    */
   appFreeOverride?: boolean;
+  /**
+   * Lapsed Pro (expired/cancelled/billing issue): view allowed, create/edit blocked.
+   */
+  isReadOnly?: boolean;
   updatedAt: string;
 };
 

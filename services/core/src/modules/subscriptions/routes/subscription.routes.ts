@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authMiddleware } from '../../auth';
 import {
   getMembershipOverview,
+  getSubscriptionPlan,
   getSubscriptionPurchases,
   getSubscriptionDebugState,
   getSubscriptionOfferingsController,
@@ -17,6 +18,7 @@ export const createSubscriptionRoutes = (): Router => {
   router.post('/sync', authMiddleware, syncSubscriptionState);
   router.get('/offerings', authMiddleware, getSubscriptionOfferingsController);
   router.get('/membership', authMiddleware, getMembershipOverview);
+  router.get('/plan', authMiddleware, getSubscriptionPlan);
   router.get('/purchases', authMiddleware, getSubscriptionPurchases);
   router.get('/debug', authMiddleware, getSubscriptionDebugState);
   router.post('/webhook/revenuecat', handleRevenueCatWebhook);

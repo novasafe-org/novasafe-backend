@@ -1,6 +1,10 @@
 import type { Request, Response } from 'express';
 import { ObjectId } from '../../../database/object-id';
-import { assertCanCreateVaultItem } from '../../auth/adapters/subscription.adapter';
+import { AppError } from '../../../shared/errors';
+import {
+  assertCanCreateVaultItem,
+  assertCanModifyVault,
+} from '../../auth/adapters/subscription.adapter';
 import {
   addCustomField,
   syncBulkUpload,
@@ -126,22 +130,58 @@ export const createVaultItem = async (req: Request, res: Response): Promise<void
     return;
   }
   const category = String(req.body?.category || req.body?.type || 'login');
-  const allowed = await assertCanCreateVaultItem(userId, category);
+  const authEntryId =
+    req.body?.authenticatorEntryId != null
+      ? String(req.body.authenticatorEntryId).trim()
+      : '';
+  const mfaRaw = req.body?.mfaSecret ?? req.body?.mfa_secret;
+  const willCreateAuthenticator =
+    !authEntryId &&
+    mfaRaw != null &&
+    String(mfaRaw).trim() !== '' &&
+    String(mfaRaw).trim() !== 'null';
+  const allowed = await assertCanCreateVaultItem(userId, category, {
+    consumeAuthenticatorSlot: willCreateAuthenticator,
+  });
   if (!allowed.ok && 'message' in allowed) {
     res.status(403).json({
       success: false,
-      code: 'NOVASAFE_SUBSCRIPTION_REQUIRED',
+      code: allowed.code || 'NOVASAFE_SUBSCRIPTION_REQUIRED',
       message: allowed.message,
       subscription: allowed.state,
     });
     return;
   }
-  const item = await createItem(userId, req.body);
-  res.status(201).json({
-    success: true,
-    source: sendSource(req),
-    data: toMobileItemDetail(item as Record<string, unknown>),
-  });
+  try {
+    const item = await createItem(userId, req.body);
+    const linkError =
+      item && typeof item === 'object' && 'authenticatorLinkError' in item
+        ? String((item as { authenticatorLinkError?: unknown }).authenticatorLinkError || '')
+        : '';
+    const linkCode =
+      item && typeof item === 'object' && 'authenticatorLinkCode' in item
+        ? String((item as { authenticatorLinkCode?: unknown }).authenticatorLinkCode || '')
+        : '';
+    res.status(201).json({
+      success: true,
+      source: sendSource(req),
+      data: toMobileItemDetail(item as Record<string, unknown>),
+      ...(linkError
+        ? {
+            warning: {
+              code: linkCode || 'AUTHENTICATOR_LINK_FAILED',
+              message: linkError,
+            },
+          }
+        : {}),
+    });
+  } catch (err) {
+    if (err instanceof AppError) {
+      res.status(err.statusCode).json(err.toJSON());
+      return;
+    }
+    throw err;
+  }
 };
 
 export const updateVaultItem = async (req: Request, res: Response): Promise<void> => {
@@ -154,6 +194,16 @@ export const updateVaultItem = async (req: Request, res: Response): Promise<void
     res.status(400).json({ success: false, message: 'Invalid item id' });
     return;
   }
+  const actorWrite = await assertCanModifyVault(userId);
+  if (actorWrite.ok === false) {
+    res.status(403).json({
+      success: false,
+      code: actorWrite.code || 'NOVASAFE_SUBSCRIPTION_READ_ONLY',
+      message: actorWrite.message,
+      subscription: actorWrite.state,
+    });
+    return;
+  }
   let item = await updateItemById(userId, req.params.id, req.body || {});
   if (!item) {
     const access = await findShareAccessForItem(
@@ -163,6 +213,16 @@ export const updateVaultItem = async (req: Request, res: Response): Promise<void
       'edit',
     );
     if (access?.ownerUserId) {
+      const ownerWrite = await assertCanModifyVault(access.ownerUserId);
+      if (ownerWrite.ok === false) {
+        res.status(403).json({
+          success: false,
+          code: ownerWrite.code || 'NOVASAFE_SUBSCRIPTION_READ_ONLY',
+          message: ownerWrite.message,
+          subscription: ownerWrite.state,
+        });
+        return;
+      }
       item = await updateItemById(access.ownerUserId, req.params.id, req.body || {});
     } else if (
       await hasRevokedShareAccessForItem(userId, req.user?.email || '', req.params.id)
@@ -179,10 +239,26 @@ export const updateVaultItem = async (req: Request, res: Response): Promise<void
     res.status(404).json({ success: false, message: 'Item not found' });
     return;
   }
+  const linkError =
+    item && typeof item === 'object' && 'authenticatorLinkError' in item
+      ? String((item as { authenticatorLinkError?: unknown }).authenticatorLinkError || '')
+      : '';
+  const linkCode =
+    item && typeof item === 'object' && 'authenticatorLinkCode' in item
+      ? String((item as { authenticatorLinkCode?: unknown }).authenticatorLinkCode || '')
+      : '';
   res.status(200).json({
     success: true,
     source: sendSource(req),
     data: toMobileItemDetail(item as Record<string, unknown>),
+    ...(linkError
+      ? {
+          warning: {
+            code: linkCode || 'AUTHENTICATOR_LINK_FAILED',
+            message: linkError,
+          },
+        }
+      : {}),
   });
 };
 

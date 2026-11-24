@@ -146,7 +146,7 @@ export const uploadDocumentHandler = async (req: Request, res: Response): Promis
   if (!allowed.ok && 'message' in allowed) {
     res.status(403).json({
       success: false,
-      code: 'NOVASAFE_SUBSCRIPTION_REQUIRED',
+      code: ('code' in allowed && allowed.code) || 'NOVASAFE_SUBSCRIPTION_REQUIRED',
       message: allowed.message,
       subscription: allowed.state,
     });

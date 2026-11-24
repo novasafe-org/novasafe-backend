@@ -2,6 +2,10 @@ import { ObjectId } from '../../../database/object-id';
 import { COLLECTIONS } from '../../../database/collections';
 import { getNativeMongo } from '../../../database/adapters/native-mongo.adapter';
 import { decryptPayload, decryptText, encryptText } from '../../../shared/crypto/vault-crypto';
+import {
+  assertCanCreateAuthenticator,
+  assertCanModifyVault,
+} from '../../subscriptions/services/subscription.service';
 
 const db = getNativeMongo();
 
@@ -46,7 +50,9 @@ export type AuthenticatorErrorCode =
   | 'INVALID_SECRET'
   | 'INVALID_ITEM'
   | 'ITEM_ALREADY_LINKED'
-  | 'ENTRY_ALREADY_LINKED';
+  | 'ENTRY_ALREADY_LINKED'
+  | 'NOVASAFE_SUBSCRIPTION_REQUIRED'
+  | 'NOVASAFE_SUBSCRIPTION_READ_ONLY';
 
 export type AuthenticatorError = { code: AuthenticatorErrorCode; message: string };
 
@@ -176,6 +182,20 @@ export const createAuthenticatorEntry = async (
   userId: string,
   input: CreateAuthenticatorInput,
 ): Promise<{ ok: true; entry: AuthenticatorEntryResponse } | { ok: false; error: AuthenticatorError }> => {
+  // Free: shared slot budget with vault items (default 3 total). Pro: unlimited.
+  const allowed = await assertCanCreateAuthenticator(userId);
+  if (allowed.ok === false) {
+    return {
+      ok: false,
+      error: {
+        code: (allowed.code === 'NOVASAFE_SUBSCRIPTION_READ_ONLY'
+          ? 'NOVASAFE_SUBSCRIPTION_READ_ONLY'
+          : 'NOVASAFE_SUBSCRIPTION_REQUIRED') as AuthenticatorErrorCode,
+        message: allowed.message,
+      },
+    };
+  }
+
   const secret = normalizeSecret(input.secret);
   if (!secret) {
     return { ok: false, error: { code: 'INVALID_SECRET', message: 'A valid TOTP secret is required' } };
@@ -245,6 +265,16 @@ export const updateAuthenticatorEntry = async (
   id: string,
   input: Partial<CreateAuthenticatorInput> & { lastUsedAt?: Date | null },
 ): Promise<{ ok: true; entry: AuthenticatorEntryResponse } | { ok: false; error: AuthenticatorError }> => {
+  const canWrite = await assertCanModifyVault(userId);
+  if (canWrite.ok === false) {
+    return {
+      ok: false,
+      error: {
+        code: 'NOVASAFE_SUBSCRIPTION_READ_ONLY',
+        message: canWrite.message,
+      },
+    };
+  }
   if (!ObjectId.isValid(id)) {
     return { ok: false, error: { code: 'INVALID_ENTRY', message: 'Invalid entry id' } };
   }
@@ -423,17 +453,20 @@ export const syncAuthenticatorForVaultItem = async (
     issuer?: string | null;
     accountName?: string | null;
   },
-): Promise<void> => {
-  if (!ObjectId.isValid(vaultItemId)) return;
+): Promise<{ ok: true } | { ok: false; message: string; code?: string }> => {
+  if (!ObjectId.isValid(vaultItemId)) return { ok: true };
 
   const entryId = opts.authenticatorEntryId?.trim();
   if (entryId) {
-    await linkAuthenticatorToItem(userId, entryId, vaultItemId);
-    return;
+    const linked = await linkAuthenticatorToItem(userId, entryId, vaultItemId);
+    if (linked.ok === false) {
+      return { ok: false, message: linked.error.message, code: linked.error.code };
+    }
+    return { ok: true };
   }
 
   const secret = normalizeSecret(opts.mfaSecret);
-  if (!secret) return;
+  if (!secret) return { ok: true };
 
   const existing = await db.findOne(
     COLLECTIONS.authenticatorEntries,
@@ -441,6 +474,10 @@ export const syncAuthenticatorForVaultItem = async (
   );
 
   if (existing) {
+    const canWrite = await assertCanModifyVault(userId);
+    if (canWrite.ok === false) {
+      return { ok: false, message: canWrite.message, code: canWrite.code };
+    }
     const enc = encryptText(secret);
     await db.updateOne(
       COLLECTIONS.authenticatorEntries,
@@ -463,15 +500,28 @@ export const syncAuthenticatorForVaultItem = async (
       },
     );
     await bumpVaultDataRevision(userId);
-    return;
+    return { ok: true };
   }
 
-  await createAuthenticatorEntry(userId, {
+  const created = await createAuthenticatorEntry(userId, {
     secret,
     vaultItemId,
     issuer: opts.issuer,
     accountName: opts.accountName,
   });
+  if (created.ok === false) {
+    const slotTaken =
+      created.error.code === 'NOVASAFE_SUBSCRIPTION_REQUIRED' ||
+      created.error.code === 'NOVASAFE_SUBSCRIPTION_READ_ONLY';
+    return {
+      ok: false,
+      code: created.error.code,
+      message: slotTaken
+        ? 'Authenticator slot is taken. Free plan limit reached — upgrade or free a slot to link 2FA.'
+        : created.error.message,
+    };
+  }
+  return { ok: true };
 };
 
 /**

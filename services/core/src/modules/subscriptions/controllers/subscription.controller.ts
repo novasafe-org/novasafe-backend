@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import {
   getMembershipOverviewForUser,
+  getPlanPromptForUser,
   getPurchaseHistoryForUser,
   getSubscriptionDebugSnapshot,
   getSubscriptionOfferings,
@@ -88,6 +89,20 @@ export const getMembershipOverview = async (
     return;
   }
   const data = await getMembershipOverviewForUser(userId);
+  res.status(200).json({ success: true, source: req.source, data });
+};
+
+/** Compact plan + upgrade prompts for mobile. */
+export const getSubscriptionPlan = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ success: false, message: "Authentication required" });
+    return;
+  }
+  const data = await getPlanPromptForUser(userId);
   res.status(200).json({ success: true, source: req.source, data });
 };
 

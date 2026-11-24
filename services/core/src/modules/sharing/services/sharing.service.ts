@@ -14,6 +14,11 @@ import {
 } from '../../../database/schemas/sharing';
 import { getUserRepository } from '../../auth/repositories/user.repository';
 import { sendShareInviteEmail } from '../../auth/services/email.service';
+import {
+  assertCanShareWithRecipients,
+  logProFreeShareConcentration,
+} from '../../subscriptions/services/subscription.service';
+import { SUBSCRIPTION_CONFIG } from '../../subscriptions/config/subscription.config';
 
 const db = getNativeMongo();
 const col = () => db.collection(COLLECTIONS.shareRecords);
@@ -314,17 +319,24 @@ export const findOwnedItemIdByTitle = async (userId: string, itemName: string) =
 
 export type ServiceError = { code: string; message: string };
 
-export const resolveRecipients = async (emailsRaw: unknown) => {
+export const resolveRecipients = async (
+  emailsRaw: unknown,
+  options?: { senderId?: string },
+) => {
   const emails = normalizeEmails(emailsRaw);
   if (emails.length === 0) {
     return { ok: false as const, error: { code: 'INVALID_EMAILS', message: 'At least one valid email is required' } };
   }
-  if (emails.length > SHARE_MAX_RECIPIENTS) {
+  const maxRecipients = Math.min(
+    SHARE_MAX_RECIPIENTS,
+    SUBSCRIPTION_CONFIG.sharingLimits.maxRecipientsPerShare,
+  );
+  if (emails.length > maxRecipients) {
     return {
       ok: false as const,
       error: {
         code: 'TOO_MANY_RECIPIENTS',
-        message: `You can share with at most ${SHARE_MAX_RECIPIENTS} recipients`,
+        message: `You can share with at most ${maxRecipients} recipients`,
       },
     };
   }
@@ -351,6 +363,22 @@ export const resolveRecipients = async (emailsRaw: unknown) => {
       };
     }),
   );
+
+  if (options?.senderId) {
+    const shareGate = await assertCanShareWithRecipients(
+      options.senderId,
+      resolved.map((r) => r.userId),
+    );
+    if (shareGate.ok === false) {
+      return {
+        ok: false as const,
+        error: {
+          code: shareGate.code || 'SHARE_NOT_ALLOWED',
+          message: shareGate.message,
+        },
+      };
+    }
+  }
 
   return { ok: true as const, recipients: resolved };
 };
@@ -406,12 +434,16 @@ export const createShares = async (params: {
   if (emails.length === 0) {
     return { ok: false as const, error: { code: 'INVALID_EMAILS', message: 'At least one valid email is required' } };
   }
-  if (emails.length > SHARE_MAX_RECIPIENTS) {
+  const maxRecipients = Math.min(
+    SHARE_MAX_RECIPIENTS,
+    SUBSCRIPTION_CONFIG.sharingLimits.maxRecipientsPerShare,
+  );
+  if (emails.length > maxRecipients) {
     return {
       ok: false as const,
       error: {
         code: 'TOO_MANY_RECIPIENTS',
-        message: `You can share with at most ${SHARE_MAX_RECIPIENTS} recipients`,
+        message: `You can share with at most ${maxRecipients} recipients`,
       },
     };
   }
@@ -435,11 +467,26 @@ export const createShares = async (params: {
     };
   }
 
+  const recipients = await buildRecipients(emails);
+  const shareGate = await assertCanShareWithRecipients(
+    params.senderId,
+    recipients.map((r) => (r.userId ? String(r.userId) : null)),
+    { additionalItems: resourceIds.length },
+  );
+  if (shareGate.ok === false) {
+    return {
+      ok: false as const,
+      error: {
+        code: shareGate.code || 'SHARE_NOT_ALLOWED',
+        message: shareGate.message,
+      },
+    };
+  }
+
   const permission = parsePermission(params.permissionRaw);
   const expiresInDays = parseExpiryDays(params.expiresInDaysRaw);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + expiresInDays * 24 * 60 * 60 * 1000);
-  const recipients = await buildRecipients(emails);
   const created: any[] = [];
 
   for (const resourceId of resourceIds) {
@@ -536,6 +583,8 @@ export const createShares = async (params: {
 
     created.push(toShareSummary(saved));
   }
+
+  void logProFreeShareConcentration(params.senderId);
 
   return {
     ok: true as const,
