@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.29
+
+### Changed
+
+feat(auth): mobile dual-token sessions with rotation, step-up, and attestation
+
 ## v1.1.28
 
 ### Changed
