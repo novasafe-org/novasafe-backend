@@ -45,9 +45,10 @@ AuthenticatorEntrySchema.index(
   { userId: 1, vaultItemId: 1 },
   {
     unique: true,
+    // Mongo partial indexes reject $ne — use equality (same as partialIndexActiveUser).
     partialFilterExpression: {
       vaultItemId: { $type: 'objectId' },
-      deleted: { $ne: true },
+      deleted: false,
     },
   },
 );

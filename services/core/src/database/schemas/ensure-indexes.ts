@@ -27,6 +27,7 @@ import { applyDeviceIndexes } from './devices';
 import { DEVICE_MODEL_NAME } from './devices';
 import { applyAuthenticatorIndexes } from './authenticator';
 import { AUTHENTICATOR_ENTRY_MODEL_NAME } from './authenticator';
+import { logger } from '../../shared/logger';
 
 /**
  * Ensures MongoDB indexes for all registered schemas.
@@ -53,7 +54,15 @@ export const ensureAllSchemaIndexes = async (): Promise<void> => {
   await applyDeviceIndexes(ModelRegistry.get(DEVICE_MODEL_NAME));
   await applySharingIndexes(ModelRegistry.get(SHARE_RECORD_MODEL_NAME));
   await applyAuditIndexes(ModelRegistry.get(EXPORT_HISTORY_MODEL_NAME));
-  await applyAuthenticatorIndexes(ModelRegistry.get(AUTHENTICATOR_ENTRY_MODEL_NAME));
+
+  // Non-fatal: a bad authenticator index must not block Lambda cold start / all routes.
+  try {
+    await applyAuthenticatorIndexes(ModelRegistry.get(AUTHENTICATOR_ENTRY_MODEL_NAME));
+  } catch (error) {
+    logger.warn('Authenticator index setup skipped or failed', {
+      err: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   await applySubscriptionIndexes({
     subscription: ModelRegistry.get(USER_SUBSCRIPTION_MODEL_NAME),
