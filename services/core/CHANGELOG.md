@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.30
+
+### Changed
+
+feat(subscriptions): Free/Pro slot limits and plan gates
+
 ## v1.1.29
 
 ### Changed
