@@ -3,10 +3,14 @@ import { describe, it } from "node:test";
 import {
   defaultSubscriptionState,
   hasEntitlement,
+  isLapsedProReadOnly,
+  isWithinPostExpiryGrace,
   mapRevenueCatSubscriberToState,
+  POST_EXPIRY_GRACE_MS,
   withAppFreeOverride,
 } from "./subscriptionStateMapper";
 import type { RevenueCatSubscriberResponse } from "../services/revenue-cat.service";
+import type { SubscriptionState } from "./types";
 
 describe("subscriptionStateMapper lifecycle", () => {
   it("Scenario A: activation maps active pro entitlement", () => {
@@ -89,7 +93,7 @@ describe("subscriptionStateMapper lifecycle", () => {
     assert.equal(state.cancellationAt, cancelledAt);
   });
 
-  it("Scenario D: expiration downgrades to free", () => {
+  it("Scenario D: expiration within 7 days stays writable (soft grace)", () => {
     const past = new Date(Date.now() - 60_000).toISOString();
     const rc: RevenueCatSubscriberResponse = {
       subscriber: {
@@ -97,12 +101,14 @@ describe("subscriptionStateMapper lifecycle", () => {
           pro: {
             expires_date: past,
             product_identifier: "novasafe_pro_monthly",
+            purchase_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
           },
         },
         subscriptions: {
           novasafe_pro_monthly: {
             expires_date: past,
             store: "paddle",
+            original_purchase_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
           },
         },
       },
@@ -111,8 +117,37 @@ describe("subscriptionStateMapper lifecycle", () => {
     assert.equal(state.tier, "free");
     assert.equal(state.isPro, false);
     assert.equal(state.isActive, false);
-    assert.equal(state.subscriptionStatus, "inactive");
+    assert.equal(state.subscriptionStatus, "expired");
     assert.equal(state.entitlements.canUsePasswordHistory, false);
+    assert.equal(state.isReadOnly, false);
+    assert.equal(isLapsedProReadOnly(state), false);
+  });
+
+  it("Scenario D2: expiration after 7-day grace becomes read-only", () => {
+    const past = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    const rc: RevenueCatSubscriberResponse = {
+      subscriber: {
+        entitlements: {
+          pro: {
+            expires_date: past,
+            product_identifier: "novasafe_pro_monthly",
+            purchase_date: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+        },
+        subscriptions: {
+          novasafe_pro_monthly: {
+            expires_date: past,
+            store: "paddle",
+            original_purchase_date: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+        },
+      },
+    };
+    const state = mapRevenueCatSubscriberToState(rc, { lastEventType: "EXPIRATION" });
+    assert.equal(state.tier, "free");
+    assert.equal(state.isPro, false);
+    assert.equal(state.isReadOnly, true);
+    assert.equal(isLapsedProReadOnly(state), true);
   });
 
   it("Scenario E: refund removes entitlements when RC shows expired", () => {
@@ -134,20 +169,61 @@ describe("subscriptionStateMapper lifecycle", () => {
     assert.equal(state.entitlements.canUsePasswordHistory, false);
   });
 
-  it("free defaults include maxDocuments and appFreeOverride unlocks Pro", () => {
+  it("free defaults include maxVaultItems and appFreeOverride unlocks Pro", () => {
     const free = defaultSubscriptionState();
+    assert.equal(free.limits.maxVaultItems, 3);
     assert.equal(free.limits.maxPasswords, 3);
-    assert.equal(free.limits.maxDocuments, 3);
+    // Documents are Pro-only; Free budget is 0.
+    assert.equal(free.limits.maxDocuments, 0);
     assert.equal(free.appFreeOverride, false);
+    assert.equal(free.isReadOnly, false);
+    assert.equal(isLapsedProReadOnly(free), false);
     assert.equal(hasEntitlement(free, "canUseUnlimitedPasswords"), false);
+    assert.equal(hasEntitlement(free, "canUseUnlimitedVaultItems"), false);
+    assert.equal(hasEntitlement(free, "canUseFolders"), false);
+    assert.equal(hasEntitlement(free, "canUseAuthenticator"), true);
+    assert.equal(hasEntitlement(free, "canShareItems"), false);
+    assert.equal(hasEntitlement(free, "canUseAttachments"), false);
 
     const unlocked = withAppFreeOverride(free);
     assert.equal(unlocked.appFreeOverride, true);
     assert.equal(unlocked.isPro, true);
     assert.equal(unlocked.tier, "pro");
+    assert.equal(unlocked.isReadOnly, false);
     assert.equal(unlocked.entitlements.canUseUnlimitedPasswords, true);
+    assert.equal(unlocked.entitlements.canUseUnlimitedVaultItems, true);
+    assert.equal(unlocked.entitlements.canUseFolders, true);
     assert.equal(unlocked.limits.maxPasswords, Number.MAX_SAFE_INTEGER);
+    assert.equal(unlocked.limits.maxVaultItems, Number.MAX_SAFE_INTEGER);
     assert.equal(unlocked.limits.maxDocuments, Number.MAX_SAFE_INTEGER);
     assert.equal(hasEntitlement(unlocked, "canUsePasswordHistory"), true);
+  });
+
+  it("never-subscribed Free is not read-only", () => {
+    const free = defaultSubscriptionState();
+    assert.equal(isLapsedProReadOnly(free), false);
+    assert.equal(isWithinPostExpiryGrace(free), false);
+  });
+
+  it("isWithinPostExpiryGrace is true only inside the 7-day window", () => {
+    const base = defaultSubscriptionState();
+    const inside: SubscriptionState = {
+      ...base,
+      isPro: false,
+      isActive: false,
+      expiresAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      purchasedAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+      subscriptionStatus: "expired",
+      productId: "novasafe_pro_monthly",
+    };
+    assert.equal(isWithinPostExpiryGrace(inside), true);
+    assert.equal(isLapsedProReadOnly(inside), false);
+
+    const outside: SubscriptionState = {
+      ...inside,
+      expiresAt: new Date(Date.now() - (POST_EXPIRY_GRACE_MS + 60_000)).toISOString(),
+    };
+    assert.equal(isWithinPostExpiryGrace(outside), false);
+    assert.equal(isLapsedProReadOnly(outside), true);
   });
 });

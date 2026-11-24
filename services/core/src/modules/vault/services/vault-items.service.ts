@@ -7,12 +7,16 @@ import {
   userCanAccessPasswordHistory,
   type PasswordVersionRecord,
 } from '../utils/password-version-access';
-import { assertCanCreateVaultItem } from '../../subscriptions/services/subscription.service';
+import {
+  assertCanCreateVaultItem,
+  assertCanModifyVault,
+} from '../../subscriptions/services/subscription.service';
 import { assertFolderOwned } from '../../folders/services/folders.service';
 import {
   findAuthenticatorByVaultItemId,
   syncAuthenticatorForVaultItem,
 } from '../../authenticator';
+import { AppError } from '../../../shared/errors';
 
 const collection = COLLECTIONS;
 const db = getNativeMongo();
@@ -509,6 +513,26 @@ export const createItem = async (userId: string, payload: any) => {
     normalizedPayload.mfaSecret = null;
   }
 
+  // New mfaSecret (not linking an existing entry) consumes a second Free-plan slot.
+  const mfaRaw = normalizedPayload.mfaSecret;
+  const willCreateAuthenticator =
+    !authenticatorEntryIdForCreate &&
+    mfaRaw != null &&
+    String(mfaRaw).trim() !== '' &&
+    String(mfaRaw).trim() !== 'null';
+  const slotCheck = await assertCanCreateVaultItem(
+    userId,
+    String(normalizedPayload.category || payload.category || payload.type || 'login'),
+    { consumeAuthenticatorSlot: willCreateAuthenticator },
+  );
+  if (slotCheck.ok === false) {
+    throw new AppError(
+      slotCheck.message,
+      403,
+      slotCheck.code || 'NOVASAFE_SUBSCRIPTION_REQUIRED',
+    );
+  }
+
   const encrypted = encryptPayload(normalizedPayload);
 
   // Optional folderId — omitted/null is allowed (no error). Invalid id is ignored → null.
@@ -553,8 +577,10 @@ export const createItem = async (userId: string, payload: any) => {
   }
 
   // Authenticator sync: link existing entry by reference, or create linked entry from mfaSecret.
+  let authenticatorLinkError: string | null = null;
+  let authenticatorLinkCode: string | null = null;
   try {
-    await syncAuthenticatorForVaultItem(userId, String(result.insertedId), {
+    const syncResult = await syncAuthenticatorForVaultItem(userId, String(result.insertedId), {
       authenticatorEntryId: authenticatorEntryIdForCreate || null,
       mfaSecret: authenticatorEntryIdForCreate
         ? null
@@ -562,8 +588,14 @@ export const createItem = async (userId: string, payload: any) => {
       issuer: payload.issuer ?? payload.mfaIssuer ?? null,
       accountName: payload.accountName ?? payload.mfaAccountName ?? normalizedPayload.title ?? null,
     });
-  } catch {
-    /* non-fatal — item still created */
+    if (syncResult.ok === false) {
+      authenticatorLinkError = syncResult.message;
+      authenticatorLinkCode = syncResult.code || 'AUTHENTICATOR_LINK_FAILED';
+    }
+  } catch (err) {
+    authenticatorLinkError =
+      err instanceof Error ? err.message : 'Authenticator could not be linked to this item.';
+    authenticatorLinkCode = 'AUTHENTICATOR_LINK_FAILED';
   }
 
   const inserted = await db.findOne(collection.vaultItems, { _id: result.insertedId });
@@ -583,12 +615,18 @@ export const createItem = async (userId: string, payload: any) => {
   return {
     ...inserted,
     ...normalizedPayload,
-    mfaSecret,
+    mfaSecret: authenticatorLinkError ? null : mfaSecret,
     tags,
     logoUrl,
     password: activePassword?.password,
     password_versions: versions,
     custom_fields: customFields,
+    ...(authenticatorLinkError
+      ? {
+          authenticatorLinkError,
+          authenticatorLinkCode,
+        }
+      : {}),
   };
 };
 
@@ -645,9 +683,11 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
   const authenticatorEntryId =
     payload.authenticatorEntryId != null ? String(payload.authenticatorEntryId).trim() : '';
   const incomingMfa = readMfaSecret(payload);
+  let authenticatorLinkError: string | null = null;
+  let authenticatorLinkCode: string | null = null;
   if (authenticatorEntryId || incomingMfa !== undefined) {
     try {
-      await syncAuthenticatorForVaultItem(userId, id, {
+      const syncResult = await syncAuthenticatorForVaultItem(userId, id, {
         authenticatorEntryId: authenticatorEntryId || null,
         mfaSecret: authenticatorEntryId
           ? null
@@ -657,8 +697,14 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
         issuer: payload.issuer ?? payload.mfaIssuer ?? null,
         accountName: payload.accountName ?? payload.mfaAccountName ?? mergedPlain.title ?? null,
       });
-    } catch {
-      /* non-fatal */
+      if (syncResult.ok === false) {
+        authenticatorLinkError = syncResult.message;
+        authenticatorLinkCode = syncResult.code || 'AUTHENTICATOR_LINK_FAILED';
+      }
+    } catch (err) {
+      authenticatorLinkError =
+        err instanceof Error ? err.message : 'Authenticator could not be linked to this item.';
+      authenticatorLinkCode = 'AUTHENTICATOR_LINK_FAILED';
     }
   }
 
@@ -682,6 +728,9 @@ export const updateItemById = async (userId: string, id: string, payload: any) =
     logoUrl,
     password: activePassword?.password,
     password_versions: versions,
+    ...(authenticatorLinkError
+      ? { authenticatorLinkError, authenticatorLinkCode }
+      : {}),
     custom_fields: customFields,
   };
 };
@@ -922,7 +971,19 @@ export const syncBulkUpload = async (
     try {
       if (op.op === 'create') {
         const category = String(op.payload?.category || op.payload?.type || 'login');
-        const allowed = await assertCanCreateVaultItem(userId, category);
+        const authEntryId =
+          op.payload?.authenticatorEntryId != null
+            ? String(op.payload.authenticatorEntryId).trim()
+            : '';
+        const mfaRaw = op.payload?.mfaSecret ?? op.payload?.mfa_secret;
+        const willCreateAuthenticator =
+          !authEntryId &&
+          mfaRaw != null &&
+          String(mfaRaw).trim() !== '' &&
+          String(mfaRaw).trim() !== 'null';
+        const allowed = await assertCanCreateVaultItem(userId, category, {
+          consumeAuthenticatorSlot: willCreateAuthenticator,
+        });
         if (!allowed.ok) {
           continue;
         }
@@ -930,6 +991,10 @@ export const syncBulkUpload = async (
         const createdId = (created as any)?.id || (created as any)?._id?.toString?.();
         if (createdId) syncedIds.push(String(createdId));
       } else if (op.op === 'update') {
+        const canWrite = await assertCanModifyVault(userId);
+        if (!canWrite.ok) {
+          continue;
+        }
         const updated = await updateItemById(userId, op.itemId, { ...(op.payload || {}), deviceId: payload.deviceId });
         const updatedId = (updated as any)?.id || (updated as any)?._id?.toString?.();
         if (updatedId) syncedIds.push(String(updatedId));

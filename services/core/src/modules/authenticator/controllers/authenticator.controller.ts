@@ -62,8 +62,23 @@ export const createAuthenticatorEntryHandler = async (req: Request, res: Respons
   });
   if (result.ok === false) {
     const { code, message } = result.error;
-    const status = code === 'ITEM_ALREADY_LINKED' ? 409 : code === 'INVALID_ITEM' ? 404 : 400;
-    res.status(status).json({ success: false, code, message });
+    const status =
+      code === 'ITEM_ALREADY_LINKED'
+        ? 409
+        : code === 'INVALID_ITEM'
+          ? 404
+          : code === 'NOVASAFE_SUBSCRIPTION_REQUIRED' || code === 'NOVASAFE_SUBSCRIPTION_READ_ONLY'
+            ? 403
+            : 400;
+    // Cap / read-only responses include code for mobile upgrade prompts.
+    res.status(status).json({
+      success: false,
+      code,
+      message,
+      ...(code === 'NOVASAFE_SUBSCRIPTION_REQUIRED' || code === 'NOVASAFE_SUBSCRIPTION_READ_ONLY'
+        ? { upgradeRequired: true }
+        : {}),
+    });
     return;
   }
   res.status(201).json({ success: true, source: sendSource(req), data: result.entry });
@@ -91,7 +106,13 @@ export const updateAuthenticatorEntryHandler = async (req: Request, res: Respons
   });
   if (result.ok === false) {
     const { code, message } = result.error;
-    res.status(code === 'ENTRY_NOT_FOUND' ? 404 : 400).json({ success: false, code, message });
+    const status =
+      code === 'ENTRY_NOT_FOUND'
+        ? 404
+        : code === 'NOVASAFE_SUBSCRIPTION_READ_ONLY' || code === 'NOVASAFE_SUBSCRIPTION_REQUIRED'
+          ? 403
+          : 400;
+    res.status(status).json({ success: false, code, message });
     return;
   }
   res.status(200).json({ success: true, source: sendSource(req), data: result.entry });

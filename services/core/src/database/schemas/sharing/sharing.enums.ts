@@ -22,4 +22,5 @@ export enum ShareResourceType {
 export const SHARE_EXPIRY_PRESETS_DAYS = [1, 3, 7, 15] as const;
 export type ShareExpiryPresetDays = (typeof SHARE_EXPIRY_PRESETS_DAYS)[number];
 export const SHARE_EXPIRY_DEFAULT_DAYS: ShareExpiryPresetDays = 7;
-export const SHARE_MAX_RECIPIENTS = 10;
+/** Max recipients per share invite (~Pro recipient cap). */
+export const SHARE_MAX_RECIPIENTS = 5;

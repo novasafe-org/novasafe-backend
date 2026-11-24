@@ -47,7 +47,13 @@ export const createFolderHandler = async (req: Request, res: Response): Promise<
   }
   const result = await createFolder(userId, req.body?.name, req.body?.color);
   if (!result.ok) {
-    const status = result.error.code === 'FOLDER_NAME_EXISTS' ? 409 : 400;
+    const status =
+      result.error.code === 'FOLDER_NAME_EXISTS'
+        ? 409
+        : result.error.code === 'NOVASAFE_SUBSCRIPTION_REQUIRED' ||
+            result.error.code === 'NOVASAFE_SUBSCRIPTION_READ_ONLY'
+          ? 403
+          : 400;
     res.status(status).json({ success: false, code: result.error.code, message: result.error.message });
     return;
   }
@@ -71,7 +77,10 @@ export const updateFolderHandler = async (req: Request, res: Response): Promise<
         ? 404
         : result.error.code === 'FOLDER_NAME_EXISTS'
           ? 409
-          : 400;
+          : result.error.code === 'NOVASAFE_SUBSCRIPTION_REQUIRED' ||
+              result.error.code === 'NOVASAFE_SUBSCRIPTION_READ_ONLY'
+            ? 403
+            : 400;
     res.status(status).json({ success: false, code: result.error.code, message: result.error.message });
     return;
   }

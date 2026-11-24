@@ -1,6 +1,10 @@
 import { ObjectId } from '../../../database/object-id';
 import { COLLECTIONS } from '../../../database/collections';
 import { getNativeMongo } from '../../../database/adapters/native-mongo.adapter';
+import {
+  assertCanCreateFolder,
+  assertCanModifyVault,
+} from '../../subscriptions/services/subscription.service';
 
 const db = getNativeMongo();
 
@@ -111,6 +115,17 @@ export const assertFolderOwned = async (userId: string, folderId: string | null 
 };
 
 export const createFolder = async (userId: string, name: string, colorRaw?: unknown) => {
+  const allowed = await assertCanCreateFolder(userId);
+  if (allowed.ok === false) {
+    return {
+      ok: false as const,
+      error: {
+        code: (allowed.code || 'NOVASAFE_SUBSCRIPTION_REQUIRED') as string,
+        message: allowed.message,
+      },
+    };
+  }
+
   const trimmed = String(name || '').trim();
   if (!trimmed) {
     return {
@@ -167,6 +182,16 @@ export const updateFolder = async (
   name: string,
   colorRaw?: unknown,
 ) => {
+  const canWrite = await assertCanModifyVault(userId);
+  if (canWrite.ok === false) {
+    return {
+      ok: false as const,
+      error: {
+        code: (canWrite.code || 'NOVASAFE_SUBSCRIPTION_READ_ONLY') as string,
+        message: canWrite.message,
+      },
+    };
+  }
   if (!ObjectId.isValid(id)) {
     return {
       ok: false as const,
