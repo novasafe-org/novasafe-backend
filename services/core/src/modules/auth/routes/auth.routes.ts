@@ -15,6 +15,9 @@ import {
   pairExtension,
   createExtensionPairingHandoff,
   redeemExtensionPairing,
+  refreshSession,
+  requestSessionStepUpOtp,
+  verifySessionStepUpOtp,
   requestPasswordReset,
   verifyPasswordResetOtp,
   confirmPasswordReset,
@@ -27,6 +30,7 @@ import {
   sessionOrPendingAuthMiddleware,
 } from '../middleware/auth.middleware';
 
+/** Shared auth routes (mounted on `/api/v1/auth` and `/mobile/auth`). No refresh/step-up here. */
 export const createAuthRoutes = (): Router => {
   const router = Router();
 
@@ -49,5 +53,17 @@ export const createAuthRoutes = (): Router => {
   router.post('/password-reset/confirm', authRateLimiter, asyncHandler(confirmPasswordReset));
   router.get('/validate-session', sessionOrPendingAuthMiddleware, asyncHandler(validateSession));
 
+  return router;
+};
+
+/**
+ * Mobile-app-only session continuity (refresh + biometric/OTP step-up).
+ * Mount exclusively under `/mobile/auth` — never on `/api/v1/auth`.
+ */
+export const createMobileSessionRoutes = (): Router => {
+  const router = Router();
+  router.post('/refresh', authRateLimiter, asyncHandler(refreshSession));
+  router.post('/session/step-up/request-otp', authRateLimiter, asyncHandler(requestSessionStepUpOtp));
+  router.post('/session/step-up/verify-otp', authRateLimiter, asyncHandler(verifySessionStepUpOtp));
   return router;
 };

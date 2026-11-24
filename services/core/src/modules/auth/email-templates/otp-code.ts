@@ -1,7 +1,7 @@
 import { emailBrandHeaderHtml } from "./branding";
 import { escapeHtml } from "./escape";
 
-export type OtpEmailVariant = "signup" | "password-reset";
+export type OtpEmailVariant = "signup" | "password-reset" | "session-step-up";
 
 export type OtpEmailContent = {
   heading: string;
@@ -20,6 +20,12 @@ const COPY: Record<OtpEmailVariant, OtpEmailContent> = {
     heading: "Your password reset code",
     lead: "Use this one-time code to verify your identity and choose a new password.",
     securityNote: "If you didn't request a password reset, you can safely ignore this email.",
+  },
+  "session-step-up": {
+    heading: "Confirm it is you",
+    lead: "Use this one-time code to keep your NovaSafe session active on this device.",
+    securityNote:
+      "If you didn't try to unlock NovaSafe, revoke other sessions in Settings and change your password.",
   },
 };
 

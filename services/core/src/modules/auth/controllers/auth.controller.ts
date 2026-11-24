@@ -6,6 +6,8 @@ import { getOAuthAppleService } from '../services/oauth-apple.service';
 import { getExtensionPairService } from '../services/extension-pair.service';
 import { getExtensionPairingHandoffService } from '../services/extension-pairing-handoff.service';
 import { getPasswordResetService } from '../services/password-reset.service';
+import { getTokenRefreshService } from '../services/token-refresh.service';
+import { getSessionStepUpService } from '../services/session-step-up.service';
 
 const send = (res: Response, result: { status: number; body: unknown }) => {
   res.status(result.status).json(result.body);
@@ -39,6 +41,36 @@ export const validateSession = async (req: Request, res: Response): Promise<void
 
 export const logout = async (req: Request, res: Response): Promise<void> => {
   send(res, await getSessionService().logout(req, Boolean(req.oauthOtpPending), req.tokenId));
+};
+
+export const refreshSession = async (req: Request, res: Response): Promise<void> => {
+  send(
+    res,
+    await getTokenRefreshService().refresh(req, {
+      refreshToken: String(req.body?.refreshToken || ''),
+      stepUpMethod:
+        req.body?.stepUpMethod === 'biometric' || req.body?.stepUpMethod === 'otp'
+          ? req.body.stepUpMethod
+          : null,
+      restoredFromBackup: Boolean(req.body?.restoredFromBackup),
+      biometricFailed: Boolean(req.body?.biometricFailed),
+    }),
+  );
+};
+
+export const requestSessionStepUpOtp = async (req: Request, res: Response): Promise<void> => {
+  send(res, await getSessionStepUpService().requestOtp(req, String(req.body?.refreshToken || '')));
+};
+
+export const verifySessionStepUpOtp = async (req: Request, res: Response): Promise<void> => {
+  send(
+    res,
+    await getSessionStepUpService().verifyOtp(
+      req,
+      String(req.body?.refreshToken || ''),
+      String(req.body?.otp || ''),
+    ),
+  );
 };
 
 export const googleOAuth = async (req: Request, res: Response): Promise<void> => {

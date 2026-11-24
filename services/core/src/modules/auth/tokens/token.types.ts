@@ -21,3 +21,8 @@ export interface TokenPair {
   token: string;
   tokenId: string;
 }
+
+export interface RefreshTokenPack {
+  token: string;
+  tokenHash: string;
+}

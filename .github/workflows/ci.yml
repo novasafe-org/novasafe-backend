@@ -89,6 +89,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @novasafe/feature-flags run build
       - name: Run catalog + service tests
+        env:
+          # Access-token issuance in session-auth unit tests (auth.config reads at call time).
+          JWT_SECRET: test-secret-for-ci-unit-tests
+          DEVICE_ATTESTATION_MODE: off
         run: |
           pnpm --filter core-service test
           pnpm --filter admin-app-service test
