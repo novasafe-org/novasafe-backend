@@ -96,10 +96,9 @@ export class GoogleDriveMediaStorageProvider implements MediaStorageProvider {
       email: String(credentials.client_email),
       key: String(credentials.private_key),
       scopes: [
-        // Create/read app-owned files in the shared upload folder
-        "https://www.googleapis.com/auth/drive.file",
-        // Metadata on the shared folder (health check; drive.file alone often 404s on files.get(folderId))
-        "https://www.googleapis.com/auth/drive.metadata.readonly",
+        // Shared-drive uploads: drive.file alone can yield storageQuotaExceeded (SA personal quota).
+        // drive scope is required to create files owned by the shared drive.
+        "https://www.googleapis.com/auth/drive",
       ],
     });
 
@@ -119,7 +118,7 @@ export class GoogleDriveMediaStorageProvider implements MediaStorageProvider {
           mimeType: input.mimeType,
           body: Readable.from(input.buffer),
         },
-        fields: "id",
+        fields: "id,driveId",
         supportsAllDrives: true,
       });
 
