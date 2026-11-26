@@ -8,4 +8,6 @@ export enum OtpPurpose {
   ExtensionPairing = 'extension_pairing',
   /** Step-up when biometric refresh rotation fails or is unavailable. */
   SessionStepUp = 'session_step_up',
+  /** Confirm public web account-deletion request (landing /account/deletion). */
+  AccountDeletion = 'account_deletion',
 }
