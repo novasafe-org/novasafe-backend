@@ -38,6 +38,7 @@ export type CardResponse = {
   name: string;
   cardType: CardType;
   brand: string | null;
+  color: string | null;
   last4: string | null;
   folderId: string | null;
   isFavorite: boolean;
@@ -104,6 +105,7 @@ export const toCardResponse = (
     name: String(doc.name || 'Card'),
     cardType: normalizeCardType(doc.cardType),
     brand: doc.brand != null ? String(doc.brand) : null,
+    color: doc.color != null ? String(doc.color) : null,
     last4: doc.last4 != null ? String(doc.last4) : null,
     folderId,
     isFavorite: Boolean(doc.isFavorite),
@@ -180,6 +182,8 @@ export type CreateCardInput = {
   name: string;
   cardType?: string;
   brand?: string | null;
+  /** Optional UI accent color hex (folder palette). */
+  color?: string | null;
   folderId?: string | null;
   isFavorite?: boolean;
   reminders?: CardReminders;
@@ -219,6 +223,7 @@ export const createCard = async (
     name,
     cardType: normalizeCardType(input.cardType),
     brand: input.brand != null ? String(input.brand).trim() || detectBrand(pan) : detectBrand(pan),
+    color: input.color != null ? String(input.color).trim() || null : null,
     last4: pan.length >= 4 ? pan.slice(-4) : null,
     folderId: folderCheck.folderId,
     isFavorite: Boolean(input.isFavorite),
@@ -308,6 +313,9 @@ export const updateCard = async (
     $set.name = name;
   }
   if (input.cardType !== undefined) $set.cardType = normalizeCardType(input.cardType);
+  if (input.color !== undefined) {
+    $set.color = input.color != null ? String(input.color).trim() || null : null;
+  }
   if (input.folderId !== undefined) $set.folderId = folderCheck.folderId;
   if (input.isFavorite !== undefined) $set.isFavorite = Boolean(input.isFavorite);
   if (input.reminders !== undefined) {
