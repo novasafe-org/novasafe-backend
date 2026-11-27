@@ -154,9 +154,38 @@ export const seedTrustedDevicesFromSessions = async (userId: string): Promise<vo
   }
 };
 
+/** Max idle time for a trusted device to count as an actionable approver. */
+export const LIVE_APPROVER_MAX_IDLE_MS = 15 * 60 * 1000;
+
+/** Pure criteria used by hasLiveApproverDevice (unit-tested). */
+export const meetsLiveApproverCriteria = (input: {
+  lastSeenAt: Date | string | null | undefined;
+  pushToken: string | null | undefined;
+  sessionExists: boolean;
+  sessionLastActivity: Date | string | null | undefined;
+  now?: number;
+  maxIdleMs?: number;
+}): boolean => {
+  const now = input.now ?? Date.now();
+  const maxIdleMs = input.maxIdleMs ?? LIVE_APPROVER_MAX_IDLE_MS;
+  const cutoff = now - maxIdleMs;
+
+  const lastSeenMs = input.lastSeenAt ? new Date(input.lastSeenAt).getTime() : 0;
+  if (!lastSeenMs || lastSeenMs < cutoff) return false;
+  if (!input.pushToken) return false;
+  if (!input.sessionExists) return false;
+
+  const lastActivityMs = input.sessionLastActivity
+    ? new Date(input.sessionLastActivity).getTime()
+    : 0;
+  if (!lastActivityMs || lastActivityMs < cutoff) return false;
+  return true;
+};
+
 /**
- * True when another trusted device still has a live session and can approve.
- * Phantom / seeded / logged-out trusted rows do not count.
+ * True when another trusted device can actually approve It’s me / Not me:
+ * recent activity (device + session) and a reachable FCM push token.
+ * Stale non-revoked sessions on offline devices do not count.
  */
 export const hasLiveApproverDevice = async (
   userId: string,
@@ -170,13 +199,29 @@ export const hasLiveApproverDevice = async (
   if (!others.length) return false;
 
   const db = getNativeMongo();
+  const now = Date.now();
+
   for (const row of others) {
+    const pushToken = await repo.findPushTokenForDevice(userId, String(row.deviceKey));
     const session = await db.findOne(COLLECTIONS.sessions, {
       userId: new ObjectId(userId),
       deviceId: String(row.deviceKey),
       revoked: { $ne: true },
     });
-    if (session) return true;
+
+    if (
+      meetsLiveApproverCriteria({
+        lastSeenAt: row.lastSeenAt,
+        pushToken,
+        sessionExists: Boolean(session),
+        sessionLastActivity: session?.lastActivity
+          ? (session.lastActivity as Date)
+          : null,
+        now,
+      })
+    ) {
+      return true;
+    }
   }
   return false;
 };
@@ -187,6 +232,10 @@ export type PendingDeviceConsent = {
   deviceName: string;
   platform: string;
   status: 'pending';
+  /** When set, mobile should show email OTP instead of waiting forever. */
+  fallback?: 'otp' | null;
+  otpDestinationHint?: string | null;
+  otpSent?: boolean;
 };
 
 export const evaluateDeviceLogin = async (
@@ -324,14 +373,13 @@ export const registerTrustedDeviceForLogin = async (
   );
   const source = ctx?.legacySource ?? req.source ?? 'mobile';
 
-  // Nobody online who can approve → trust immediately (avoids stuck allow-login).
   const canBeApproved =
     trustedCount > 0 && !alreadyTrusted && !forceReplace
       ? await hasLiveApproverDevice(userId, deviceKey)
       : false;
 
-  // First trusted slot, already trusted, replace, or no live approver → trust now.
-  if (alreadyTrusted || forceReplace || trustedCount === 0 || !canBeApproved) {
+  // First trusted slot, already trusted, or explicit replace → trust immediately.
+  if (alreadyTrusted || forceReplace || trustedCount === 0) {
     // If trusted via fingerprint after reinstall, rebind old key → current install UUID.
     if (alreadyTrusted && hardwareFingerprint) {
       const byHw = await repo.findByUserAndHardwareFingerprint(userId, hardwareFingerprint);
@@ -351,14 +399,14 @@ export const registerTrustedDeviceForLogin = async (
       platform: device.platform,
       userAgent: device.userAgent,
       source,
-      makePrimary: trustedCount === 0 || forceReplace || !canBeApproved,
+      makePrimary: trustedCount === 0 || forceReplace,
       trusted: true,
       hardwareFingerprint,
     });
     return null;
   }
 
-  // Untrusted device B: keep pending until a trusted device confirms.
+  // Untrusted device B: pending until It’s me / Not me — or email OTP if no live approver.
   await repo.upsertTrustedDevice({
     userId,
     deviceKey,
@@ -389,13 +437,27 @@ export const registerTrustedDeviceForLogin = async (
     kind: 'new_login',
   });
 
-  return {
+  const pending: PendingDeviceConsent = {
     alertId,
     deviceKey,
     deviceName: device.deviceName,
     platform: device.platform,
     status: 'pending',
+    fallback: null,
+    otpDestinationHint: null,
+    otpSent: false,
   };
+
+  // No actionable approver → email OTP so the user is never stuck waiting.
+  if (!canBeApproved) {
+    const { issueDeviceLoginApprovalOtp } = await import('./device-login-otp.service');
+    const otpResult = await issueDeviceLoginApprovalOtp(userId);
+    pending.fallback = 'otp';
+    pending.otpDestinationHint = otpResult.destinationHint;
+    pending.otpSent = otpResult.sent;
+  }
+
+  return pending;
 };
 
 /** Attach device key to session row after login (best-effort). */
