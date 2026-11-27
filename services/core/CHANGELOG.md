@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.40
+
+### Changed
+
+fix(devices): live-approver check + email OTP fallback
+
 ## v1.1.39
 
 ### Changed
