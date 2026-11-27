@@ -40,6 +40,40 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
   }
 };
 
+/**
+ * JWT identity required, but a revoked/ended session is still allowed.
+ * Used so device B can poll login-alert status after “Not me” revokes its session.
+ */
+export const authAllowRevokedSessionMiddleware = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const decoded = tokens().verify(authHeader.substring(7));
+    if (decoded.tokenType === 'oauth_otp_pending') {
+      res.status(403).json({
+        success: false,
+        code: 'NOVASAFE_EMAIL_OTP_REQUIRED',
+        message: 'Complete email verification to access your vault.',
+      });
+      return;
+    }
+    req.user = { id: decoded.id, email: decoded.email, name: decoded.name, picture: decoded.picture };
+    req.tokenId = decoded.jti;
+    req.oauthOtpPending = false;
+    RequestContextManager.enrichAuth({ userId: decoded.id, tokenId: decoded.jti });
+    next();
+  } catch {
+    res.status(401).json({ success: false, message: 'Invalid or expired token' });
+  }
+};
+
 /** validate-session / logout: full session or OTP-pending JWT. */
 export const sessionOrPendingAuthMiddleware = async (
   req: Request,
