@@ -239,6 +239,119 @@ export async function removeDeviceSession(input: {
   return { ok: true, message: 'Device removed' };
 }
 
+/**
+ * Revoke every active session for the account except the caller's current session.
+ * Does not remove trusted-device registry rows.
+ */
+export async function revokeAllSessionsExceptCurrent(
+  userId: string,
+  currentTokenId: string,
+): Promise<{ revokedCount: number }> {
+  const userObjectId = requireUserObjectId(userId);
+  if (!userObjectId || !currentTokenId?.trim()) {
+    return { revokedCount: 0 };
+  }
+
+  let endedTokens: string[] = [];
+  try {
+    const current = await db.findOne(COLLECTIONS.sessions, {
+      userId: userObjectId,
+      tokenId: currentTokenId,
+    });
+    const keepDeviceKey = current?.deviceId ? String(current.deviceId) : null;
+    const targets = await getTrustedDeviceRepository().listPushTargets(userId, {
+      excludeDeviceKey: keepDeviceKey,
+    });
+    endedTokens = targets.map((t) => t.pushToken);
+  } catch (error) {
+    logger.warn('Failed loading push targets before revoke-all-sessions', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const result = await db.getDb().collection(COLLECTIONS.sessions).updateMany(
+    {
+      userId: userObjectId,
+      revoked: { $ne: true },
+      tokenId: { $ne: currentTokenId },
+    },
+    { $set: { revoked: true, revokedAt: new Date(), source: 'mobile' } },
+  );
+
+  await sendSessionEndedPush(endedTokens, {
+    title: 'Session ended',
+    body: 'You were signed out from this device.',
+    data: {
+      type: 'session_ended',
+      reason: 'sessions_revoked',
+      deepLink: '/auth/sign-in',
+    },
+  });
+
+  return { revokedCount: result.modifiedCount || 0 };
+}
+
+/**
+ * Remove every device for the account except the current one.
+ * Deactivates trusted-device rows and revokes sessions on those devices.
+ */
+export async function removeAllDevicesExceptCurrent(
+  userId: string,
+  keepDeviceKey: string,
+  currentTokenId?: string | null,
+): Promise<{ removedDevices: number; revokedSessions: number }> {
+  const userObjectId = requireUserObjectId(userId);
+  if (!userObjectId || !keepDeviceKey?.trim()) {
+    return { removedDevices: 0, revokedSessions: 0 };
+  }
+
+  let endedTokens: string[] = [];
+  try {
+    const targets = await getTrustedDeviceRepository().listPushTargets(userId, {
+      excludeDeviceKey: keepDeviceKey,
+    });
+    endedTokens = targets.map((t) => t.pushToken);
+  } catch (error) {
+    logger.warn('Failed loading push targets before remove-all-devices', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const removedDevices = await getTrustedDeviceRepository().deactivateAllExcept(
+    userId,
+    keepDeviceKey,
+  );
+
+  const sessionFilter: Record<string, unknown> = {
+    userId: userObjectId,
+    revoked: { $ne: true },
+    deviceId: { $ne: keepDeviceKey },
+  };
+  if (currentTokenId) {
+    sessionFilter.tokenId = { $ne: currentTokenId };
+  }
+
+  const revokeResult = await db.getDb().collection(COLLECTIONS.sessions).updateMany(
+    sessionFilter,
+    { $set: { revoked: true, revokedAt: new Date(), source: 'mobile' } },
+  );
+
+  await sendSessionEndedPush(endedTokens, {
+    title: 'Device removed',
+    body: 'This device was removed from your NovaSafe account.',
+    data: {
+      type: 'session_ended',
+      reason: 'device_removed',
+      deepLink: '/auth/sign-in',
+    },
+  });
+
+  return {
+    removedDevices,
+    revokedSessions: revokeResult.modifiedCount || 0,
+  };
+}
+
 export async function revokeOtherActiveSessions(
   userId: string,
   keepDeviceKey: string,
