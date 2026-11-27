@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.33
+
+### Changed
+
+feat(cards): Cards v1 backend — APIs, encryption, share
+
 ## v1.1.32
 
 ### Changed
