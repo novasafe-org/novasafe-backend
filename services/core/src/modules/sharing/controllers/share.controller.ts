@@ -87,6 +87,7 @@ export const createShare = async (req: Request, res: Response): Promise<void> =>
     permissionRaw: body.permission,
     expiresInDaysRaw: body.expiresInDays,
     source: source(req),
+    resourceTypeRaw: body.resourceType,
   });
 
   if (!result.ok) {

@@ -60,6 +60,12 @@ import {
   AuthenticatorEntrySchema,
   AUTHENTICATOR_ENTRY_MODEL_NAME,
 } from '../schemas/authenticator';
+import {
+  CardSchema,
+  CARD_MODEL_NAME,
+  CardFolderSchema,
+  CARD_FOLDER_MODEL_NAME,
+} from '../schemas/cards';
 
 export interface ModelRegistration {
   modelName: string;
@@ -94,6 +100,12 @@ const registrations: ModelRegistration[] = [
     modelName: AUTHENTICATOR_ENTRY_MODEL_NAME,
     schema: AuthenticatorEntrySchema,
     collection: COLLECTIONS.authenticatorEntries,
+  },
+  { modelName: CARD_MODEL_NAME, schema: CardSchema, collection: COLLECTIONS.cards },
+  {
+    modelName: CARD_FOLDER_MODEL_NAME,
+    schema: CardFolderSchema,
+    collection: COLLECTIONS.cardFolders,
   },
 ];
 

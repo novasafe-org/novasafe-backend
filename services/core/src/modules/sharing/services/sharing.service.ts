@@ -393,6 +393,23 @@ const loadOwnedVaultItem = async (userId: string, resourceId: string) => {
   });
 };
 
+const loadOwnedCard = async (userId: string, resourceId: string) => {
+  if (!ObjectId.isValid(resourceId)) return null;
+  return db.findOne(COLLECTIONS.cards, {
+    _id: new ObjectId(resourceId),
+    ...userFilter(userId),
+    deleted: { $ne: true },
+  });
+};
+
+const parseResourceType = (raw: unknown): ShareResourceType => {
+  const v = String(raw || ShareResourceType.VaultItem).toLowerCase().trim();
+  if (v === ShareResourceType.Card || v === 'card' || v === 'cards') {
+    return ShareResourceType.Card;
+  }
+  return ShareResourceType.VaultItem;
+};
+
 const buildRecipients = async (emails: string[]) => {
   const users = getUserRepository();
   const now = new Date();
@@ -429,7 +446,10 @@ export const createShares = async (params: {
   permissionRaw: unknown;
   expiresInDaysRaw: unknown;
   source?: string;
+  /** Defaults to vault_item; pass `card` to share NovaSafe Cards. */
+  resourceTypeRaw?: unknown;
 }) => {
+  const resourceType = parseResourceType(params.resourceTypeRaw);
   const emails = normalizeEmails(params.recipientEmails);
   if (emails.length === 0) {
     return { ok: false as const, error: { code: 'INVALID_EMAILS', message: 'At least one valid email is required' } };
@@ -490,14 +510,26 @@ export const createShares = async (params: {
   const created: any[] = [];
 
   for (const resourceId of resourceIds) {
-    const item = await loadOwnedVaultItem(params.senderId, resourceId);
-    if (!item) {
-      return {
-        ok: false as const,
-        error: { code: 'ITEM_NOT_FOUND', message: 'Vault item not found or not owned by you' },
-      };
+    let itemName = 'Vault item';
+    if (resourceType === ShareResourceType.Card) {
+      const card = await loadOwnedCard(params.senderId, resourceId);
+      if (!card) {
+        return {
+          ok: false as const,
+          error: { code: 'ITEM_NOT_FOUND', message: 'Card not found or not owned by you' },
+        };
+      }
+      itemName = String((card as { name?: string }).name || 'Card');
+    } else {
+      const item = await loadOwnedVaultItem(params.senderId, resourceId);
+      if (!item) {
+        return {
+          ok: false as const,
+          error: { code: 'ITEM_NOT_FOUND', message: 'Vault item not found or not owned by you' },
+        };
+      }
+      itemName = String((item as { title?: string }).title || 'Vault item');
     }
-    const itemName = String((item as any).title || 'Vault item');
     const recipientsCopy = recipients.map((r) => {
       const isNovaSafeUser = Boolean(r.isNovaSafeUser);
       const { accessToken: _drop, ...rest } = r;
@@ -538,7 +570,7 @@ export const createShares = async (params: {
     const record = {
       resourceId: new ObjectId(resourceId),
       itemName,
-      resourceType: ShareResourceType.VaultItem,
+      resourceType,
       senderId: new ObjectId(params.senderId),
       senderEmail,
       senderName: params.senderName || senderEmail || 'NovaSafe User',

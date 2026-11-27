@@ -16,6 +16,8 @@ export enum ShareRecipientStatus {
 
 export enum ShareResourceType {
   VaultItem = 'vault_item',
+  /** NovaSafe Cards module — storage-only payment/membership cards. */
+  Card = 'card',
 }
 
 /** Allowed expiry presets (days) from the permission screen. */

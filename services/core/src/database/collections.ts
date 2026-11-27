@@ -23,6 +23,13 @@ export const COLLECTIONS = {
   /** Vault documents module (NAS under userId/documents). */
   documents: 'documents',
   /**
+   * Payment / membership cards (storage only — no transactions or payments).
+   * Sensitive fields AES-GCM encrypted; last4 + type plaintext for lists.
+   */
+  cards: 'cards',
+  /** Folders that organize cards only (separate from vault/document folders). */
+  cardFolders: 'cardFolders',
+  /**
    * Authenticator / TOTP entries (standalone or linked to a vault item).
    * Secrets encrypted; metadata (issuer, account, algo, digits, period) plaintext for listing.
    */
