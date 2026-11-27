@@ -58,6 +58,13 @@ export const refreshSession = async (req: Request, res: Response): Promise<void>
   );
 };
 
+/** Silent resume after reinstall — trust token + hardware fingerprint (no allow-login UI). */
+export const silentResumeDevice = async (req: Request, res: Response): Promise<void> => {
+  const { getDeviceSilentResumeService } = await import('../services/device-silent-resume.service');
+  const result = await getDeviceSilentResumeService().resume(req);
+  res.status(result.status).json(result.body);
+};
+
 export const requestSessionStepUpOtp = async (req: Request, res: Response): Promise<void> => {
   send(res, await getSessionStepUpService().requestOtp(req, String(req.body?.refreshToken || '')));
 };

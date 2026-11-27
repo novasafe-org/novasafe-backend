@@ -15,6 +15,10 @@ const deviceDefinition = {
   isActive: { type: Boolean, default: true },
   lastSeenAt: { type: Date, default: Date.now },
   pushToken: { type: String, default: null, select: false },
+  hardwareFingerprint: { type: String, default: null, index: true },
+  trustTokenHash: { type: String, default: null, select: false },
+  trustExpiresAt: { type: Date, default: null },
+  compromisedAt: { type: Date, default: null },
   ...sourceField,
 };
 
@@ -22,6 +26,14 @@ export const DeviceSchema = createBaseSchema(deviceDefinition);
 
 DeviceSchema.index({ userId: 1, deviceKey: 1 }, { unique: true });
 DeviceSchema.index({ userId: 1, isActive: 1, lastSeenAt: -1 });
+DeviceSchema.index(
+  { userId: 1, hardwareFingerprint: 1 },
+  { partialFilterExpression: { hardwareFingerprint: { $type: 'string' } } },
+);
+DeviceSchema.index(
+  { trustTokenHash: 1 },
+  { sparse: true, partialFilterExpression: { trustTokenHash: { $type: 'string' } } },
+);
 
 export const DEVICE_MODEL_NAME = 'TrustedDevice';
 export const DEVICE_COLLECTION = COLLECTIONS.devices;

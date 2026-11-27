@@ -75,7 +75,126 @@ export class TrustedDeviceRepository {
   async markTrusted(userId: string, deviceKey: string): Promise<void> {
     await this.model.updateOne(
       { userId: new ObjectId(userId), deviceKey },
-      { $set: { trusted: true, isActive: true, lastSeenAt: new Date() } },
+      { $set: { trusted: true, isActive: true, lastSeenAt: new Date(), compromisedAt: null } },
+    );
+  }
+
+  async findByUserAndHardwareFingerprint(
+    userId: string,
+    hardwareFingerprint: string,
+  ): Promise<ITrustedDevice | null> {
+    if (!hardwareFingerprint) return null;
+    return this.model
+      .findOne({
+        userId: new ObjectId(userId),
+        hardwareFingerprint,
+        isActive: true,
+        trusted: true,
+        compromisedAt: null,
+      })
+      .lean();
+  }
+
+  async findByTrustTokenHash(trustTokenHash: string): Promise<ITrustedDevice | null> {
+    if (!trustTokenHash) return null;
+    return this.model
+      .findOne({ trustTokenHash, isActive: true })
+      .select('+trustTokenHash')
+      .lean();
+  }
+
+  async setDeviceTrustCredentials(input: {
+    userId: string;
+    deviceKey: string;
+    trustTokenHash: string;
+    trustExpiresAt: Date;
+    hardwareFingerprint?: string | null;
+  }): Promise<void> {
+    const $set: Record<string, unknown> = {
+      trustTokenHash: input.trustTokenHash,
+      trustExpiresAt: input.trustExpiresAt,
+      lastSeenAt: new Date(),
+      compromisedAt: null,
+    };
+    if (input.hardwareFingerprint) {
+      $set.hardwareFingerprint = input.hardwareFingerprint;
+    }
+    await this.model.updateOne(
+      { userId: new ObjectId(input.userId), deviceKey: input.deviceKey },
+      { $set },
+    );
+  }
+
+  async clearDeviceTrust(userId: string, deviceKey: string): Promise<void> {
+    await this.model.updateOne(
+      { userId: new ObjectId(userId), deviceKey },
+      { $set: { trustTokenHash: null, trustExpiresAt: null, lastSeenAt: new Date() } },
+    );
+  }
+
+  async markCompromised(userId: string, deviceKey: string): Promise<void> {
+    await this.model.updateOne(
+      { userId: new ObjectId(userId), deviceKey },
+      {
+        $set: {
+          compromisedAt: new Date(),
+          trusted: false,
+          isActive: false,
+          trustTokenHash: null,
+          trustExpiresAt: null,
+          lastSeenAt: new Date(),
+        },
+      },
+    );
+  }
+
+  /**
+   * After reinstall the install UUID changes; keep the trusted row and retarget deviceKey.
+   */
+  async rebindDeviceKey(input: {
+    userId: string;
+    fromDeviceKey: string;
+    toDeviceKey: string;
+    hardwareFingerprint?: string | null;
+  }): Promise<void> {
+    if (!input.toDeviceKey || input.fromDeviceKey === input.toDeviceKey) return;
+    const userObjectId = new ObjectId(input.userId);
+    const existingTarget = await this.model
+      .findOne({ userId: userObjectId, deviceKey: input.toDeviceKey })
+      .lean();
+    if (existingTarget) {
+      // Prefer the new key row; deactivate the old one.
+      await this.model.updateOne(
+        { userId: userObjectId, deviceKey: input.toDeviceKey },
+        {
+          $set: {
+            trusted: true,
+            isActive: true,
+            compromisedAt: null,
+            lastSeenAt: new Date(),
+            ...(input.hardwareFingerprint
+              ? { hardwareFingerprint: input.hardwareFingerprint }
+              : {}),
+          },
+        },
+      );
+      await this.model.updateOne(
+        { userId: userObjectId, deviceKey: input.fromDeviceKey },
+        { $set: { isActive: false, trustTokenHash: null, trustExpiresAt: null } },
+      );
+      return;
+    }
+    await this.model.updateOne(
+      { userId: userObjectId, deviceKey: input.fromDeviceKey },
+      {
+        $set: {
+          deviceKey: input.toDeviceKey,
+          lastSeenAt: new Date(),
+          ...(input.hardwareFingerprint
+            ? { hardwareFingerprint: input.hardwareFingerprint }
+            : {}),
+        },
+      },
     );
   }
 
@@ -132,6 +251,7 @@ export class TrustedDeviceRepository {
     makePrimary?: boolean;
     /** Defaults true. Pass false for pending consent on a new device. */
     trusted?: boolean;
+    hardwareFingerprint?: string | null;
   }): Promise<void> {
     const now = new Date();
     const userObjectId = new ObjectId(input.userId);
@@ -157,6 +277,8 @@ export class TrustedDeviceRepository {
     if (input.platform !== undefined) $set.platform = input.platform;
     if (input.userAgent !== undefined) $set.userAgent = input.userAgent;
     if (input.source !== undefined) $set.source = input.source;
+    if (input.hardwareFingerprint) $set.hardwareFingerprint = input.hardwareFingerprint;
+    if (trusted) $set.compromisedAt = null;
 
     // isPrimary must not appear in both $set and $setOnInsert (Mongo upsert conflict).
     await this.model.updateOne(

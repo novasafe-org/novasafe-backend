@@ -170,6 +170,18 @@ export class AuthResponseService {
     const pendingDeviceConsent = await registerTrustedDeviceForLogin(req, userId, deviceKey);
     await touchSessionDeviceId(tokenResult.tokenId, deviceKey);
 
+    let deviceTrust: { token: string; expiresAt: string } | null = null;
+    if (!pendingDeviceConsent && issueMobileRefresh) {
+      const { issueDeviceTrustForDevice, resolveHardwareFingerprint } = await import(
+        './device-silent-resume.service'
+      );
+      deviceTrust = await issueDeviceTrustForDevice({
+        userId,
+        deviceKey,
+        hardwareFingerprint: resolveHardwareFingerprint(req),
+      });
+    }
+
     logger.info('Auth session created', {
       userId,
       platform: device.platform,
@@ -177,6 +189,7 @@ export class AuthResponseService {
       trustedDeviceCount: deviceDecision.policy.trustedDeviceCount,
       mobileRefresh: issueMobileRefresh,
       pendingConsent: Boolean(pendingDeviceConsent),
+      deviceTrustIssued: Boolean(deviceTrust),
     });
 
     const nextRotationAt = sessionPayload.nextRotationAt as Date | undefined;
@@ -193,6 +206,7 @@ export class AuthResponseService {
       oauthIntent: options?.oauthIntent,
       devicePolicy: deviceDecision.policy,
       pendingDeviceConsent: pendingDeviceConsent ?? null,
+      deviceTrust,
       sessionPolicy:
         issueMobileRefresh && nextRotationAt
           ? {
