@@ -600,10 +600,36 @@ export async function getLoginAlertStatus(
     userId: userObjectId,
   });
   if (!alert) return { ok: false, message: 'Alert not found' };
+
+  let status = String(alert.status || 'pending');
+  const pendingDeviceKey = alert.deviceKey ? String(alert.deviceKey) : '';
+
+  // Unstick allow-login: if still pending and no other trusted device is online
+  // to approve, auto-confirm and trust this device.
+  if (status === 'pending' && pendingDeviceKey) {
+    const { hasLiveApproverDevice } = await import('../../auth/services/device-trust.service');
+    const canBeApproved = await hasLiveApproverDevice(userId, pendingDeviceKey);
+    if (!canBeApproved) {
+      const repo = getTrustedDeviceRepository();
+      await repo.markTrusted(userId, pendingDeviceKey);
+      await db.updateOne(
+        COLLECTIONS.deviceLoginAlerts,
+        { _id: new ObjectId(alertId), userId: userObjectId, status: 'pending' },
+        { $set: { status: 'confirmed', resolvedAt: new Date(), autoConfirmed: true } },
+      );
+      status = 'confirmed';
+      logger.info('Auto-confirmed login alert — no live approver device', {
+        userId,
+        alertId,
+        deviceKey: pendingDeviceKey,
+      });
+    }
+  }
+
   return {
     ok: true,
-    status: String(alert.status || 'pending'),
-    deviceKey: alert.deviceKey ? String(alert.deviceKey) : undefined,
+    status,
+    deviceKey: pendingDeviceKey || undefined,
     deviceName: alert.deviceName ? String(alert.deviceName) : undefined,
     platform: alert.platform ? String(alert.platform) : undefined,
   };

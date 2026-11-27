@@ -83,18 +83,6 @@ export const resolveDeviceKey = (req: Request): string => {
   return fullDeviceFingerprint(device.platform, device.userAgent, device.deviceName);
 };
 
-const sessionDeviceKeys = (row: Record<string, unknown>): string[] => {
-  const platform = String(row.platform || 'unknown');
-  const userAgent = String(row.userAgent || '');
-  const deviceName = String(row.deviceName || '');
-  const keys = new Set<string>();
-  const deviceId = row.deviceId ? String(row.deviceId) : '';
-  if (deviceId) keys.add(sanitizeDeviceKey(deviceId));
-  keys.add(legacySessionFingerprint(platform, userAgent));
-  if (deviceName) keys.add(fullDeviceFingerprint(platform, userAgent, deviceName));
-  return [...keys];
-};
-
 const loginDeviceKeys = (
   deviceKey: string,
   device: { platform: string; userAgent: string; deviceName: string },
@@ -127,9 +115,10 @@ const isLoginDeviceTrusted = async (
 };
 
 /**
- * Bootstrap trusted devices from historical sessions only when the user has
- * none yet (grandfathering). Never re-run after consent is in place — that
- * would auto-trust every past login and skip the allow-login flow.
+ * Bootstrap trusted devices from **active** sessions only when the user has
+ * none yet. Revoked / historical sessions must not be seeded — that creates
+ * phantom trusted keys nobody can sign in as, so new devices wait forever
+ * for an It’s me that can never arrive.
  */
 export const seedTrustedDevicesFromSessions = async (userId: string): Promise<void> => {
   const repo = getTrustedDeviceRepository();
@@ -138,8 +127,8 @@ export const seedTrustedDevicesFromSessions = async (userId: string): Promise<vo
   const db = getNativeMongo();
   const sessions = await db.findMany(
     COLLECTIONS.sessions,
-    { userId: new ObjectId(userId) },
-    { limit: 200, sort: { lastActivity: -1, createdAt: -1 } },
+    { userId: new ObjectId(userId), revoked: { $ne: true } },
+    { limit: 50, sort: { lastActivity: -1, createdAt: -1 } },
   );
 
   const seen = new Set<string>();
@@ -147,22 +136,49 @@ export const seedTrustedDevicesFromSessions = async (userId: string): Promise<vo
 
   for (const row of sessions) {
     const record = row as Record<string, unknown>;
-    for (const key of sessionDeviceKeys(record)) {
-      if (seen.has(key)) continue;
-      seen.add(key);
-      index += 1;
-      await repo.upsertTrustedDevice({
-        userId,
-        deviceKey: key,
-        deviceName: String(record.deviceName || 'Unknown Device'),
-        platform: String(record.platform || 'unknown'),
-        userAgent: String(record.userAgent || ''),
-        source: String(record.source || 'mobile'),
-        makePrimary: index === 1,
-        trusted: true,
-      });
-    }
+    // Prefer real install UUID only — UA fingerprints create unusable trust rows.
+    const deviceId = record.deviceId ? sanitizeDeviceKey(String(record.deviceId)) : '';
+    if (!deviceId || seen.has(deviceId)) continue;
+    seen.add(deviceId);
+    index += 1;
+    await repo.upsertTrustedDevice({
+      userId,
+      deviceKey: deviceId,
+      deviceName: String(record.deviceName || 'Unknown Device'),
+      platform: String(record.platform || 'unknown'),
+      userAgent: String(record.userAgent || ''),
+      source: String(record.source || 'mobile'),
+      makePrimary: index === 1,
+      trusted: true,
+    });
   }
+};
+
+/**
+ * True when another trusted device still has a live session and can approve.
+ * Phantom / seeded / logged-out trusted rows do not count.
+ */
+export const hasLiveApproverDevice = async (
+  userId: string,
+  excludeDeviceKey: string,
+): Promise<boolean> => {
+  const repo = getTrustedDeviceRepository();
+  const trusted = await repo.listActiveByUserId(userId);
+  const others = trusted.filter(
+    (d) => String(d.deviceKey) !== excludeDeviceKey && !d.compromisedAt,
+  );
+  if (!others.length) return false;
+
+  const db = getNativeMongo();
+  for (const row of others) {
+    const session = await db.findOne(COLLECTIONS.sessions, {
+      userId: new ObjectId(userId),
+      deviceId: String(row.deviceKey),
+      revoked: { $ne: true },
+    });
+    if (session) return true;
+  }
+  return false;
 };
 
 export type PendingDeviceConsent = {
@@ -308,8 +324,14 @@ export const registerTrustedDeviceForLogin = async (
   );
   const source = ctx?.legacySource ?? req.source ?? 'mobile';
 
-  // First trusted slot, already trusted, or explicit replace → trust immediately.
-  if (alreadyTrusted || forceReplace || trustedCount === 0) {
+  // Nobody online who can approve → trust immediately (avoids stuck allow-login).
+  const canBeApproved =
+    trustedCount > 0 && !alreadyTrusted && !forceReplace
+      ? await hasLiveApproverDevice(userId, deviceKey)
+      : false;
+
+  // First trusted slot, already trusted, replace, or no live approver → trust now.
+  if (alreadyTrusted || forceReplace || trustedCount === 0 || !canBeApproved) {
     // If trusted via fingerprint after reinstall, rebind old key → current install UUID.
     if (alreadyTrusted && hardwareFingerprint) {
       const byHw = await repo.findByUserAndHardwareFingerprint(userId, hardwareFingerprint);
@@ -329,7 +351,7 @@ export const registerTrustedDeviceForLogin = async (
       platform: device.platform,
       userAgent: device.userAgent,
       source,
-      makePrimary: trustedCount === 0 || forceReplace,
+      makePrimary: trustedCount === 0 || forceReplace || !canBeApproved,
       trusted: true,
       hardwareFingerprint,
     });
