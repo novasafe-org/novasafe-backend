@@ -105,6 +105,7 @@ export const getSettings = async (req: Request, res: Response): Promise<void> =>
     settings: {
       twoFactorEnabled: Boolean(user?.twoFactorEnabled),
       cloudSyncEnabled: user?.cloudSyncEnabled ?? true,
+      singleDeviceLoginEnabled: Boolean(user?.singleDeviceLoginEnabled),
       notificationsEnabled: user?.notificationsEnabled ?? true,
       hasPassword,
       authMethods,

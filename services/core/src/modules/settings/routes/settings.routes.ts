@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../auth';
+import { asyncHandler } from '../../../middleware/async-handler';
 import { requireEntitlement } from '../../vault/middleware/entitlement.middleware';
 import {
   changeMasterPassword,
@@ -21,6 +22,14 @@ import {
   updateTwoFactorStatus,
   verifyMasterPassword,
 } from '../controllers/settings.controller';
+import {
+  getDeviceLoginAlerts,
+  getDevices,
+  postDeviceLoginConsent,
+  registerPushToken,
+  removeDevice,
+  updateSingleDeviceLogin,
+} from '../controllers/devices.controller';
 
 export const createSettingsRoutes = (): Router => {
   const router = Router();
@@ -36,6 +45,15 @@ export const createSettingsRoutes = (): Router => {
   router.get('/sessions', authMiddleware, getSessions);
   router.post('/sessions/:id/revoke', authMiddleware, revokeSession);
   router.post('/sessions/revoke-others', authMiddleware, revokeAllOtherSessions);
+
+  // Device management (mobile Devices screens) — asyncHandler so rejections hit error middleware.
+  router.get('/devices', authMiddleware, asyncHandler(getDevices));
+  router.post('/devices/single-device-login', authMiddleware, asyncHandler(updateSingleDeviceLogin));
+  router.post('/devices/push-token', authMiddleware, asyncHandler(registerPushToken));
+  router.get('/devices/alerts', authMiddleware, asyncHandler(getDeviceLoginAlerts));
+  router.post('/devices/alerts/:id/consent', authMiddleware, asyncHandler(postDeviceLoginConsent));
+  router.post('/devices/login-consent', authMiddleware, asyncHandler(postDeviceLoginConsent));
+  router.delete('/devices/:id', authMiddleware, asyncHandler(removeDevice));
   router.post('/export', authMiddleware, requireEntitlement('canUseCSVImportExport'), createExport);
   router.get('/export/history', authMiddleware, getExportHistory);
   router.get('/export/:id/download', authMiddleware, downloadExportById);

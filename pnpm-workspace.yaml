@@ -2,9 +2,12 @@ packages:
   - 'services/*'
   - 'common/*'
 
-# pnpm v11: allow esbuild install script (required for tsx/tsc tooling in CI).
+# pnpm v11: allow install scripts required in CI Docker builds.
 allowBuilds:
   esbuild: true
+  # firebase-admin transitive deps (ERR_PNPM_IGNORED_BUILDS without these).
+  '@firebase/util': true
+  protobufjs: true
 
 overrides:
   core-service>bson: 6.10.4
@@ -21,3 +24,5 @@ overrides:
   proxy-addr@2.0.7: 2.0.8
   ip-address@10.0.1: 10.3.1
   body-parser@1.20.3: 1.20.9
+  # Avoid 0.8.1 (minimumReleaseAge) and 0.7.4 (CVE-2026-54466). 0.7.5 is patched + age-safe.
+  websocket-driver: 0.7.5

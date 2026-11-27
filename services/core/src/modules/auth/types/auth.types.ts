@@ -51,11 +51,19 @@ export interface AuthSubscriptionBlockedResponse {
 export interface AuthDeviceBlockedResponse {
   success: false;
   source?: string;
-  code: 'NOVASAFE_DEVICE_LIMIT';
+  code: 'NOVASAFE_DEVICE_LIMIT' | 'NOVASAFE_SINGLE_DEVICE_LOGIN';
   message: string;
   entitlement: 'canUseMultiDevice';
   subscription: unknown;
   devicePolicy: DevicePolicyDto;
+  /** Present when the client should show the New Device Login / switch-device prompt. */
+  conflict?: {
+    deviceName: string;
+    platform: string;
+    locationLabel?: string | null;
+    time?: string | null;
+    sessionId?: string | null;
+  };
 }
 
 export type VaultOAuthUserRow = {
