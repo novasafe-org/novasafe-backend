@@ -121,6 +121,27 @@ export const sendPasswordResetEmail = async (email: string, code: string): Promi
   });
 };
 
+export const sendAccountDeletionConfirmEmail = async (
+  email: string,
+  confirmUrl: string,
+): Promise<boolean> =>
+  sendMail(
+    email,
+    'Confirm NovaSafe account deletion',
+    `<div style="font-family:Inter,Segoe UI,Arial,sans-serif;background:#f4f7fb;padding:24px;">
+      <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;padding:28px;border:1px solid #e8edf5;">
+        <h1 style="margin:0 0 8px;color:#0f172a;font-size:24px;">Delete your NovaSafe account?</h1>
+        <p style="margin:0 0 18px;color:#475569;">We received a request to delete the NovaSafe account for this email. Click below to confirm. This link expires in 7 days.</p>
+        <p style="margin:0 0 18px;text-align:center;">
+          <a href="${confirmUrl}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:600;">Confirm deletion</a>
+        </p>
+        <p style="color:#64748b;font-size:13px;margin:0;">If you did not ask for this, you can ignore this email — your account stays active.</p>
+      </div>
+    </div>`,
+    `Confirm NovaSafe account deletion: ${confirmUrl}\n\nIf you did not request this, ignore this email.`,
+    { from: getEmailFrom('default') },
+  );
+
 export const sendTwoFactorEmail = async (email: string, code: string): Promise<boolean> =>
   sendMail(
     email,

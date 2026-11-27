@@ -11,6 +11,7 @@ import {
   logSettingsSync,
   subscriptionSnapshot,
 } from '../utils/settings-sync-log.util';
+import { performAccountDeletion } from '../services/account-deletion.service';
 
 const db = getNativeMongo();
 
@@ -621,18 +622,7 @@ export const getAccountDeletionSummary = async (req: Request, res: Response): Pr
 export const deleteAccount = async (req: Request, res: Response): Promise<void> => {
   const userObjectId = getUserObjectId(req);
   if (!userObjectId) return void res.status(401).json({ success: false, message: 'Authentication required' });
-  await Promise.all([
-    db.updateOne(COLLECTIONS.vaultUsers, { _id: userObjectId }, {
-      $set: { deleted: true, deletedAt: new Date(), source: 'mobile' },
-    }),
-    db.getDb().collection(COLLECTIONS.vaultItems).updateMany(
-      { userId: userObjectId, deleted: { $ne: true } },
-      { $set: { deleted: true, deleted_at: new Date(), source: 'mobile' } },
-    ),
-    db.getDb().collection(COLLECTIONS.sessions).updateMany(
-      { userId: userObjectId, revoked: { $ne: true } },
-      { $set: { revoked: true, revokedAt: new Date(), source: 'mobile' } },
-    ),
-  ]);
+  const source = req.source === 'web' ? 'web' : 'mobile';
+  await performAccountDeletion(userObjectId, source);
   res.status(200).json({ success: true, source: req.source, message: 'Account deleted successfully' });
 };
