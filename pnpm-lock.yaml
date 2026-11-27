@@ -19,6 +19,7 @@ overrides:
   proxy-addr@2.0.7: 2.0.8
   ip-address@10.0.1: 10.3.1
   body-parser@1.20.3: 1.20.9
+  websocket-driver: 0.7.4
 
 importers:
 
@@ -2059,9 +2060,9 @@ packages:
     resolution: {integrity: sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g==}
     engines: {node: '>=12'}
 
-  websocket-driver@0.8.1:
-    resolution: {integrity: sha512-Pp2Dio/XE6xCI5if9noFTRpnFsHI6g/bC2IPzKWWtjHodk9v8v8xOHE/XQl64fLiNuJlDSK7gsFdVB+W08Z7Zw==}
-    engines: {node: '>=0.10.0'}
+  websocket-driver@0.7.4:
+    resolution: {integrity: sha512-b17KeDIQVjvb0ssuSDF2cYXSg2iztliJ4B9WdsuB6J952qCPKmnVq4DyW5motImXHDC1cBT/1UezrJVsKw5zjg==}
+    engines: {node: '>=0.8.0'}
 
   websocket-extensions@0.3.0:
     resolution: {integrity: sha512-BPYQfFy0QTIibncavBZWTnHn1SpJzq1f+2u6qPN6SnoaTwKNV5U/PKhgddcmGdPZuPnXXw41AYi0u8BqOkbEbA==}
@@ -3056,7 +3057,7 @@ snapshots:
 
   faye-websocket@0.11.4:
     dependencies:
-      websocket-driver: 0.8.1
+      websocket-driver: 0.7.4
 
   fecha@4.2.3: {}
 
@@ -4106,7 +4107,7 @@ snapshots:
 
   webidl-conversions@7.0.0: {}
 
-  websocket-driver@0.8.1:
+  websocket-driver@0.7.4:
     dependencies:
       http-parser-js: 0.5.10
       safe-buffer: 5.2.1
