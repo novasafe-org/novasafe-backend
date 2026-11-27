@@ -58,6 +58,7 @@ export class TrustedDeviceRepository {
   }
 
   async updatePushToken(userId: string, deviceKey: string, pushToken: string | null): Promise<boolean> {
+    // Match pending (trusted:false) and trusted rows — both need FCM for consent / rejection.
     const result = await this.model.updateOne(
       { userId: new ObjectId(userId), deviceKey, isActive: true },
       {
@@ -69,6 +70,22 @@ export class TrustedDeviceRepository {
       },
     );
     return (result.modifiedCount || 0) > 0 || (result.matchedCount || 0) > 0;
+  }
+
+  async markTrusted(userId: string, deviceKey: string): Promise<void> {
+    await this.model.updateOne(
+      { userId: new ObjectId(userId), deviceKey },
+      { $set: { trusted: true, isActive: true, lastSeenAt: new Date() } },
+    );
+  }
+
+  async findPushTokenForDevice(userId: string, deviceKey: string): Promise<string | null> {
+    const row = await this.model
+      .findOne({ userId: new ObjectId(userId), deviceKey })
+      .select({ pushToken: 1 })
+      .lean();
+    const token = row?.pushToken ? String(row.pushToken) : '';
+    return token.length > 0 ? token : null;
   }
 
   async clearPushToken(pushToken: string): Promise<void> {
@@ -113,9 +130,12 @@ export class TrustedDeviceRepository {
     userAgent?: string;
     source?: string;
     makePrimary?: boolean;
+    /** Defaults true. Pass false for pending consent on a new device. */
+    trusted?: boolean;
   }): Promise<void> {
     const now = new Date();
     const userObjectId = new ObjectId(input.userId);
+    const trusted = input.trusted !== false;
 
     if (input.makePrimary) {
       await this.model.updateMany(
@@ -129,7 +149,7 @@ export class TrustedDeviceRepository {
 
     // Only set provided fields — avoid wiping name/platform with undefined on stub upserts.
     const $set: Record<string, unknown> = {
-      trusted: true,
+      trusted,
       isActive: true,
       lastSeenAt: now,
     };

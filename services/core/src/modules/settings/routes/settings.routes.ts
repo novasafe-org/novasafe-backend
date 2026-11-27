@@ -23,6 +23,7 @@ import {
   verifyMasterPassword,
 } from '../controllers/settings.controller';
 import {
+  getDeviceLoginAlertStatus,
   getDeviceLoginAlerts,
   getDevices,
   postDeviceLoginConsent,
@@ -51,6 +52,7 @@ export const createSettingsRoutes = (): Router => {
   router.post('/devices/single-device-login', authMiddleware, asyncHandler(updateSingleDeviceLogin));
   router.post('/devices/push-token', authMiddleware, asyncHandler(registerPushToken));
   router.get('/devices/alerts', authMiddleware, asyncHandler(getDeviceLoginAlerts));
+  router.get('/devices/alerts/:id/status', authMiddleware, asyncHandler(getDeviceLoginAlertStatus));
   router.post('/devices/alerts/:id/consent', authMiddleware, asyncHandler(postDeviceLoginConsent));
   router.post('/devices/login-consent', authMiddleware, asyncHandler(postDeviceLoginConsent));
   router.delete('/devices/:id', authMiddleware, asyncHandler(removeDevice));

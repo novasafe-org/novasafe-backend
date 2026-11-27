@@ -111,28 +111,25 @@ const isLoginDeviceTrusted = async (
   deviceKey: string,
   device: { platform: string; userAgent: string; deviceName: string },
 ): Promise<boolean> => {
+  // Consent flow: only the trusted-device registry counts (not historical sessions).
   const repo = getTrustedDeviceRepository();
   for (const key of loginDeviceKeys(deviceKey, device)) {
     const row = await repo.findByUserAndKey(userId, key);
     if (row?.trusted) return true;
   }
-
-  const db = getNativeMongo();
-  const session = await db.findOne(COLLECTIONS.sessions, {
-    userId: new ObjectId(userId),
-    platform: device.platform,
-    userAgent: device.userAgent,
-  });
-  return Boolean(session);
+  return false;
 };
 
 /**
- * Grandfather devices from all historical sessions (active + revoked).
- * Always merges — does not skip when devices already exist.
+ * Bootstrap trusted devices from historical sessions only when the user has
+ * none yet (grandfathering). Never re-run after consent is in place — that
+ * would auto-trust every past login and skip the allow-login flow.
  */
 export const seedTrustedDevicesFromSessions = async (userId: string): Promise<void> => {
-  const db = getNativeMongo();
   const repo = getTrustedDeviceRepository();
+  if ((await repo.countActiveByUserId(userId)) > 0) return;
+
+  const db = getNativeMongo();
   const sessions = await db.findMany(
     COLLECTIONS.sessions,
     { userId: new ObjectId(userId) },
@@ -156,9 +153,18 @@ export const seedTrustedDevicesFromSessions = async (userId: string): Promise<vo
         userAgent: String(record.userAgent || ''),
         source: String(record.source || 'mobile'),
         makePrimary: index === 1,
+        trusted: true,
       });
     }
   }
+};
+
+export type PendingDeviceConsent = {
+  alertId: string;
+  deviceKey: string;
+  deviceName: string;
+  platform: string;
+  status: 'pending';
 };
 
 export const evaluateDeviceLogin = async (
@@ -271,41 +277,69 @@ export const registerTrustedDeviceForLogin = async (
   req: Request,
   userId: string,
   deviceKey: string,
-): Promise<void> => {
+): Promise<PendingDeviceConsent | null> => {
   const device = resolveDeviceInfo(req);
   const ctx = getRequestContext();
   const repo = getTrustedDeviceRepository();
-  const existing = await repo.findByUserAndKey(userId, deviceKey);
+  const alreadyTrusted = await isLoginDeviceTrusted(userId, deviceKey, device);
+  const trustedCount = await repo.countActiveByUserId(userId);
+  const forceReplace = Boolean(
+    req.body?.forceReplaceSessions === true || req.body?.forceReplaceSessions === 'true',
+  );
+  const source = ctx?.legacySource ?? req.source ?? 'mobile';
+
+  // First trusted slot, already trusted, or explicit replace → trust immediately.
+  if (alreadyTrusted || forceReplace || trustedCount === 0) {
+    await repo.upsertTrustedDevice({
+      userId,
+      deviceKey,
+      deviceName: device.deviceName,
+      platform: device.platform,
+      userAgent: device.userAgent,
+      source,
+      makePrimary: trustedCount === 0 || forceReplace,
+      trusted: true,
+    });
+    return null;
+  }
+
+  // Untrusted device B: keep pending until a trusted device confirms.
   await repo.upsertTrustedDevice({
     userId,
     deviceKey,
     deviceName: device.deviceName,
     platform: device.platform,
     userAgent: device.userAgent,
-    source: ctx?.legacySource ?? req.source ?? 'mobile',
-    makePrimary: (await repo.countActiveByUserId(userId)) === 0,
+    source,
+    makePrimary: false,
+    trusted: false,
   });
 
-  // New device → queue consent alert + FCM to other registered devices.
-  if (!existing) {
-    const { recordDeviceLoginAlert } = await import(
-      '../../settings/services/device-sessions.service'
-    );
-    const ipAddress = String(
-      req.headers['x-forwarded-for'] || req.socket.remoteAddress || '',
-    )
-      .split(',')[0]
-      .trim();
-    await recordDeviceLoginAlert({
-      userId,
-      deviceKey,
-      deviceName: device.deviceName,
-      platform: device.platform,
-      locationLabel: null,
-      ipAddress: ipAddress || null,
-      kind: 'new_login',
-    });
-  }
+  const { ensurePendingLoginAlert } = await import(
+    '../../settings/services/device-sessions.service'
+  );
+  const ipAddress = String(
+    req.headers['x-forwarded-for'] || req.socket.remoteAddress || '',
+  )
+    .split(',')[0]
+    .trim();
+  const alertId = await ensurePendingLoginAlert({
+    userId,
+    deviceKey,
+    deviceName: device.deviceName,
+    platform: device.platform,
+    locationLabel: null,
+    ipAddress: ipAddress || null,
+    kind: 'new_login',
+  });
+
+  return {
+    alertId,
+    deviceKey,
+    deviceName: device.deviceName,
+    platform: device.platform,
+    status: 'pending',
+  };
 };
 
 /** Attach device key to session row after login (best-effort). */

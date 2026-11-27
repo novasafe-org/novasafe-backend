@@ -23,6 +23,15 @@ export interface SessionPolicyDto {
   riskSignals: string[];
 }
 
+/** Present when this login is on an untrusted device awaiting It’s me / Not me. */
+export interface PendingDeviceConsentDto {
+  alertId: string;
+  deviceKey: string;
+  deviceName: string;
+  platform: string;
+  status: 'pending';
+}
+
 export interface AuthSuccessResponse {
   success: true;
   source?: string;
@@ -35,6 +44,8 @@ export interface AuthSuccessResponse {
   oauthIntent?: string;
   devicePolicy?: DevicePolicyDto;
   sessionPolicy?: SessionPolicyDto;
+  /** Untrusted device B must show the allow-login waiting interstitial. */
+  pendingDeviceConsent?: PendingDeviceConsentDto | null;
 }
 
 /** @deprecated Use AuthDeviceBlockedResponse — kept for client compatibility */

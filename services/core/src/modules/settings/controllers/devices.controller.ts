@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { getRequestContext } from '../../../shared/request-context';
 import {
+  getLoginAlertStatus,
   listDeviceSessions,
   listPendingLoginAlerts,
   registerDevicePushToken,
@@ -9,6 +10,18 @@ import {
   setSingleDeviceLogin,
 } from '../services/device-sessions.service';
 import { getSubscriptionStateForUser } from '../../subscriptions/services/subscription.service';
+
+const deviceKeyFromReq = (req: Request): string | null => {
+  const ctx = getRequestContext();
+  const raw =
+    ctx?.snapshot.deviceId ||
+    req.headers['x-device-id'] ||
+    req.body?.deviceId ||
+    null;
+  if (typeof raw === 'string' && raw.trim()) return raw.trim().slice(0, 128);
+  if (Array.isArray(raw) && raw[0]) return String(raw[0]).trim().slice(0, 128);
+  return null;
+};
 
 const userIdFromReq = (req: Request): string | null => {
   const id = req.user?.id;
@@ -80,18 +93,43 @@ export const getDeviceLoginAlerts = async (req: Request, res: Response): Promise
     res.status(401).json({ success: false, message: 'Authentication required' });
     return;
   }
-  const alerts = await listPendingLoginAlerts(userId);
+  // Trusted devices only; never return alerts for the caller's own deviceKey.
+  const alerts = await listPendingLoginAlerts(userId, {
+    callerDeviceKey: deviceKeyFromReq(req),
+  });
   res.status(200).json({
     success: true,
     alerts: (alerts || []).map((a: Record<string, unknown>) => ({
       id: (a._id as { toString(): string })?.toString?.(),
       kind: a.kind,
+      deviceKey: a.deviceKey,
       deviceName: a.deviceName,
       platform: a.platform,
       locationLabel: a.locationLabel,
       ipAddress: a.ipAddress,
       createdAt: a.createdAt,
     })),
+  });
+};
+
+export const getDeviceLoginAlertStatus = async (req: Request, res: Response): Promise<void> => {
+  const userId = userIdFromReq(req);
+  if (!userId) {
+    res.status(401).json({ success: false, message: 'Authentication required' });
+    return;
+  }
+  const alertId = String(req.params.id || req.query.alertId || '').trim();
+  const result = await getLoginAlertStatus(userId, alertId);
+  if (!result.ok) {
+    res.status(404).json({ success: false, message: result.message });
+    return;
+  }
+  res.status(200).json({
+    success: true,
+    status: result.status,
+    deviceKey: result.deviceKey,
+    deviceName: result.deviceName,
+    platform: result.platform,
   });
 };
 
@@ -135,7 +173,9 @@ export const postDeviceLoginConsent = async (req: Request, res: Response): Promi
     return;
   }
   const alertId = String(req.body?.alertId || req.params.id || '');
-  const result = await resolveLoginAlert(userId, alertId, action);
+  const result = await resolveLoginAlert(userId, alertId, action, {
+    actorDeviceKey: deviceKeyFromReq(req),
+  });
   if (!result.ok) {
     res.status(400).json({ success: false, message: result.message });
     return;

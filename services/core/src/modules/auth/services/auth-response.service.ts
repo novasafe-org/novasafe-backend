@@ -167,7 +167,7 @@ export class AuthResponseService {
     }
 
     await this.sessions.create(sessionPayload as Partial<ISession>);
-    await registerTrustedDeviceForLogin(req, userId, deviceKey);
+    const pendingDeviceConsent = await registerTrustedDeviceForLogin(req, userId, deviceKey);
     await touchSessionDeviceId(tokenResult.tokenId, deviceKey);
 
     logger.info('Auth session created', {
@@ -176,6 +176,7 @@ export class AuthResponseService {
       deviceKey,
       trustedDeviceCount: deviceDecision.policy.trustedDeviceCount,
       mobileRefresh: issueMobileRefresh,
+      pendingConsent: Boolean(pendingDeviceConsent),
     });
 
     const nextRotationAt = sessionPayload.nextRotationAt as Date | undefined;
@@ -191,6 +192,7 @@ export class AuthResponseService {
       requiresVaultSetup: Boolean(options?.requiresVaultSetup),
       oauthIntent: options?.oauthIntent,
       devicePolicy: deviceDecision.policy,
+      pendingDeviceConsent: pendingDeviceConsent ?? null,
       sessionPolicy:
         issueMobileRefresh && nextRotationAt
           ? {
