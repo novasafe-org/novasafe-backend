@@ -38,6 +38,73 @@ export class TrustedDeviceRepository {
       .lean();
   }
 
+  async deactivateDevice(userId: string, deviceKey: string): Promise<void> {
+    await this.model.updateOne(
+      { userId: new ObjectId(userId), deviceKey },
+      { $set: { isActive: false, trusted: false, lastSeenAt: new Date() } },
+    );
+  }
+
+  async deactivateAllExcept(userId: string, keepDeviceKey: string): Promise<number> {
+    const result = await this.model.updateMany(
+      {
+        userId: new ObjectId(userId),
+        isActive: true,
+        deviceKey: { $ne: keepDeviceKey },
+      },
+      { $set: { isActive: false, trusted: false, lastSeenAt: new Date() } },
+    );
+    return result.modifiedCount || 0;
+  }
+
+  async updatePushToken(userId: string, deviceKey: string, pushToken: string | null): Promise<boolean> {
+    const result = await this.model.updateOne(
+      { userId: new ObjectId(userId), deviceKey, isActive: true },
+      {
+        $set: {
+          pushToken: pushToken || null,
+          lastSeenAt: new Date(),
+          source: 'mobile',
+        },
+      },
+    );
+    return (result.modifiedCount || 0) > 0 || (result.matchedCount || 0) > 0;
+  }
+
+  async clearPushToken(pushToken: string): Promise<void> {
+    if (!pushToken) return;
+    await this.model.updateMany(
+      { pushToken },
+      { $set: { pushToken: null, lastSeenAt: new Date() } },
+    );
+  }
+
+  /** Active devices with an FCM token (explicitly selects pushToken). */
+  async listPushTargets(
+    userId: string,
+    options?: { excludeDeviceKey?: string | null },
+  ): Promise<Array<{ deviceKey: string; pushToken: string }>> {
+    const filter: Record<string, unknown> = {
+      userId: new ObjectId(userId),
+      isActive: true,
+      trusted: true,
+      pushToken: { $type: 'string', $ne: '' },
+    };
+    if (options?.excludeDeviceKey) {
+      filter.deviceKey = { $ne: options.excludeDeviceKey };
+    }
+    const rows = await this.model
+      .find(filter)
+      .select({ deviceKey: 1, pushToken: 1 })
+      .lean();
+    return rows
+      .map((r) => ({
+        deviceKey: String(r.deviceKey),
+        pushToken: String(r.pushToken || ''),
+      }))
+      .filter((r) => r.pushToken.length > 0);
+  }
+
   async upsertTrustedDevice(input: {
     userId: string;
     deviceKey: string;
@@ -60,19 +127,22 @@ export class TrustedDeviceRepository {
     const activeCount = await this.countActiveByUserId(input.userId);
     const filter = { userId: userObjectId, deviceKey: input.deviceKey };
 
+    // Only set provided fields — avoid wiping name/platform with undefined on stub upserts.
+    const $set: Record<string, unknown> = {
+      trusted: true,
+      isActive: true,
+      lastSeenAt: now,
+    };
+    if (input.deviceName !== undefined) $set.deviceName = input.deviceName;
+    if (input.platform !== undefined) $set.platform = input.platform;
+    if (input.userAgent !== undefined) $set.userAgent = input.userAgent;
+    if (input.source !== undefined) $set.source = input.source;
+
     // isPrimary must not appear in both $set and $setOnInsert (Mongo upsert conflict).
     await this.model.updateOne(
       filter,
       {
-        $set: {
-          deviceName: input.deviceName,
-          platform: input.platform,
-          userAgent: input.userAgent,
-          source: input.source,
-          trusted: true,
-          isActive: true,
-          lastSeenAt: now,
-        },
+        $set,
         $setOnInsert: {
           userId: userObjectId,
           deviceKey: input.deviceKey,

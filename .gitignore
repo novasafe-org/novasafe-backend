@@ -2,3 +2,5 @@ node_modules/
 dist/
 .env
 services/*/output
+# Local service-account keys (never commit)
+secrets/

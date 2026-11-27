@@ -17,14 +17,23 @@ export type DeviceLoginPolicy = {
   isPro: boolean;
 };
 
+export type DeviceLoginConflict = {
+  deviceName: string;
+  platform: string;
+  locationLabel?: string | null;
+  time?: string | null;
+  sessionId?: string | null;
+};
+
 export type DeviceLoginDecision =
   | { allowed: true; policy: DeviceLoginPolicy; deviceKey: string }
   | {
       allowed: false;
-      code: 'NOVASAFE_DEVICE_LIMIT';
+      code: 'NOVASAFE_DEVICE_LIMIT' | 'NOVASAFE_SINGLE_DEVICE_LOGIN';
       message: string;
       policy: DeviceLoginPolicy;
       subscription: SubscriptionState;
+      conflict?: DeviceLoginConflict;
     };
 
 const parseBoolean = (value: string | undefined): boolean =>
@@ -168,15 +177,93 @@ export const evaluateDeviceLogin = async (
   const deviceKey = resolveDeviceKey(req);
   const repo = getTrustedDeviceRepository();
   const trustedDeviceCount = await repo.countActiveByUserId(userId);
+  const alreadyTrusted = await isLoginDeviceTrusted(userId, deviceKey, device);
+
+  const forceReplace = Boolean(
+    req.body?.forceReplaceSessions === true || req.body?.forceReplaceSessions === 'true',
+  );
 
   const policy: DeviceLoginPolicy = {
-    canRegisterNewDevice: true,
+    canRegisterNewDevice: isPro || trustedDeviceCount < maxTrustedDevices || alreadyTrusted,
     trustedDeviceCount,
-    maxTrustedDevices: isPro ? trustedDeviceCount : maxTrustedDevices,
+    maxTrustedDevices: isPro ? Number.MAX_SAFE_INTEGER : maxTrustedDevices,
     isPro,
   };
 
-  // Device count is tracked for analytics/display only — login is never gated by plan tier.
+  if (shouldRelaxDeviceLimits()) {
+    return { allowed: true, policy, deviceKey };
+  }
+
+  if (forceReplace) {
+    const { revokeOtherActiveSessions } = await import(
+      '../../settings/services/device-sessions.service'
+    );
+    await revokeOtherActiveSessions(userId, deviceKey);
+    return { allowed: true, policy, deviceKey };
+  }
+
+  const db = getNativeMongo();
+  const user = await db.findOne(COLLECTIONS.vaultUsers, { _id: new ObjectId(userId) });
+  const singleDeviceLoginEnabled = Boolean(user?.singleDeviceLoginEnabled);
+
+  const otherActive = await db.findOne(COLLECTIONS.sessions, {
+    userId: new ObjectId(userId),
+    revoked: { $ne: true },
+    deviceId: { $ne: deviceKey },
+  });
+
+  // Pro single-device login: another active session on a different device.
+  if (isPro && singleDeviceLoginEnabled && otherActive && !alreadyTrusted) {
+    return {
+      allowed: false,
+      code: 'NOVASAFE_SINGLE_DEVICE_LOGIN',
+      message:
+        'Single-device login is enabled. End the session on your other device, or continue to sign out there.',
+      policy: { ...policy, canRegisterNewDevice: false },
+      subscription: state,
+      conflict: {
+        deviceName: String(otherActive.deviceName || 'Other device'),
+        platform: String(otherActive.platform || 'unknown'),
+        locationLabel: otherActive.locationLabel ? String(otherActive.locationLabel) : null,
+        time: otherActive.lastActivity
+          ? new Date(otherActive.lastActivity as Date).toISOString()
+          : new Date().toISOString(),
+        sessionId: otherActive._id?.toString?.() || null,
+      },
+    };
+  }
+
+  // Free plan: only one trusted device unless this device is already known.
+  if (!isPro && !alreadyTrusted && trustedDeviceCount >= maxTrustedDevices) {
+    const conflictSession =
+      otherActive ||
+      (await db.findOne(COLLECTIONS.sessions, {
+        userId: new ObjectId(userId),
+        revoked: { $ne: true },
+      }));
+    return {
+      allowed: false,
+      code: 'NOVASAFE_DEVICE_LIMIT',
+      message:
+        'Free accounts can stay signed in on one device. Continue to switch to this device, or upgrade to Pro.',
+      policy: { ...policy, canRegisterNewDevice: false },
+      subscription: state,
+      conflict: conflictSession
+        ? {
+            deviceName: String(conflictSession.deviceName || 'Other device'),
+            platform: String(conflictSession.platform || 'unknown'),
+            locationLabel: conflictSession.locationLabel
+              ? String(conflictSession.locationLabel)
+              : null,
+            time: conflictSession.lastActivity
+              ? new Date(conflictSession.lastActivity as Date).toISOString()
+              : new Date().toISOString(),
+            sessionId: conflictSession._id?.toString?.() || null,
+          }
+        : undefined,
+    };
+  }
+
   return { allowed: true, policy, deviceKey };
 };
 
@@ -187,15 +274,38 @@ export const registerTrustedDeviceForLogin = async (
 ): Promise<void> => {
   const device = resolveDeviceInfo(req);
   const ctx = getRequestContext();
-  await getTrustedDeviceRepository().upsertTrustedDevice({
+  const repo = getTrustedDeviceRepository();
+  const existing = await repo.findByUserAndKey(userId, deviceKey);
+  await repo.upsertTrustedDevice({
     userId,
     deviceKey,
     deviceName: device.deviceName,
     platform: device.platform,
     userAgent: device.userAgent,
     source: ctx?.legacySource ?? req.source ?? 'mobile',
-    makePrimary: (await getTrustedDeviceRepository().countActiveByUserId(userId)) === 0,
+    makePrimary: (await repo.countActiveByUserId(userId)) === 0,
   });
+
+  // New device → queue consent alert + FCM to other registered devices.
+  if (!existing) {
+    const { recordDeviceLoginAlert } = await import(
+      '../../settings/services/device-sessions.service'
+    );
+    const ipAddress = String(
+      req.headers['x-forwarded-for'] || req.socket.remoteAddress || '',
+    )
+      .split(',')[0]
+      .trim();
+    await recordDeviceLoginAlert({
+      userId,
+      deviceKey,
+      deviceName: device.deviceName,
+      platform: device.platform,
+      locationLabel: null,
+      ipAddress: ipAddress || null,
+      kind: 'new_login',
+    });
+  }
 };
 
 /** Attach device key to session row after login (best-effort). */

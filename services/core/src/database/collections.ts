@@ -31,6 +31,8 @@ export const COLLECTIONS = {
   itemAttachments: 'itemAttachments',
   /** Trusted device registry (multi-device policy). */
   devices: 'devices',
+  /** Pending new-login / single-device conflict alerts (push + in-app consent). */
+  deviceLoginAlerts: 'deviceLoginAlerts',
   /** Reserved for in-app / push notification records. */
   notifications: 'notifications',
   /** Reserved for platform audit trail (separate from export history). */

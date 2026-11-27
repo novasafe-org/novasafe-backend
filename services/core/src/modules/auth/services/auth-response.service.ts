@@ -49,6 +49,21 @@ export class AuthResponseService {
         code: deviceDecision.code,
         trustedDeviceCount: deviceDecision.policy.trustedDeviceCount,
       });
+      if (deviceDecision.code === 'NOVASAFE_SINGLE_DEVICE_LOGIN') {
+        const { recordDeviceLoginAlert } = await import(
+          '../../settings/services/device-sessions.service'
+        );
+        const device = resolveDeviceInfo(req);
+        await recordDeviceLoginAlert({
+          userId,
+          deviceKey: resolveDeviceKey(req),
+          deviceName: device.deviceName,
+          platform: device.platform,
+          locationLabel: deviceDecision.conflict?.locationLabel || null,
+          ipAddress: resolveClientIp(req),
+          kind: 'single_device_conflict',
+        });
+      }
       return {
         success: false,
         source: req.source,
@@ -57,6 +72,7 @@ export class AuthResponseService {
         entitlement: 'canUseMultiDevice',
         subscription: deviceDecision.subscription,
         devicePolicy: deviceDecision.policy,
+        conflict: deviceDecision.conflict,
       };
     }
 
@@ -99,6 +115,10 @@ export class AuthResponseService {
       platform: device.platform,
       userAgent: device.userAgent,
       deviceId: deviceKey,
+      locationLabel:
+        [geoRegion, geoCountry].filter(Boolean).join(', ') ||
+        (geoCountry ? geoCountry : undefined),
+      appVersion: String(req.body?.appVersion || req.headers['x-app-version'] || '').trim() || undefined,
       createdAt: now,
       lastActivity: now,
       ...(platformCtx ? platformCtx.toSessionFields() : {}),
