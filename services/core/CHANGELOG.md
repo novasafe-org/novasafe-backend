@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.31
+
+### Changed
+
+Add web email account deletion for the landing page.
+
 ## v1.1.30
 
 ### Changed
