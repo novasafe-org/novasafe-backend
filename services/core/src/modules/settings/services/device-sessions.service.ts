@@ -671,8 +671,22 @@ export async function resolveLoginAlert(
   }
 
   // Not me: reject only device B — keep trusted devices signed in.
-  // Order: alert already marked rejected above → notify B (FCM) → then revoke
-  // sessions so B's status poll can still succeed briefly, and FCM can wake B.
+  // Order: alert already marked rejected above → mark B compromised (kills silent
+  // resume) → notify B (FCM) → then revoke sessions so B's status poll can still
+  // succeed briefly, and FCM can wake B.
+  if (pendingDeviceKey) {
+    try {
+      const { markDeviceCompromised } = await import(
+        '../../auth/services/device-silent-resume.service'
+      );
+      await markDeviceCompromised(userId, pendingDeviceKey, 'login_rejected_not_me');
+    } catch (error) {
+      logger.warn('Failed marking device compromised on Not-me', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   let bToken: string | null = null;
   try {
     bToken = pendingDeviceKey

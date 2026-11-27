@@ -16,6 +16,7 @@ import {
   createExtensionPairingHandoff,
   redeemExtensionPairing,
   refreshSession,
+  silentResumeDevice,
   requestSessionStepUpOtp,
   verifySessionStepUpOtp,
   requestPasswordReset,
@@ -63,6 +64,7 @@ export const createAuthRoutes = (): Router => {
 export const createMobileSessionRoutes = (): Router => {
   const router = Router();
   router.post('/refresh', authRateLimiter, asyncHandler(refreshSession));
+  router.post('/device/silent-resume', authRateLimiter, asyncHandler(silentResumeDevice));
   router.post('/session/step-up/request-otp', authRateLimiter, asyncHandler(requestSessionStepUpOtp));
   router.post('/session/step-up/verify-otp', authRateLimiter, asyncHandler(verifySessionStepUpOtp));
   return router;

@@ -46,6 +46,11 @@ export interface AuthSuccessResponse {
   sessionPolicy?: SessionPolicyDto;
   /** Untrusted device B must show the allow-login waiting interstitial. */
   pendingDeviceConsent?: PendingDeviceConsentDto | null;
+  /**
+   * Short-lived device trust secret for silent resume after reinstall.
+   * Store in Keychain / EncryptedSharedPrefs; never log.
+   */
+  deviceTrust?: { token: string; expiresAt: string } | null;
 }
 
 /** @deprecated Use AuthDeviceBlockedResponse — kept for client compatibility */

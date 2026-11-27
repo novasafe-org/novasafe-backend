@@ -110,12 +110,18 @@ const isLoginDeviceTrusted = async (
   userId: string,
   deviceKey: string,
   device: { platform: string; userAgent: string; deviceName: string },
+  hardwareFingerprint?: string | null,
 ): Promise<boolean> => {
   // Consent flow: only the trusted-device registry counts (not historical sessions).
   const repo = getTrustedDeviceRepository();
   for (const key of loginDeviceKeys(deviceKey, device)) {
     const row = await repo.findByUserAndKey(userId, key);
-    if (row?.trusted) return true;
+    if (row?.trusted && !row.compromisedAt) return true;
+  }
+  // Reinstall: same phone, new install UUID — match stable hardware fingerprint.
+  if (hardwareFingerprint) {
+    const byHw = await repo.findByUserAndHardwareFingerprint(userId, hardwareFingerprint);
+    if (byHw?.trusted && !byHw.compromisedAt) return true;
   }
   return false;
 };
@@ -181,9 +187,16 @@ export const evaluateDeviceLogin = async (
 
   const device = resolveDeviceInfo(req);
   const deviceKey = resolveDeviceKey(req);
+  const { resolveHardwareFingerprint } = await import('./device-silent-resume.service');
+  const hardwareFingerprint = resolveHardwareFingerprint(req);
   const repo = getTrustedDeviceRepository();
   const trustedDeviceCount = await repo.countActiveByUserId(userId);
-  const alreadyTrusted = await isLoginDeviceTrusted(userId, deviceKey, device);
+  const alreadyTrusted = await isLoginDeviceTrusted(
+    userId,
+    deviceKey,
+    device,
+    hardwareFingerprint,
+  );
 
   const forceReplace = Boolean(
     req.body?.forceReplaceSessions === true || req.body?.forceReplaceSessions === 'true',
@@ -281,7 +294,14 @@ export const registerTrustedDeviceForLogin = async (
   const device = resolveDeviceInfo(req);
   const ctx = getRequestContext();
   const repo = getTrustedDeviceRepository();
-  const alreadyTrusted = await isLoginDeviceTrusted(userId, deviceKey, device);
+  const { resolveHardwareFingerprint } = await import('./device-silent-resume.service');
+  const hardwareFingerprint = resolveHardwareFingerprint(req);
+  const alreadyTrusted = await isLoginDeviceTrusted(
+    userId,
+    deviceKey,
+    device,
+    hardwareFingerprint,
+  );
   const trustedCount = await repo.countActiveByUserId(userId);
   const forceReplace = Boolean(
     req.body?.forceReplaceSessions === true || req.body?.forceReplaceSessions === 'true',
@@ -290,6 +310,18 @@ export const registerTrustedDeviceForLogin = async (
 
   // First trusted slot, already trusted, or explicit replace → trust immediately.
   if (alreadyTrusted || forceReplace || trustedCount === 0) {
+    // If trusted via fingerprint after reinstall, rebind old key → current install UUID.
+    if (alreadyTrusted && hardwareFingerprint) {
+      const byHw = await repo.findByUserAndHardwareFingerprint(userId, hardwareFingerprint);
+      if (byHw && String(byHw.deviceKey) !== deviceKey) {
+        await repo.rebindDeviceKey({
+          userId,
+          fromDeviceKey: String(byHw.deviceKey),
+          toDeviceKey: deviceKey,
+          hardwareFingerprint,
+        });
+      }
+    }
     await repo.upsertTrustedDevice({
       userId,
       deviceKey,
@@ -299,6 +331,7 @@ export const registerTrustedDeviceForLogin = async (
       source,
       makePrimary: trustedCount === 0 || forceReplace,
       trusted: true,
+      hardwareFingerprint,
     });
     return null;
   }
@@ -313,6 +346,7 @@ export const registerTrustedDeviceForLogin = async (
     source,
     makePrimary: false,
     trusted: false,
+    hardwareFingerprint,
   });
 
   const { ensurePendingLoginAlert } = await import(
