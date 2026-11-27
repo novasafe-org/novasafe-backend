@@ -2,9 +2,12 @@ packages:
   - 'services/*'
   - 'common/*'
 
-# pnpm v11: allow esbuild install script (required for tsx/tsc tooling in CI).
+# pnpm v11: allow install scripts required in CI Docker builds.
 allowBuilds:
   esbuild: true
+  # firebase-admin transitive deps (ERR_PNPM_IGNORED_BUILDS without these).
+  '@firebase/util': true
+  protobufjs: true
 
 overrides:
   core-service>bson: 6.10.4
