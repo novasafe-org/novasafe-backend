@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.38
+
+### Changed
+
+fix(devices): unblock mobile-api boot — trustTokenHash index
+
 ## v1.1.37
 
 ### Changed
