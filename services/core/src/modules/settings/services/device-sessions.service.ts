@@ -124,43 +124,47 @@ export async function listDeviceSessions(input: {
   const state = await getSubscriptionStateForUser(input.userId);
   const isPro = Boolean(state.entitlements?.canUseMultiDevice);
 
+  // Soft-deleted / revoked sessions must not appear on manage-devices UI.
   const sessions = await db.findMany(
     COLLECTIONS.sessions,
-    { userId: userObjectId },
+    {
+      userId: userObjectId,
+      revoked: { $ne: true },
+      deleted: { $ne: true },
+    },
     { sort: { lastActivity: -1, createdAt: -1 }, limit: 50 },
   );
 
-  const mapped: DeviceSessionDto[] = sessions.map((s: Record<string, unknown>) => {
-    const revoked = Boolean(s.revoked);
-    const id = (s._id as { toString(): string })?.toString?.() || String(s.tokenId || '');
-    const isCurrent = Boolean(
-      (input.currentTokenId && s.tokenId === input.currentTokenId) ||
-        (input.currentDeviceId && s.deviceId && String(s.deviceId) === input.currentDeviceId && !revoked),
-    );
-    return {
-      id,
-      deviceKey: s.deviceId ? String(s.deviceId) : null,
-      tokenId: s.tokenId ? String(s.tokenId) : null,
-      isCurrent,
-      status: revoked ? 'logged_out' : 'active',
-      deviceName: String(s.deviceName || 'Unknown device'),
-      platform: String(s.platform || 'unknown'),
-      osVersion: s.osVersion ? String(s.osVersion) : null,
-      appVersion: s.appVersion ? String(s.appVersion) : null,
-      ipAddress: s.ipAddress ? String(s.ipAddress) : null,
-      locationLabel: s.locationLabel ? String(s.locationLabel) : null,
-      country: s.lastGeoCountry ? String(s.lastGeoCountry) : null,
-      firstLoginAt: toIso(s.createdAt),
-      lastActiveAt: toIso(s.lastActivity || s.createdAt),
-      createdAt: toIso(s.createdAt),
-    };
-  });
+  const mapped: DeviceSessionDto[] = sessions
+    .filter((s: Record<string, unknown>) => !Boolean(s.revoked) && !Boolean(s.deleted))
+    .map((s: Record<string, unknown>) => {
+      const id = (s._id as { toString(): string })?.toString?.() || String(s.tokenId || '');
+      const isCurrent = Boolean(
+        (input.currentTokenId && s.tokenId === input.currentTokenId) ||
+          (input.currentDeviceId &&
+            s.deviceId &&
+            String(s.deviceId) === input.currentDeviceId),
+      );
+      return {
+        id,
+        deviceKey: s.deviceId ? String(s.deviceId) : null,
+        tokenId: s.tokenId ? String(s.tokenId) : null,
+        isCurrent,
+        status: 'active' as const,
+        deviceName: String(s.deviceName || 'Unknown device'),
+        platform: String(s.platform || 'unknown'),
+        osVersion: s.osVersion ? String(s.osVersion) : null,
+        appVersion: s.appVersion ? String(s.appVersion) : null,
+        ipAddress: s.ipAddress ? String(s.ipAddress) : null,
+        locationLabel: s.locationLabel ? String(s.locationLabel) : null,
+        country: s.lastGeoCountry ? String(s.lastGeoCountry) : null,
+        firstLoginAt: toIso(s.createdAt),
+        lastActiveAt: toIso(s.lastActivity || s.createdAt),
+        createdAt: toIso(s.createdAt),
+      };
+    });
 
-  // Prefer active current; fall back to first current match.
-  const current =
-    mapped.find((s) => s.isCurrent && s.status === 'active') ||
-    mapped.find((s) => s.isCurrent) ||
-    null;
+  const current = mapped.find((s) => s.isCurrent) || null;
   const others = mapped.filter((s) => !current || s.id !== current.id);
 
   return {
@@ -667,6 +671,8 @@ export async function resolveLoginAlert(
   }
 
   // Not me: reject only device B — keep trusted devices signed in.
+  // Order: alert already marked rejected above → notify B (FCM) → then revoke
+  // sessions so B's status poll can still succeed briefly, and FCM can wake B.
   let bToken: string | null = null;
   try {
     bToken = pendingDeviceKey
@@ -675,6 +681,19 @@ export async function resolveLoginAlert(
   } catch (error) {
     logger.warn('Failed loading push token for login reject', {
       error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  if (bToken) {
+    await sendSessionEndedPush([bToken], {
+      title: 'Login not allowed',
+      body: 'This is not a trusted device. The account owner denied this sign-in.',
+      data: {
+        type: 'session_ended',
+        reason: 'login_rejected',
+        alertId,
+        deepLink: '/auth/sign-in',
+      },
     });
   }
 
@@ -690,17 +709,5 @@ export async function resolveLoginAlert(
     await repo.deactivateDevice(userId, pendingDeviceKey);
   }
 
-  if (bToken) {
-    await sendSessionEndedPush([bToken], {
-      title: 'Login not allowed',
-      body: 'This is not a trusted device. The account owner denied this sign-in.',
-      data: {
-        type: 'session_ended',
-        reason: 'login_rejected',
-        alertId,
-        deepLink: '/auth/sign-in',
-      },
-    });
-  }
   return { ok: true, message: 'Sign-in rejected for the new device.' };
 }

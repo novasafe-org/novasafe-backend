@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authMiddleware } from '../../auth';
+import { authAllowRevokedSessionMiddleware, authMiddleware } from '../../auth';
 import { asyncHandler } from '../../../middleware/async-handler';
 import { requireEntitlement } from '../../vault/middleware/entitlement.middleware';
 import {
@@ -54,7 +54,12 @@ export const createSettingsRoutes = (): Router => {
   router.post('/devices/single-device-login', authMiddleware, asyncHandler(updateSingleDeviceLogin));
   router.post('/devices/push-token', authMiddleware, asyncHandler(registerPushToken));
   router.get('/devices/alerts', authMiddleware, asyncHandler(getDeviceLoginAlerts));
-  router.get('/devices/alerts/:id/status', authMiddleware, asyncHandler(getDeviceLoginAlertStatus));
+  // Allow revoked sessions so device B can learn “rejected” after Not me.
+  router.get(
+    '/devices/alerts/:id/status',
+    authAllowRevokedSessionMiddleware,
+    asyncHandler(getDeviceLoginAlertStatus),
+  );
   router.post('/devices/alerts/:id/consent', authMiddleware, asyncHandler(postDeviceLoginConsent));
   router.post('/devices/login-consent', authMiddleware, asyncHandler(postDeviceLoginConsent));
   router.post('/devices/revoke-other-sessions', authMiddleware, asyncHandler(revokeOtherSessions));

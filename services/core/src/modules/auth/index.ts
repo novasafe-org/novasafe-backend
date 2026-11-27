@@ -6,6 +6,7 @@ export const AUTH_MODULE_NAME = 'auth';
 
 /** Re-export guards for other modules (vault, settings, etc.). */
 export {
+  authAllowRevokedSessionMiddleware,
   authMiddleware,
   oauthPendingAuthMiddleware,
   sessionOrPendingAuthMiddleware,
