@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.36
+
+### Changed
+
+fix(devices): soft-delete list filter and Not-me rejection path
+
 ## v1.1.35
 
 ### Changed
