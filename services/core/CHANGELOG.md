@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.37
+
+### Changed
+
+feat(auth): device fingerprinting and silent session resume scaffold
+
 ## v1.1.36
 
 ### Changed
