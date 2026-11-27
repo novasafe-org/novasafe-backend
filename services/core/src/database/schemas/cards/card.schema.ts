@@ -19,6 +19,8 @@ const cardDefinition = {
   cardType: { type: String, enum: CARD_TYPES, default: 'credit' },
   /** Visa / Mastercard / Amex / RuPay / etc. (optional). */
   brand: { type: String, default: null },
+  /** Optional UI accent color (hex), same palette as folders. */
+  color: { type: String, default: null },
   /** Last 4 digits of PAN for masked list display. */
   last4: { type: String, default: null },
   folderId: { type: objectIdType, default: null, sparse: true },
