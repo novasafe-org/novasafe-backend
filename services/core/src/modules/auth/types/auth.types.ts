@@ -30,6 +30,10 @@ export interface PendingDeviceConsentDto {
   deviceName: string;
   platform: string;
   status: 'pending';
+  /** `otp` when no live trusted device can approve — client should show email OTP. */
+  fallback?: 'otp' | null;
+  otpDestinationHint?: string | null;
+  otpSent?: boolean;
 }
 
 export interface AuthSuccessResponse {

@@ -30,8 +30,10 @@ import {
   registerPushToken,
   removeDevice,
   removeOtherDevices,
+  requestDeviceLoginOtp,
   revokeOtherSessions,
   updateSingleDeviceLogin,
+  verifyDeviceLoginOtp,
 } from '../controllers/devices.controller';
 
 export const createSettingsRoutes = (): Router => {
@@ -61,6 +63,16 @@ export const createSettingsRoutes = (): Router => {
     asyncHandler(getDeviceLoginAlertStatus),
   );
   router.post('/devices/alerts/:id/consent', authMiddleware, asyncHandler(postDeviceLoginConsent));
+  router.post(
+    '/devices/alerts/:id/request-otp',
+    authMiddleware,
+    asyncHandler(requestDeviceLoginOtp),
+  );
+  router.post(
+    '/devices/alerts/:id/verify-otp',
+    authMiddleware,
+    asyncHandler(verifyDeviceLoginOtp),
+  );
   router.post('/devices/login-consent', authMiddleware, asyncHandler(postDeviceLoginConsent));
   router.post('/devices/revoke-other-sessions', authMiddleware, asyncHandler(revokeOtherSessions));
   router.post('/devices/remove-other-devices', authMiddleware, asyncHandler(removeOtherDevices));

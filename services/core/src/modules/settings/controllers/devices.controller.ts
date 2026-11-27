@@ -226,3 +226,22 @@ export const postDeviceLoginConsent = async (req: Request, res: Response): Promi
   }
   res.status(200).json({ success: true, message: result.message });
 };
+
+export const requestDeviceLoginOtp = async (req: Request, res: Response): Promise<void> => {
+  const { getDeviceLoginOtpService } = await import(
+    '../../auth/services/device-login-otp.service'
+  );
+  const alertId = String(req.params.id || req.body?.alertId || '');
+  const result = await getDeviceLoginOtpService().requestOtp(req, alertId);
+  res.status(result.status).json(result.body);
+};
+
+export const verifyDeviceLoginOtp = async (req: Request, res: Response): Promise<void> => {
+  const { getDeviceLoginOtpService } = await import(
+    '../../auth/services/device-login-otp.service'
+  );
+  const alertId = String(req.params.id || req.body?.alertId || '');
+  const otp = String(req.body?.otp || req.body?.code || '');
+  const result = await getDeviceLoginOtpService().verifyOtp(req, alertId, otp);
+  res.status(result.status).json(result.body);
+};
