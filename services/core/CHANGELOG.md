@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.32
+
+### Changed
+
+feat(devices): login limits and FCM push alerts
+
 ## v1.1.31
 
 ### Changed
