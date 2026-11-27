@@ -40,7 +40,14 @@ async function notifyDevices(
     const targets = await getTrustedDeviceRepository().listPushTargets(userId, {
       excludeDeviceKey: excludeDeviceKey || null,
     });
-    if (!targets.length) return;
+    if (!targets.length) {
+      logger.warn('Device push skipped — no trusted FCM targets', {
+        userId,
+        type: payload.data?.type,
+        excludeDeviceKey: excludeDeviceKey || null,
+      });
+      return;
+    }
     const result = await sendFcmToTokens(
       targets.map((t) => t.pushToken),
       payload,
@@ -281,7 +288,9 @@ export async function revokeOtherActiveSessions(
   return result.modifiedCount || 0;
 }
 
-/** Persist a login-alert event and push to other registered devices. */
+const NEW_LOGIN_DEEP_LINK = '/vault/settings/devices/new-login';
+
+/** Persist a login-alert event and push to other registered (trusted) devices. */
 export async function recordDeviceLoginAlert(input: {
   userId: string;
   deviceKey: string;
@@ -290,11 +299,11 @@ export async function recordDeviceLoginAlert(input: {
   locationLabel?: string | null;
   ipAddress?: string | null;
   kind: 'new_login' | 'single_device_conflict';
-}): Promise<void> {
+}): Promise<string | null> {
   const userObjectId = requireUserObjectId(input.userId);
   if (!userObjectId || !input.deviceKey?.trim()) {
     logger.warn('Skipped device login alert — invalid userId or deviceKey');
-    return;
+    return null;
   }
 
   const insert = await db.getDb().collection(COLLECTIONS.deviceLoginAlerts).insertOne({
@@ -323,9 +332,55 @@ export async function recordDeviceLoginAlert(input: {
       deviceName: String(input.deviceName || 'Unknown device'),
       platform: String(input.platform || 'unknown'),
       locationLabel: input.locationLabel || '',
-      deepLink: '/vault/settings/devices',
+      deepLink: NEW_LOGIN_DEEP_LINK,
     },
   });
+  return alertId;
+}
+
+/**
+ * Reuse an existing pending alert for this device, or create + push a new one.
+ * Used when untrusted device B re-authenticates while waiting for consent.
+ */
+export async function ensurePendingLoginAlert(input: {
+  userId: string;
+  deviceKey: string;
+  deviceName: string;
+  platform: string;
+  locationLabel?: string | null;
+  ipAddress?: string | null;
+  kind: 'new_login' | 'single_device_conflict';
+}): Promise<string> {
+  const userObjectId = requireUserObjectId(input.userId);
+  if (!userObjectId) return '';
+
+  const existing = await db.findOne(COLLECTIONS.deviceLoginAlerts, {
+    userId: userObjectId,
+    deviceKey: input.deviceKey,
+    status: 'pending',
+  });
+  if (existing?._id) {
+    const alertId = existing._id.toString();
+    // Re-notify trusted devices (best-effort) so they see the pending login again.
+    const locationBit = input.locationLabel ? ` · ${input.locationLabel}` : '';
+    await notifyDevices(input.userId, input.deviceKey, {
+      title: 'New device login',
+      body: `${input.deviceName || 'Unknown device'} (${input.platform || 'unknown'})${locationBit}. Was this you?`,
+      data: {
+        type: 'new_device_login',
+        kind: input.kind,
+        alertId,
+        deviceKey: input.deviceKey,
+        deviceName: String(input.deviceName || 'Unknown device'),
+        platform: String(input.platform || 'unknown'),
+        locationLabel: input.locationLabel || '',
+        deepLink: NEW_LOGIN_DEEP_LINK,
+      },
+    });
+    return alertId;
+  }
+
+  return (await recordDeviceLoginAlert(input)) || '';
 }
 
 export async function registerDevicePushToken(input: {
@@ -354,12 +409,14 @@ export async function registerDevicePushToken(input: {
   const repo = getTrustedDeviceRepository();
   let updated = await repo.updatePushToken(input.userId, deviceKey, token);
   if (!updated) {
-    // Device may not be trusted yet (first login race) — upsert a stub then set token.
+    // Device row may be missing — upsert a stub without auto-trusting (consent flow).
+    const existing = await repo.findByUserAndKey(input.userId, deviceKey);
     await repo.upsertTrustedDevice({
       userId: input.userId,
       deviceKey,
       platform,
       source: 'mobile',
+      trusted: existing?.trusted === true,
     });
     updated = await repo.updatePushToken(input.userId, deviceKey, token);
   }
@@ -379,20 +436,67 @@ export async function registerDevicePushToken(input: {
     : { ok: false, message: 'Failed to store push token' };
 }
 
-export async function listPendingLoginAlerts(userId: string) {
+/**
+ * Pending alerts for **trusted** devices only. Untrusted device B never sees
+ * It’s me / Not me. Also excludes alerts for the caller's own deviceKey.
+ */
+export async function listPendingLoginAlerts(
+  userId: string,
+  options?: { excludeDeviceKey?: string | null; callerDeviceKey?: string | null },
+) {
   const userObjectId = requireUserObjectId(userId);
   if (!userObjectId) return [];
-  return db.findMany(
-    COLLECTIONS.deviceLoginAlerts,
-    { userId: userObjectId, status: 'pending' },
-    { sort: { createdAt: -1 }, limit: 20 },
-  );
+
+  const callerKey = options?.callerDeviceKey || options?.excludeDeviceKey || null;
+  // Without a device key we cannot prove the caller is trusted — return nothing.
+  if (!callerKey) return [];
+  const row = await getTrustedDeviceRepository().findByUserAndKey(userId, callerKey);
+  if (!row?.trusted) return [];
+
+  const filter: Record<string, unknown> = {
+    userId: userObjectId,
+    status: 'pending',
+    deviceKey: { $ne: callerKey },
+  };
+  return db.findMany(COLLECTIONS.deviceLoginAlerts, filter, {
+    sort: { createdAt: -1 },
+    limit: 20,
+  });
+}
+
+export async function getLoginAlertStatus(
+  userId: string,
+  alertId: string,
+): Promise<{
+  ok: boolean;
+  message?: string;
+  status?: string;
+  deviceKey?: string;
+  deviceName?: string;
+  platform?: string;
+}> {
+  if (!ObjectId.isValid(alertId)) return { ok: false, message: 'Invalid alert id' };
+  const userObjectId = requireUserObjectId(userId);
+  if (!userObjectId) return { ok: false, message: 'Invalid user' };
+  const alert = await db.findOne(COLLECTIONS.deviceLoginAlerts, {
+    _id: new ObjectId(alertId),
+    userId: userObjectId,
+  });
+  if (!alert) return { ok: false, message: 'Alert not found' };
+  return {
+    ok: true,
+    status: String(alert.status || 'pending'),
+    deviceKey: alert.deviceKey ? String(alert.deviceKey) : undefined,
+    deviceName: alert.deviceName ? String(alert.deviceName) : undefined,
+    platform: alert.platform ? String(alert.platform) : undefined,
+  };
 }
 
 export async function resolveLoginAlert(
   userId: string,
   alertId: string,
   action: 'its_me' | 'not_me',
+  options?: { actorDeviceKey?: string | null },
 ): Promise<{ ok: boolean; message: string }> {
   if (!ObjectId.isValid(alertId)) return { ok: false, message: 'Invalid alert id' };
   const userObjectId = requireUserObjectId(userId);
@@ -402,6 +506,23 @@ export async function resolveLoginAlert(
     userId: userObjectId,
   });
   if (!alert) return { ok: false, message: 'Alert not found' };
+  if (String(alert.status) !== 'pending') {
+    return { ok: false, message: 'Alert already resolved' };
+  }
+
+  const pendingDeviceKey = String(alert.deviceKey || '');
+  const repo = getTrustedDeviceRepository();
+
+  // Device B must not resolve its own login; actor must be trusted.
+  if (options?.actorDeviceKey) {
+    if (pendingDeviceKey && options.actorDeviceKey === pendingDeviceKey) {
+      return { ok: false, message: 'Only a trusted device can allow or deny this login' };
+    }
+    const actor = await repo.findByUserAndKey(userId, options.actorDeviceKey);
+    if (!actor?.trusted) {
+      return { ok: false, message: 'Only a trusted device can allow or deny this login' };
+    }
+  }
 
   await db.updateOne(
     COLLECTIONS.deviceLoginAlerts,
@@ -409,36 +530,64 @@ export async function resolveLoginAlert(
     { $set: { status: action === 'its_me' ? 'confirmed' : 'rejected', resolvedAt: new Date() } },
   );
 
-  if (action === 'not_me') {
-    let endedTokens: string[] = [];
-    try {
-      endedTokens = (await getTrustedDeviceRepository().listPushTargets(userId)).map(
-        (t) => t.pushToken,
-      );
-    } catch (error) {
-      logger.warn('Failed loading push targets for login reject', {
-        error: error instanceof Error ? error.message : String(error),
+  if (action === 'its_me') {
+    if (pendingDeviceKey) {
+      await repo.markTrusted(userId, pendingDeviceKey);
+    }
+    // Notify device B so the waiting interstitial can proceed (poll is primary).
+    const bToken = pendingDeviceKey
+      ? await repo.findPushTokenForDevice(userId, pendingDeviceKey)
+      : null;
+    if (bToken) {
+      await sendSessionEndedPush([bToken], {
+        title: 'Login approved',
+        body: 'A trusted device allowed this sign-in.',
+        data: {
+          type: 'login_approved',
+          alertId,
+          deviceKey: pendingDeviceKey,
+          deepLink: '/vault',
+        },
       });
     }
+    return { ok: true, message: 'Login confirmed' };
+  }
+
+  // Not me: reject only device B — keep trusted devices signed in.
+  let bToken: string | null = null;
+  try {
+    bToken = pendingDeviceKey
+      ? await repo.findPushTokenForDevice(userId, pendingDeviceKey)
+      : null;
+  } catch (error) {
+    logger.warn('Failed loading push token for login reject', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  if (pendingDeviceKey) {
     await db.getDb().collection(COLLECTIONS.sessions).updateMany(
-      { userId: userObjectId, revoked: { $ne: true } },
+      {
+        userId: userObjectId,
+        revoked: { $ne: true },
+        $or: [{ deviceId: pendingDeviceKey }, { deviceKey: pendingDeviceKey }],
+      },
       { $set: { revoked: true, revokedAt: new Date(), source: 'mobile' } },
     );
-    const devices = await getTrustedDeviceRepository().listActiveByUserId(userId);
-    for (const d of devices) {
-      await getTrustedDeviceRepository().deactivateDevice(userId, d.deviceKey);
-    }
-    await sendSessionEndedPush(endedTokens, {
-      title: 'Session ended',
-      body: 'A suspicious sign-in was rejected. All devices were signed out.',
+    await repo.deactivateDevice(userId, pendingDeviceKey);
+  }
+
+  if (bToken) {
+    await sendSessionEndedPush([bToken], {
+      title: 'Login not allowed',
+      body: 'This is not a trusted device. The account owner denied this sign-in.',
       data: {
         type: 'session_ended',
         reason: 'login_rejected',
+        alertId,
         deepLink: '/auth/sign-in',
       },
     });
-    return { ok: true, message: 'Sign-in rejected. All sessions were signed out.' };
   }
-
-  return { ok: true, message: 'Login confirmed' };
+  return { ok: true, message: 'Sign-in rejected for the new device.' };
 }
