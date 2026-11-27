@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.39
+
+### Changed
+
+fix(devices): unstick allow-login when no live approver
+
 ## v1.1.38
 
 ### Changed
