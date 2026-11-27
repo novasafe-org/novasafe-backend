@@ -24,5 +24,5 @@ overrides:
   proxy-addr@2.0.7: 2.0.8
   ip-address@10.0.1: 10.3.1
   body-parser@1.20.3: 1.20.9
-  # Pin below 0.8.1 — CI pnpm minimumReleaseAge rejects the Nov 26 2026 publish.
-  websocket-driver: 0.7.4
+  # Avoid 0.8.1 (minimumReleaseAge) and 0.7.4 (CVE-2026-54466). 0.7.5 is patched + age-safe.
+  websocket-driver: 0.7.5
