@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.35
+
+### Changed
+
+feat(devices): revoke all sessions and remove all devices
+
 ## v1.1.34
 
 ### Changed
