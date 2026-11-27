@@ -30,9 +30,10 @@ DeviceSchema.index(
   { userId: 1, hardwareFingerprint: 1 },
   { partialFilterExpression: { hardwareFingerprint: { $type: 'string' } } },
 );
+// partialFilterExpression only — Mongo rejects mixing sparse + partialFilterExpression.
 DeviceSchema.index(
   { trustTokenHash: 1 },
-  { sparse: true, partialFilterExpression: { trustTokenHash: { $type: 'string' } } },
+  { partialFilterExpression: { trustTokenHash: { $type: 'string' } } },
 );
 
 export const DEVICE_MODEL_NAME = 'TrustedDevice';
