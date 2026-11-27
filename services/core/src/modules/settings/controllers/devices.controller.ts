@@ -5,8 +5,10 @@ import {
   listDeviceSessions,
   listPendingLoginAlerts,
   registerDevicePushToken,
+  removeAllDevicesExceptCurrent,
   removeDeviceSession,
   resolveLoginAlert,
+  revokeAllSessionsExceptCurrent,
   setSingleDeviceLogin,
 } from '../services/device-sessions.service';
 import { getSubscriptionStateForUser } from '../../subscriptions/services/subscription.service';
@@ -85,6 +87,48 @@ export const removeDevice = async (req: Request, res: Response): Promise<void> =
     return;
   }
   res.status(200).json({ success: true, message: result.message });
+};
+
+export const revokeOtherSessions = async (req: Request, res: Response): Promise<void> => {
+  const userId = userIdFromReq(req);
+  if (!userId) {
+    res.status(401).json({ success: false, message: 'Authentication required' });
+    return;
+  }
+  if (!req.tokenId) {
+    res.status(400).json({ success: false, message: 'Current session token not found' });
+    return;
+  }
+  const result = await revokeAllSessionsExceptCurrent(userId, req.tokenId);
+  res.status(200).json({
+    success: true,
+    revokedCount: result.revokedCount,
+    message: 'Revoked all other sessions',
+  });
+};
+
+export const removeOtherDevices = async (req: Request, res: Response): Promise<void> => {
+  const userId = userIdFromReq(req);
+  if (!userId) {
+    res.status(401).json({ success: false, message: 'Authentication required' });
+    return;
+  }
+  const keepDeviceKey = deviceKeyFromReq(req);
+  if (!keepDeviceKey) {
+    res.status(400).json({ success: false, message: 'deviceId is required' });
+    return;
+  }
+  const result = await removeAllDevicesExceptCurrent(
+    userId,
+    keepDeviceKey,
+    req.tokenId || null,
+  );
+  res.status(200).json({
+    success: true,
+    removedDevices: result.removedDevices,
+    revokedSessions: result.revokedSessions,
+    message: 'Removed all other devices',
+  });
 };
 
 export const getDeviceLoginAlerts = async (req: Request, res: Response): Promise<void> => {
