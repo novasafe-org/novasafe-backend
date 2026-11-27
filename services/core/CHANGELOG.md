@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.34
+
+### Changed
+
+feat(devices): new-device login consent (pending trust + It's me / Not me)
+
 ## v1.1.33
 
 ### Changed
